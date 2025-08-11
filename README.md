@@ -22,9 +22,11 @@
 
 ## 📸 スクリーンショット
 
-> ![iPhoneのSafariブラウザーでの利用例](assets/iphone_chrome.png)  
->
-> *ダミー（iPhoneのSafariブラウザーでの利用例）*
+<a href="assets/iphone_chrome.png">
+  <img src="assets/iphone_chrome.png" alt="iPhoneのChromeでの利用例" width="300">
+</a>
+
+<sub>iPhoneのChromeでの利用例</sub>
 
 ---
 
