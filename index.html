@@ -1,10 +1,116 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8">
-  <title>Mic Gain Logger</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mic Gain Logger - Day041</title>
+  <meta name="description" content="Web Audio API を使ったマイク音量ロガー（録音なし／リアルタイム表示／CSV出力）" />
+  <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
-  <h1>Mic Gain Logger</h1>
+  <header class="app-header">
+    <div class="title-wrap">
+      <h1>Mic Gain Logger</h1>
+      <p class="subtitle">マイク音量ロガー（録音なし・リアルタイム表示・CSV出力）</p>
+    </div>
+    <div class="actions">
+      <button id="startBtn" class="btn primary">開始</button>
+      <button id="stopBtn" class="btn" disabled>停止</button>
+      <button id="exportBtn" class="btn" disabled>CSV書き出し</button>
+      <button id="resetBtn" class="btn" disabled>統計リセット</button>
+      <label class="toggle">
+        <input type="checkbox" id="darkToggle">
+        <span>ダーク</span>
+      </label>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card grid">
+      <div class="grid-item">
+        <h2 class="section-title">現在の音量</h2>
+        <div id="bigValue" class="big-value">--.- dBFS</div>
+
+        <div class="meter">
+          <div class="meter-bar" id="meterBar"></div>
+          <div class="meter-scale">
+            <span>-60</span><span>-40</span><span>-20</span><span>0</span>
+          </div>
+        </div>
+
+        <div class="controls">
+          <div class="control">
+            <label for="logInterval">ログ間隔（秒）</label>
+            <input type="number" id="logInterval" min="0.2" step="0.1" value="1.0">
+          </div>
+          <div class="control">
+            <label for="smoothing">スムージング</label>
+            <input type="range" id="smoothing" min="0" max="0.95" step="0.05" value="0.5">
+          </div>
+          <div class="control">
+            <label for="floorDb">表示下限（dBFS）</label>
+            <input type="number" id="floorDb" step="1" value="-60">
+          </div>
+        </div>
+
+        <div id="status" class="status ok" aria-live="polite">待機中</div>
+      </div>
+
+      <div class="grid-item">
+        <h2 class="section-title">リアルタイムグラフ</h2>
+        <canvas id="levelCanvas" width="800" height="220" aria-label="音量推移グラフ"></canvas>
+      </div>
+
+      <div class="grid-item stats">
+        <h2 class="section-title">統計</h2>
+        <div class="stats-grid">
+          <div class="stat">
+            <div class="stat-label">平均</div>
+            <div id="avgDb" class="stat-value">--.- dBFS</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">最大</div>
+            <div id="maxDb" class="stat-value">--.- dBFS</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">最小</div>
+            <div id="minDb" class="stat-value">--.- dBFS</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">変動幅</div>
+            <div id="rangeDb" class="stat-value">--.- dB</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">ログ件数</div>
+            <div id="count" class="stat-value">0</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">稼働時間</div>
+            <div id="uptime" class="stat-value">00:00:00</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <details>
+        <summary>説明と注意事項</summary>
+        <ul class="notes">
+          <li>本ツールは<strong>録音しません</strong>。音量（dBFS）を可視化・記録します。</li>
+          <li>表示は機器・環境に依存します。絶対値ではなく<strong>相対変化</strong>の把握を主目的としてください。</li>
+          <li>CSVにはタイムスタンプと音量（dBFS）が出力されます。</li>
+          <li>スムージング値を上げると短期的な揺れが抑えられますが、応答性は下がります。</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+
+  <footer>
+    <div class="footer">
+      🔗 GitHubリポジトリはこちら（ <a href="https://github.com/ipusiron/mic-gain-logger" target="_blank" rel="noopener">ipusiron/mic-gain-logger</a> ）
+    </div>
+  </footer>
+
+  <script src="./script.js"></script>
 </body>
 </html>
