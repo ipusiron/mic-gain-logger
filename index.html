@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Mic Gain Logger - Day041</title>
   <meta name="description" content="Web Audio API を使ったマイク音量ロガー（録音なし／リアルタイム表示／CSV出力）" />
-  <link rel="stylesheet" href="./style.css" />
+  <link rel="stylesheet" href="./style.css?v=2.0" />
 </head>
 <body>
   <header class="app-header">
@@ -13,43 +13,80 @@
       <h1>Mic Gain Logger</h1>
       <p class="subtitle">マイク音量ロガー（録音なし・リアルタイム表示・CSV出力）</p>
     </div>
-    <div class="actions">
-      <button id="startBtn" class="btn primary">開始</button>
-      <button id="stopBtn" class="btn" disabled>停止</button>
-      <button id="exportBtn" class="btn" disabled>CSV書き出し</button>
-      <button id="resetBtn" class="btn" disabled>統計リセット</button>
-      <label class="toggle">
-        <input type="checkbox" id="darkToggle">
-        <span>ダーク</span>
-      </label>
-    </div>
   </header>
 
+  <!-- スマートフォン専用のヘルプ・テーマボタン配置エリア -->
+  <div class="mobile-controls" id="mobileControls"></div>
+
   <main class="container">
+    <div class="actions">
+      <button id="startBtn" class="btn primary" title="マイクから音量の記録を開始します">記録開始</button>
+      <button id="stopBtn" class="btn" disabled title="音量の記録を停止します">停止</button>
+      <button id="exportBtn" class="btn" disabled title="記録した音量データをCSVファイルでダウンロードします">CSV書き出し</button>
+      <button id="resetBtn" class="btn" disabled title="統計情報とログデータをすべてクリアします">統計リセット</button>
+      <button id="helpBtn" class="help-btn" aria-label="ヘルプ" title="使い方とヘルプを表示します">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+      </button>
+      <button id="themeToggle" class="theme-toggle" aria-label="テーマ切り替え" title="ダークモード/ライトモードを切り替えます">
+        <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line>
+          <line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+        <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+      </button>
+    </div>
     <section class="card grid">
       <div class="grid-item">
         <h2 class="section-title">現在の音量</h2>
-        <div id="bigValue" class="big-value">--.- dBFS</div>
+        <div id="bigValue" class="big-value" title="現在のマイク入力音量（dBFS: デシベル フルスケール）">--.- dBFS</div>
 
-        <div class="meter">
+        <div class="meter" title="音量レベルメーター（-60dBFS〜0dBFS）">
           <div class="meter-bar" id="meterBar"></div>
           <div class="meter-scale">
             <span>-60</span><span>-40</span><span>-20</span><span>0</span>
           </div>
         </div>
 
-        <div class="controls">
-          <div class="control">
-            <label for="logInterval">ログ間隔（秒）</label>
-            <input type="number" id="logInterval" min="0.2" step="0.1" value="1.0">
-          </div>
-          <div class="control">
-            <label for="smoothing">スムージング</label>
-            <input type="range" id="smoothing" min="0" max="0.95" step="0.05" value="0.5">
-          </div>
-          <div class="control">
-            <label for="floorDb">表示下限（dBFS）</label>
-            <input type="number" id="floorDb" step="1" value="-60">
+        <div class="controls-wrapper">
+          <button class="controls-toggle" id="controlsToggle">
+            <span class="toggle-text">設定を表示</span>
+            <span class="toggle-icon">▼</span>
+          </button>
+          <div class="controls collapsed" id="controls">
+            <div class="control">
+              <label for="logInterval" title="CSVログに記録する間隔（秒単位）">ログ間隔（秒）</label>
+              <div class="interval-controls">
+                <input type="number" id="logInterval" min="0.2" step="0.1" value="1.0" title="音量データをログに記録する間隔を指定します（短いほど詳細、長いほどファイルサイズ小）">
+                <div class="interval-presets">
+                  <button type="button" class="preset-btn" data-interval="1" title="1秒間隔">1s</button>
+                  <button type="button" class="preset-btn" data-interval="3" title="3秒間隔">3s</button>
+                  <button type="button" class="preset-btn" data-interval="5" title="5秒間隔">5s</button>
+                  <button type="button" class="preset-btn" data-interval="10" title="10秒間隔">10s</button>
+                  <button type="button" class="preset-btn" data-interval="60" title="1分間隔">1m</button>
+                </div>
+              </div>
+            </div>
+            <div class="control">
+              <label for="smoothing" title="音量の変化を滑らかにする度合い">スムージング</label>
+              <input type="range" id="smoothing" min="0" max="0.95" step="0.05" value="0.5" title="音量変化の平滑化レベル（0=リアルタイム、0.95=非常に滑らか）">
+            </div>
+            <div class="control">
+              <label for="floorDb" title="表示する最小音量レベル">表示下限（dBFS）</label>
+              <input type="number" id="floorDb" step="1" value="-60" title="この値未満の音量は表示されません（通常-60〜-40dBFS）">
+            </div>
           </div>
         </div>
 
@@ -58,35 +95,35 @@
 
       <div class="grid-item">
         <h2 class="section-title">リアルタイムグラフ</h2>
-        <canvas id="levelCanvas" width="800" height="220" aria-label="音量推移グラフ"></canvas>
+        <canvas id="levelCanvas" width="800" height="220" aria-label="音量推移グラフ" title="時系列での音量変化を表示（横軸=時間、縦軸=音量レベル）"></canvas>
       </div>
 
       <div class="grid-item stats">
         <h2 class="section-title">統計</h2>
         <div class="stats-grid">
-          <div class="stat">
-            <div class="stat-label">平均</div>
-            <div id="avgDb" class="stat-value">--.- dBFS</div>
+          <div class="stat" title="記録開始からの経過時間">
+            <div class="stat-label">稼働時間</div>
+            <div id="uptime" class="stat-value">00:00:00</div>
           </div>
-          <div class="stat">
-            <div class="stat-label">最大</div>
-            <div id="maxDb" class="stat-value">--.- dBFS</div>
-          </div>
-          <div class="stat">
-            <div class="stat-label">最小</div>
-            <div id="minDb" class="stat-value">--.- dBFS</div>
-          </div>
-          <div class="stat">
-            <div class="stat-label">変動幅</div>
-            <div id="rangeDb" class="stat-value">--.- dB</div>
-          </div>
-          <div class="stat">
+          <div class="stat" title="CSVに記録されたデータポイントの総数">
             <div class="stat-label">ログ件数</div>
             <div id="count" class="stat-value">0</div>
           </div>
-          <div class="stat">
-            <div class="stat-label">稼働時間</div>
-            <div id="uptime" class="stat-value">00:00:00</div>
+          <div class="stat" title="記録期間中の平均音量レベル">
+            <div class="stat-label">平均</div>
+            <div id="avgDb" class="stat-value">--.- dBFS</div>
+          </div>
+          <div class="stat" title="記録期間中の最大音量レベル">
+            <div class="stat-label">最大</div>
+            <div id="maxDb" class="stat-value">--.- dBFS</div>
+          </div>
+          <div class="stat" title="記録期間中の最小音量レベル">
+            <div class="stat-label">最小</div>
+            <div id="minDb" class="stat-value">--.- dBFS</div>
+          </div>
+          <div class="stat" title="最大値と最小値の差（音量の変動幅）">
+            <div class="stat-label">変動幅</div>
+            <div id="rangeDb" class="stat-value">--.- dB</div>
           </div>
         </div>
       </div>
@@ -100,6 +137,7 @@
           <li>表示は機器・環境に依存します。絶対値ではなく<strong>相対変化</strong>の把握を主目的としてください。</li>
           <li>CSVにはタイムスタンプと音量（dBFS）が出力されます。</li>
           <li>スムージング値を上げると短期的な揺れが抑えられますが、応答性は下がります。</li>
+          <li><strong>停止直後の再開について：</strong>ブラウザーの仕様により、停止直後に「記録開始」を押してもマイクダイアログが表示されない場合があります。その場合は、URL付近のマイクアイコンを押してマイクダイアログを再表示するか、ページをリロードしてください。</li>
         </ul>
       </details>
     </section>
@@ -111,6 +149,94 @@
     </div>
   </footer>
 
-  <script src="./script.js"></script>
+  <!-- ヘルプモーダル -->
+  <div id="helpModal" class="modal" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content" role="dialog" aria-labelledby="helpModalTitle">
+      <div class="modal-header">
+        <h2 id="helpModalTitle">ヘルプ - Mic Gain Logger</h2>
+        <button class="modal-close" aria-label="閉じる">&times;</button>
+      </div>
+      <div class="modal-body">
+        <section>
+          <h3>🎯 基本的な使い方</h3>
+          <ol>
+            <li><strong>「記録開始」</strong>ボタンを押してマイクアクセスを許可</li>
+            <li>音量がリアルタイムで表示・記録されます</li>
+            <li><strong>「停止」</strong>で記録を停止（データは保持されます）</li>
+            <li><strong>「CSV書き出し」</strong>でデータをダウンロード</li>
+            <li><strong>「統計リセット」</strong>ですべてのデータをクリア</li>
+          </ol>
+        </section>
+
+        <section>
+          <h3>⚙️ 設定項目</h3>
+          <ul>
+            <li><strong>ログ間隔：</strong>記録する間隔（秒単位）。プリセットボタン（1s/3s/5s/10s/1m）で素早く設定可能</li>
+            <li><strong>スムージング：</strong>音量変化の平滑化（0=リアルタイム、0.95=非常に滑らか）</li>
+            <li><strong>表示下限：</strong>表示する最小音量レベル（通常-60〜-40dBFS）</li>
+          </ul>
+          <p><em>※ すべての設定は記録中でも変更可能で即座に反映されます</em></p>
+          <p><em>※ スマートフォンでは「設定を表示」ボタンで設定項目を開閉できます</em></p>
+        </section>
+
+        <section>
+          <h3>📊 統計と表示</h3>
+          <ul>
+            <li><strong>稼働時間：</strong>記録開始からの経過時間</li>
+            <li><strong>ログ件数：</strong>CSVに記録されたデータポイント総数</li>
+            <li><strong>平均/最大/最小：</strong>記録期間中の音量レベル</li>
+            <li><strong>変動幅：</strong>最大値と最小値の差（音環境の変化度合い）</li>
+            <li><strong>リアルタイムグラフ：</strong>時系列での音量推移を可視化</li>
+            <li><strong>音量メーター：</strong>現在の音量を色分けで表示（緑→黄→赤）</li>
+          </ul>
+          <p><em>※ 複数回の記録セッション（記録開始→停止→記録開始）でデータは累積されます</em></p>
+        </section>
+
+        <section>
+          <h3>💾 データの取り扱い</h3>
+          <ul>
+            <li><strong>録音なし：</strong>音声は一切記録されず、音量データのみを扱います</li>
+            <li><strong>CSV形式：</strong>タイムスタンプと音量（dBFS）のペアで出力</li>
+            <li><strong>累積記録：</strong>停止→再開しても前回データは保持されます</li>
+            <li><strong>プライバシー配慮：</strong>すべての処理はブラウザー内で完結</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3>🔧 トラブルシューティング</h3>
+          <ul>
+            <li><strong>マイクダイアログが表示されない：</strong>ブラウザーのURL付近のマイクアイコンを押すか、ページをリロード</li>
+            <li><strong>音量が「--.- dBFS」のまま：</strong>マイクが正しく接続・選択されているか確認</li>
+            <li><strong>記録が自動停止する：</strong>ブラウザーのタブを切り替えると一時停止する場合があります</li>
+            <li><strong>グラフが表示されない：</strong>ページをリロードして再試行</li>
+            <li><strong>スマートフォンで操作しにくい：</strong>画面を縦向きにして使用してください</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3>📱 モバイル利用について</h3>
+          <ul>
+            <li><strong>レスポンシブ対応：</strong>スマートフォンとタブレットに最適化</li>
+            <li><strong>タッチ操作：</strong>すべてのボタンは44px以上のタッチターゲット</li>
+            <li><strong>設定の折りたたみ：</strong>「設定を表示/隠す」で画面を有効活用</li>
+            <li><strong>バッテリー考慮：</strong>不要時は停止してバッテリー消費を抑制</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3>⚠️ 重要な注意事項</h3>
+          <ul>
+            <li><strong>録音機能なし：</strong>音声そのものは保存されません（音量レベルのみ）</li>
+            <li><strong>環境依存：</strong>表示値は機器・環境により変動するため、絶対値でなく相対変化を参考に</li>
+            <li><strong>用途制限：</strong>本ツールは物理セキュリティ・音響監視の補助用途を想定</li>
+            <li><strong>法的配慮：</strong>使用時は適用される法律・規制を遵守してください</li>
+          </ul>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script src="./script.js?v=2.0"></script>
 </body>
 </html>

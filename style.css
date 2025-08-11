@@ -1,14 +1,15 @@
 :root{
-  --bg:#0b0d10;
-  --fg:#e8eef2;
-  --muted:#9aa4ad;
-  --card:#141820;
-  --accent:#4da3ff;
-  --ok:#1fbf75;
-  --warn:#f2b84b;
-  --err:#ff6666;
-  --shadow:0 8px 30px rgba(0,0,0,.25);
+  --bg:#1a1d23;
+  --fg:#f0f4f8;
+  --muted:#8b95a7;
+  --card:#252932;
+  --accent:#5eb3ff;
+  --ok:#2dd68a;
+  --warn:#ffc107;
+  --err:#ff6b6b;
+  --shadow:0 8px 30px rgba(0,0,0,.4);
   --radius:18px;
+  --border:rgba(255,255,255,.15);
 }
 
 *{box-sizing:border-box}
@@ -25,10 +26,7 @@ a{color:var(--accent);text-decoration:none}
 a:hover{text-decoration:underline}
 
 .app-header{
-  display:flex;
-  gap:24px;
-  align-items:center;
-  justify-content:space-between;
+  text-align:center;
   padding:24px clamp(16px, 4vw, 40px);
 }
 .title-wrap h1{
@@ -41,12 +39,50 @@ a:hover{text-decoration:underline}
   font-size:14px;
 }
 .actions{
-  display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  display:flex; 
+  gap:10px; 
+  align-items:center; 
+  flex-wrap:wrap;
+  margin-bottom:20px;
 }
-.toggle{
-  display:flex; gap:8px; align-items:center; color:var(--muted);
-  user-select:none;
+/* デスクトップではmobile-controlsを非表示 */
+.mobile-controls {
+  display: none;
 }
+
+.help-btn,
+.theme-toggle{
+  position:relative;
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:8px;
+  cursor:pointer;
+  transition:all 0.3s;
+  color:var(--fg);
+}
+
+.help-btn {
+  margin-left:auto;
+  margin-right:8px;
+}
+
+.theme-toggle {
+  margin-left:0;
+}
+.help-btn:hover,
+.theme-toggle:hover{
+  transform:translateY(-1px);
+  box-shadow:0 6px 16px rgba(0,0,0,.25);
+}
+.theme-toggle svg{
+  width:20px;
+  height:20px;
+}
+.theme-toggle .icon-sun{display:block;}
+.theme-toggle .icon-moon{display:none;}
+body.light .theme-toggle .icon-sun{display:none;}
+body.light .theme-toggle .icon-moon{display:block;}
 
 .container{
   padding:0 clamp(16px, 4vw, 40px) 40px;
@@ -57,6 +93,7 @@ a:hover{text-decoration:underline}
   background:var(--card);
   border-radius:var(--radius);
   box-shadow:var(--shadow);
+  border:1px solid var(--border);
   padding:20px;
   margin-bottom:20px;
 }
@@ -64,7 +101,271 @@ a:hover{text-decoration:underline}
 .grid{
   display:grid;
   gap:16px;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto;
+}
+
+.grid .grid-item:first-child {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.grid .grid-item:nth-child(2) {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.grid .grid-item:nth-child(3) {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+/* タブレット向けレイアウト (768px以下) */
+@media (max-width: 768px) {
+  .grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+  }
+  
+  .grid .grid-item:first-child {
+    grid-column: 1;
+    grid-row: 1;
+    order: 1;
+  }
+  
+  .grid .grid-item:nth-child(2) {
+    grid-column: 1;
+    grid-row: 2;
+    order: 2;
+  }
+  
+  .grid .grid-item:nth-child(3) {
+    grid-column: 1;
+    grid-row: 3;
+    order: 3;
+  }
+}
+
+/* スマートフォン向けレイアウト (480px以下) */
+@media (max-width: 480px) {
+  /* 全体的な余白を削減 */
+  .container {
+    padding: 0 12px 20px;
+  }
+  
+  /* ヘッダーをコンパクトに */
+  .app-header {
+    padding: 16px 12px;
+  }
+  
+  .title-wrap h1 {
+    font-size: 20px;
+    margin-bottom: 2px;
+  }
+  
+  .subtitle {
+    font-size: 12px;
+    line-height: 1.3;
+  }
+  
+  /* スマートフォン用のヘルプ・テーマボタン配置エリア */
+  .mobile-controls {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    padding: 8px 0 16px;
+    margin: 0 12px;
+  }
+  
+  /* モバイルでの actions エリアのボタン配置調整 */
+  .actions {
+    justify-content: flex-start;
+  }
+  
+  /* ヘルプとテーマボタンをモバイル用エリアに配置 */
+  .help-btn,
+  .theme-toggle {
+    position: static;
+    padding: 8px;
+    min-width: 40px;
+    min-height: 40px;
+    margin-left: 0;
+    margin-right: 0;
+  }
+  
+  /* アクションボタンを配置 */
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 16px;
+    align-items: center;
+  }
+  
+  .actions .btn {
+    padding: 12px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+    min-height: 44px; /* タッチターゲット */
+  }
+  
+  /* カードのパディングを最小限に */
+  .card {
+    padding: 12px;
+    margin-bottom: 12px;
+    overflow: hidden; /* コンテンツがはみ出さないように */
+  }
+  
+  /* 現在の音量セクション */
+  .big-value {
+    font-size: clamp(24px, 8vw, 36px);
+    margin: 8px 0;
+  }
+  
+  .meter {
+    height: 14px;
+    margin-bottom: 8px;
+  }
+  
+  /* コントロールを折りたたみ式に */
+  .controls-wrapper {
+    margin-top: 12px;
+  }
+  
+  .controls-toggle {
+    display: flex; /* スマートフォンでは表示 */
+    align-items: center;
+    justify-content: space-between;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: var(--muted);
+    font-size: 12px;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+    margin-bottom: 8px;
+    min-height: 44px;
+  }
+  
+  .controls-toggle:hover {
+    background: var(--bg);
+    color: var(--fg);
+  }
+  
+  .toggle-icon {
+    font-size: 14px;
+    transition: transform 0.2s;
+  }
+  
+  .controls {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  
+  .controls.collapsed {
+    display: none;
+  }
+  
+  .control {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .control label {
+    font-size: 11px;
+    margin-bottom: 2px;
+    font-weight: 600;
+  }
+  
+  .control input[type="number"] {
+    padding: 8px;
+    font-size: 14px;
+    border-radius: 6px;
+    min-height: 36px;
+  }
+  
+  .control input[type="range"] {
+    height: 36px; /* タッチしやすく */
+  }
+  
+  /* ログ間隔プリセット */
+  .interval-controls {
+    gap: 6px;
+  }
+  
+  .interval-presets {
+    gap: 4px;
+  }
+  
+  .preset-btn {
+    padding: 6px 8px;
+    font-size: 11px;
+    min-width: 32px;
+    min-height: 32px;
+    border-radius: 4px;
+  }
+  
+  /* グラフサイズと配置を調整 */
+  #levelCanvas {
+    width: 100%;
+    height: 120px;
+    max-width: 100%;
+    display: block;
+    margin: 0 auto;
+  }
+  
+  /* グラフのカードに下マージンを追加 */
+  .grid .grid-item:nth-child(2) {
+    margin-bottom: 16px;
+  }
+  
+  /* 統計を2列×3行に */
+  .stats-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  
+  .stat {
+    padding: 8px;
+    border-radius: 8px;
+  }
+  
+  .stat-label {
+    font-size: 10px;
+    margin-bottom: 2px;
+  }
+  
+  .stat-value {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  
+  /* セクションタイトル */
+  .section-title {
+    font-size: 14px;
+    margin-bottom: 6px;
+  }
+  
+  /* ステータス */
+  .status {
+    margin-top: 8px;
+    font-size: 12px;
+    text-align: center;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--bg);
+  }
+  
+  /* フッター */
+  .footer {
+    padding: 16px;
+    font-size: 12px;
+  }
 }
 
 .section-title{
@@ -84,10 +385,10 @@ a:hover{text-decoration:underline}
 .meter{
   position:relative;
   height:20px;
-  background:#0f1319;
+  background:var(--bg);
   border-radius:999px;
   overflow:hidden;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,.05);
+  border: 1px solid var(--border);
 }
 .meter-bar{
   height:100%;
@@ -109,6 +410,44 @@ a:hover{text-decoration:underline}
 .control input[type="number"],
 .control input[type="range"]{width:100%}
 
+/* PC版では折りたたみボタンを非表示 */
+.controls-toggle {
+  display: none;
+}
+
+.interval-controls{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.interval-presets{
+  display:flex;
+  gap:4px;
+  flex-wrap:wrap;
+}
+.preset-btn{
+  background:var(--bg);
+  border:1px solid var(--border);
+  border-radius:6px;
+  padding:4px 8px;
+  font-size:11px;
+  cursor:pointer;
+  transition:all 0.2s;
+  color:var(--muted);
+  min-width:28px;
+  text-align:center;
+}
+.preset-btn:hover{
+  background:var(--card);
+  color:var(--fg);
+  transform:translateY(-1px);
+}
+.preset-btn.active{
+  background:var(--accent);
+  color:white;
+  border-color:var(--accent);
+}
+
 .status{
   margin-top:10px; font-size:13px; color:var(--muted);
 }
@@ -121,14 +460,15 @@ a:hover{text-decoration:underline}
   grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));
 }
 .stat{
-  background:#0f1319; border-radius:12px; padding:12px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.05);
+  background:var(--bg); border-radius:12px; padding:12px; 
+  border: 1px solid var(--border);
 }
 .stat-label{font-size:12px; color:var(--muted)}
 .stat-value{font-size:18px; font-variant-numeric:tabular-nums; margin-top:4px}
 
 .btn{
-  background:#1b212c; color:#eaf2ff;
-  border:1px solid rgba(255,255,255,.08);
+  background:var(--card); color:var(--fg);
+  border:1px solid var(--border);
   border-radius:12px; padding:10px 14px;
   cursor:pointer; transition:.15s ease;
 }
@@ -139,6 +479,217 @@ a:hover{text-decoration:underline}
 footer .footer{
   text-align:center; color:var(--muted);
   padding:24px; font-size:14px;
+}
+
+/* モバイル対応（既に上記で詳細に定義済み） */
+
+/* ツールチップ */
+[title] {
+  cursor: help;
+}
+
+[title]:hover {
+  position: relative;
+}
+
+/* カスタムツールチップのスタイル（ブラウザー標準のものを使用） */
+button[title]:hover,
+input[title]:hover,
+canvas[title]:hover {
+  cursor: pointer;
+}
+
+label[title]:hover {
+  cursor: help;
+}
+
+/* モーダル */
+.modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1000;
+}
+
+.modal.show {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  position: relative;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  max-width: 600px;
+  max-height: 80vh;
+  width: 90%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* モーダルのタブレット対応 */
+@media (max-width: 768px) {
+  .modal-content {
+    max-height: 85vh;
+    width: 92%;
+    margin: 0 8px;
+  }
+  
+  .modal-header,
+  .modal-body {
+    padding: 16px;
+  }
+  
+  .modal-header h2 {
+    font-size: 18px;
+  }
+  
+  .modal-body h3 {
+    font-size: 15px;
+  }
+}
+
+/* モーダルのスマートフォン対応 */
+@media (max-width: 480px) {
+  .modal-content {
+    max-height: 90vh;
+    width: 95%;
+    margin: 0 8px;
+    border-radius: 12px;
+  }
+  
+  .modal-header {
+    padding: 12px 16px;
+  }
+  
+  .modal-header h2 {
+    font-size: 16px;
+  }
+  
+  .modal-close {
+    width: 32px;
+    height: 32px;
+    font-size: 20px;
+  }
+  
+  .modal-body {
+    padding: 12px 16px;
+  }
+  
+  .modal-body section {
+    margin-bottom: 20px;
+  }
+  
+  .modal-body h3 {
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+  
+  .modal-body ul, 
+  .modal-body ol {
+    margin-bottom: 8px;
+    padding-left: 16px;
+  }
+  
+  .modal-body li {
+    font-size: 13px;
+    line-height: 1.4;
+    margin-bottom: 4px;
+  }
+  
+  .modal-body p {
+    font-size: 12px;
+    margin-top: 8px;
+  }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--fg);
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.modal-close:hover {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-body section {
+  margin-bottom: 24px;
+}
+
+.modal-body section:last-child {
+  margin-bottom: 0;
+}
+
+.modal-body h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  color: var(--accent);
+}
+
+.modal-body ul, .modal-body ol {
+  margin: 0 0 12px;
+  padding-left: 20px;
+}
+
+.modal-body li {
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
+.modal-body p {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-style: italic;
 }
 
 /* ライトモード */
@@ -152,4 +703,5 @@ body.light{
   --warn:#c98b1c;
   --err:#d83a3a;
   --shadow:0 8px 28px rgba(16,24,40,.12);
+  --border:rgba(0,0,0,.08);
 }

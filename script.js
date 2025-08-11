@@ -1,5 +1,6 @@
-// Day041 - Mic Gain Logger
+// Day041 - Mic Gain Logger v2.0
 // 録音せずに音量（dBFS）をリアルタイム表示＆CSVログ出力
+// 最終更新: マイク再接続問題の修正版
 
 (() => {
   // UI要素取得
@@ -7,7 +8,9 @@
   const stopBtn = document.getElementById('stopBtn');
   const exportBtn = document.getElementById('exportBtn');
   const resetBtn = document.getElementById('resetBtn');
-  const darkToggle = document.getElementById('darkToggle');
+  const themeToggle = document.getElementById('themeToggle');
+  const helpBtn = document.getElementById('helpBtn');
+  const helpModal = document.getElementById('helpModal');
 
   const bigValue = document.getElementById('bigValue');
   const meterBar = document.getElementById('meterBar');
@@ -35,10 +38,41 @@
 
   let rafId = null;
   let running = false;
+  let lastStopTime = 0;
 
-  const WIDTH = canvas.width;
-  const HEIGHT = canvas.height;
+  let WIDTH = canvas.width;
+  let HEIGHT = canvas.height;
   let series = new Array(WIDTH).fill(0); // 0..1 の値（可視化用）
+  
+  // キャンバスサイズをレスポンシブに調整
+  function resizeCanvas() {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    
+    // 実際のピクセルサイズを設定
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    
+    // CSSサイズと同期
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = rect.height + 'px';
+    
+    // スケールを設定
+    ctx.scale(dpr, dpr);
+    
+    // 論理サイズを更新（描画用）
+    WIDTH = rect.width;
+    HEIGHT = rect.height;
+    
+    // 既存のseriesをリサイズ
+    if (series.length !== WIDTH) {
+      const newSeries = new Array(WIDTH).fill(0);
+      for (let i = 0; i < Math.min(series.length, WIDTH); i++) {
+        newSeries[i] = series[i] || 0;
+      }
+      series = newSeries;
+    }
+  }
   let lastLogTime = 0;
   let startedAt = 0;
 
@@ -162,9 +196,32 @@
 
   async function start() {
     if (running) return;
+    
+    // デバッグ: バージョン確認
+    console.log('Mic Gain Logger v2.0 - 新しいstart()関数が実行されました');
+    
+    // ボタンを即座に無効化
+    startBtn.disabled = true;
+    
+    // 前回のクリーンアップが完了していることを確認
+    if (audioCtx || mediaStream) {
+      await cleanup();
+      // クリーンアップ後に少し待つ
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+    
+    // 停止直後の場合、警告を表示
+    const timeSinceStop = Date.now() - lastStopTime;
+    if (lastStopTime > 0 && timeSinceStop < 2000) {
+      setStatus('マイク接続の準備中...少しお待ちください', 'warn');
+      // 少し待ってから再試行
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
     try {
       setStatus('マイクに接続中…', 'warn');
 
+      // 新しいメディアストリームを取得
       mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: false,
@@ -174,6 +231,7 @@
         video: false
       });
 
+      // 新しいAudioContextを作成
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       analyser = audioCtx.createAnalyser();
       analyser.fftSize = 2048;
@@ -184,44 +242,80 @@
 
       startedAt = performance.now() / 1000;
       running = true;
-      startBtn.disabled = true;
       stopBtn.disabled = false;
-      exportBtn.disabled = false;
-      resetBtn.disabled = false;
+      updateButtonStates(); // ボタン状態を更新（記録中はCSV書き出し無効）
 
       setStatus('計測中', 'ok');
       animate();
     } catch (err) {
       console.error(err);
-      setStatus(`エラー: ${err.message || err}`, 'err');
+      
+      // パーミッション関連のエラーの場合、特別なメッセージを表示
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setStatus('マイクへのアクセスが拒否されました。ブラウザーのURL欄のマイクアイコンを確認してください', 'err');
+      } else if (err.name === 'NotFoundError') {
+        setStatus('マイクが見つかりません。デバイスを確認してください', 'err');
+      } else {
+        setStatus(`エラー: ${err.message || err}`, 'err');
+      }
+      
       running = false;
-      cleanup();
+      startBtn.disabled = false;
+      updateButtonStates(); // エラー時にもボタン状態を更新
+      await cleanup();
     }
   }
 
-  function stop() {
+  async function stop() {
     if (!running) return;
     running = false;
+    lastStopTime = Date.now();  // 停止時刻を記録
     setStatus('停止しました', 'warn');
     if (rafId) {
       cancelAnimationFrame(rafId);
       rafId = null;
     }
-    cleanup();
+    
+    // 少し遅延を入れてからクリーンアップ（ブラウザーの状態更新を待つ）
+    setTimeout(async () => {
+      await cleanup();
+    }, 100);
+    
     startBtn.disabled = false;
     stopBtn.disabled = true;
+    updateButtonStates(); // 停止時にボタン状態を更新
   }
 
-  function cleanup() {
-    try {
-      if (sourceNode) { try{ sourceNode.disconnect(); }catch{} sourceNode = null; }
-      if (analyser) { try{ analyser.disconnect(); }catch{} analyser = null; }
-      if (audioCtx) { try{ audioCtx.close(); }catch{} audioCtx = null; }
-      if (mediaStream) {
-        mediaStream.getTracks().forEach(t => t.stop());
-        mediaStream = null;
+  async function cleanup() {
+    // ストリームを最初に停止（これが最も重要）
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(t => {
+        t.stop();
+      });
+      mediaStream = null;
+    }
+    
+    // Audio Nodeの切断
+    if (sourceNode) { 
+      try { sourceNode.disconnect(); } catch {} 
+      sourceNode = null; 
+    }
+    if (analyser) { 
+      try { analyser.disconnect(); } catch {} 
+      analyser = null; 
+    }
+    
+    // AudioContextを最後にクローズ
+    if (audioCtx) {
+      try {
+        if (audioCtx.state !== 'closed') {
+          await audioCtx.close();
+        }
+      } catch (e) {
+        console.log('AudioContext close error:', e);
       }
-    } catch {}
+      audioCtx = null;
+    }
   }
 
   function animate() {
@@ -267,10 +361,16 @@
     const intervalSec = Math.max(0.2, parseFloat(logIntervalInput.value) || 1);
     if (nowSec - lastLogTime >= intervalSec) {
       if (Number.isFinite(db)) {
+        const wasEmpty = logs.length === 0; // 最初のログかどうかを記録
         logs.push({
           ts: new Date(),
           db: Math.max(db, floorDb)
         });
+        
+        // 最初のログが追加された時にボタン状態を更新
+        if (wasEmpty) {
+          updateButtonStates();
+        }
       }
       lastLogTime = nowSec;
     }
@@ -304,12 +404,37 @@
   function resetAllStats() {
     resetStats();
     logs.length = 0;
+    updateButtonStates(); // ボタン状態を更新
     setStatus('統計とログをリセットしました', 'ok');
   }
 
-  // ダークモード
+  // ボタン状態の管理
+  function updateButtonStates() {
+    // CSV書き出しボタンは記録停止中かつログが存在する場合のみ有効
+    exportBtn.disabled = running || logs.length === 0;
+    
+    // 統計リセットボタンはログが存在する場合のみ有効
+    resetBtn.disabled = logs.length === 0;
+  }
+
+  // テーマ切り替え
+  let isDarkMode = false;
+  
+  function toggleTheme() {
+    isDarkMode = !isDarkMode;
+    if (isDarkMode) {
+      document.body.classList.remove('light');
+    } else {
+      document.body.classList.add('light');
+    }
+    localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+    drawSeries();
+  }
+  
   function applyTheme() {
-    if (darkToggle.checked) {
+    const savedTheme = localStorage.getItem('theme');
+    isDarkMode = savedTheme === 'dark';
+    if (isDarkMode) {
       document.body.classList.remove('light');
     } else {
       document.body.classList.add('light');
@@ -317,22 +442,174 @@
     drawSeries();
   }
 
+  // ログ間隔プリセットボタンの処理
+  function setupIntervalPresets() {
+    const presetBtns = document.querySelectorAll('.preset-btn');
+    const logIntervalInput = document.getElementById('logInterval');
+    
+    // プリセットボタンクリック時の処理
+    presetBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const interval = parseFloat(btn.dataset.interval);
+        logIntervalInput.value = interval;
+        updateActivePreset();
+      });
+    });
+    
+    // 入力値変更時の処理
+    logIntervalInput.addEventListener('input', updateActivePreset);
+    
+    // アクティブなプリセットを更新
+    function updateActivePreset() {
+      const currentValue = parseFloat(logIntervalInput.value);
+      presetBtns.forEach(btn => {
+        const interval = parseFloat(btn.dataset.interval);
+        if (Math.abs(currentValue - interval) < 0.01) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+    }
+    
+    // 初期状態を設定
+    updateActivePreset();
+  }
+
   // イベント
   startBtn.addEventListener('click', start);
   stopBtn.addEventListener('click', stop);
   exportBtn.addEventListener('click', exportCSV);
   resetBtn.addEventListener('click', resetAllStats);
-  darkToggle.addEventListener('change', applyTheme);
+  themeToggle.addEventListener('click', toggleTheme);
   window.addEventListener('beforeunload', stop);
+  
+  // ヘルプモーダル機能
+  function setupHelpModal() {
+    if (!helpModal) {
+      console.warn('Help modal element not found');
+      return;
+    }
+    
+    const modalClose = helpModal.querySelector('.modal-close');
+    const modalBackdrop = helpModal.querySelector('.modal-backdrop');
+    
+    // ヘルプボタンクリック
+    helpBtn.addEventListener('click', () => {
+      helpModal.classList.add('show');
+      helpModal.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+    });
+    
+    // 閉じるボタンクリック
+    modalClose.addEventListener('click', closeModal);
+    
+    // 背景クリック
+    modalBackdrop.addEventListener('click', closeModal);
+    
+    // ESCキーで閉じる
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && helpModal.classList.contains('show')) {
+        closeModal();
+      }
+    });
+    
+    function closeModal() {
+      helpModal.classList.remove('show');
+      document.body.style.overflow = '';
+      
+      // フォーカスをヘルプボタンに戻してからaria-hiddenを設定
+      helpBtn.focus();
+      
+      // 少し遅延させてからaria-hiddenを設定（フォーカス移動後）
+      setTimeout(() => {
+        helpModal.setAttribute('aria-hidden', 'true');
+      }, 10);
+    }
+  }
+
+  // プリセット機能を初期化
+  setupIntervalPresets();
+  
+  // コントロール折りたたみ機能
+  function setupControlsToggle() {
+    const controlsToggle = document.getElementById('controlsToggle');
+    const controls = document.getElementById('controls');
+    
+    if (!controlsToggle || !controls) return;
+    
+    controlsToggle.addEventListener('click', () => {
+      const isCollapsed = controls.classList.contains('collapsed');
+      const toggleText = controlsToggle.querySelector('.toggle-text');
+      const toggleIcon = controlsToggle.querySelector('.toggle-icon');
+      
+      if (isCollapsed) {
+        controls.classList.remove('collapsed');
+        toggleText.textContent = '設定を隠す';
+        toggleIcon.textContent = '▲';
+      } else {
+        controls.classList.add('collapsed');
+        toggleText.textContent = '設定を表示';
+        toggleIcon.textContent = '▼';
+      }
+    });
+  }
+  
+  // モバイル用ボタン配置機能
+  function setupMobileButtonLayout() {
+    handleMobileButtonLayout();
+  }
+  
+  function handleMobileButtonLayout() {
+    const helpBtn = document.getElementById('helpBtn');
+    const themeToggle = document.getElementById('themeToggle');
+    const mobileControls = document.getElementById('mobileControls');
+    const actions = document.querySelector('.actions');
+    
+    if (!helpBtn || !themeToggle || !mobileControls || !actions) return;
+    
+    const isMobile = window.innerWidth <= 480;
+    
+    if (isMobile) {
+      // モバイルの場合：ヘルプとテーマボタンを mobile-controls エリアに移動
+      if (!mobileControls.contains(helpBtn)) {
+        mobileControls.appendChild(helpBtn);
+        mobileControls.appendChild(themeToggle);
+      }
+    } else {
+      // デスクトップの場合：ヘルプとテーマボタンを actions エリアに戻す
+      if (!actions.contains(helpBtn)) {
+        actions.appendChild(helpBtn);
+        actions.appendChild(themeToggle);
+      }
+    }
+  }
+
+  // ヘルプモーダル機能を初期化
+  setupHelpModal();
+  
+  // コントロール折りたたみ機能を初期化
+  setupControlsToggle();
+  
+  // モバイル用ボタン配置の初期化
+  setupMobileButtonLayout();
+
+  // リサイズ対応
+  window.addEventListener('resize', () => {
+    resizeCanvas();
+    drawSeries();
+    handleMobileButtonLayout();
+  });
 
   // 初期
-  document.body.classList.add('light'); // 既定はライト
   applyTheme();
+  resizeCanvas();
   drawSeries();
+  updateButtonStates(); // 初期状態でのボタン状態設定
 
   // 権限が拒否された場合のヒント
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    setStatus('このブラウザはマイク取得に対応していません', 'err');
+    setStatus('このブラウザーはマイク取得に対応していません', 'err');
     startBtn.disabled = true;
   }
 })();
