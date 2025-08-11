@@ -22,7 +22,7 @@
 
 ## 📸 スクリーンショット
 
-> ![iPhoneのSafariブラウザーでの利用例](assets/screenshot.png)  
+> ![iPhoneのSafariブラウザーでの利用例](assets/iphone_chrome.png)  
 >
 > *ダミー（iPhoneのSafariブラウザーでの利用例）*
 
@@ -132,17 +132,15 @@
 
 ```
 mic-gain-logger/
-├── index.html          # メインページ（レスポンシブ対応UI）
-├── style.css           # スタイルシート（ダーク/ライトモード、モバイル最適化）
-├── script.js           # アプリケーションロジック（音量取得・可視化・CSV出力・ヘルプ機能）
-├── CLAUDE.md           # AI開発支援用ドキュメント（プロジェクト概要・開発ガイド）
-├── assets/             # README.md用画像リソース
-│   ├── screenshot.png  # メインスクリーンショット
-│   └── (その他画像)
-├── README.md           # プロジェクト説明書
-├── LICENSE            # MITライセンス
-├── .gitignore         # Git除外ファイル設定
-└── .nojekyll          # GitHub Pages用Jekyll無効化
+├── index.html             # メインページ（レスポンシブ対応UI・ヘルプモーダル）
+├── style.css              # スタイルシート（ダーク/ライトモード、モバイル最適化）
+├── script.js              # アプリケーションロジック（音量取得・可視化・CSV出力・ヘルプ機能）
+├── CLAUDE.md              # AI開発支援用ドキュメント（プロジェクト概要・開発ガイド）
+├── TECHNICAL.md           # 技術実装解説（Web Audio API・Canvas・レスポンシブ設計）
+├── assets/                # README.md用画像リソース
+│   └── iphone_chrome.png  # メインスクリーンショット（iPhone Chromeでの表示例）
+├── README.md              # プロジェクト説明書（機能・使用法・法的注意・トラブルシューティング）
+└── LICENSE                # MITライセンス
 ```
 
 ---

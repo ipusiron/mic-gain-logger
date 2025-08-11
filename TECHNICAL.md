@@ -21,8 +21,8 @@
 ```
 
 ### 主要コンポーネント
-1. **UI Controller** - ユーザーインターフェース制御
-2. **Audio Processor** - Web Audio API による音声処理
+1. **UI Controller** - ユーザーインターフェイス制御
+2. **Audio Processor** - Web Audio APIによる音声処理
 3. **Data Manager** - 統計・ログデータ管理
 4. **Canvas Renderer** - リアルタイムグラフ描画
 5. **Export Handler** - CSV出力処理
