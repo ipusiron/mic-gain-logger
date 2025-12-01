@@ -1,3 +1,40 @@
+<!--
+---
+id: day041
+slug: mic-gain-logger
+
+title: "Mic Gain Logger"
+
+subtitle_ja: "マイク音量ロガー"
+subtitle_en: "Microphone Gain Logger"
+
+description_ja: "録音せずにマイク入力の音量（dBFS）をリアルタイムで可視化・記録するWebツール。調査員・探偵などが現場で音響環境を監視するために設計。"
+description_en: "A web-based tool that visualizes and logs microphone input levels (dBFS) in real-time without recording audio. Designed for investigators and security professionals to monitor acoustic environments in the field."
+
+category_ja:
+  - 物理セキュリティ
+  - 音響監視
+category_en:
+  - Physical Security
+  - Acoustic Surveillance
+
+difficulty: 1
+
+tags:
+  - web-audio-api
+  - microphone
+  - dbfs
+  - real-time
+  - csv-export
+  - privacy
+
+repo_url: "https://github.com/ipusiron/mic-gain-logger"
+demo_url: "https://ipusiron.github.io/mic-gain-logger/"
+
+hub: true
+---
+-->
+
 # Mic Gain Logger - マイク音量ロガー
 
 ![GitHub Repo stars](https://img.shields.io/github/stars/ipusiron/mic-gain-logger?style=social)
