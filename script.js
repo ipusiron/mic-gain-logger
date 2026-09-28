@@ -3,6 +3,14 @@
 // 最終更新: マイク再接続問題の修正版
 
 (() => {
+  // 純粋ロジックは logic.js（DOM非依存）から取る
+  const {
+    clamp, dbToPercent, formatHMS, rmsToDbfs, rmsOf,
+    parseFloorDb, parseIntervalSec,
+    createStats, addStatsSample, formatStats, emptyStatsText,
+    buildCsv, csvFileName
+  } = MicGainLogic; // logic.js（classic script のグローバル束縛）
+
   // UI要素取得
   const startBtn = document.getElementById('startBtn');
   const stopBtn = document.getElementById('stopBtn');
@@ -77,54 +85,21 @@
   let startedAt = 0;
 
   // 統計
-  let sum = 0;
-  let n = 0;
-  let minDb = Infinity;
-  let maxDb = -Infinity;
+  let stats = createStats();
 
   // ログ（CSV用）
   const logs = []; // { ts: Date, db: number }
 
   // 設定
-  const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
   function getFloorDb() {
-    let v = parseFloat(floorDbInput.value);
-    if (Number.isNaN(v)) v = -60;
-    return v;
-  }
-
-  // dBFS 表示→% 変換（-60dBFS=0%, 0dBFS=100%）
-  function dbToPercent(db, floorDb = -60) {
-    const p = (db - floorDb) / (0 - floorDb);
-    return clamp(p * 100, 0, 100);
-  }
-
-  // 時分秒
-  function formatHMS(sec) {
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    const s = Math.floor(sec % 60);
-    return [h,m,s].map(x => String(x).padStart(2,'0')).join(':');
-  }
-
-  // RMS→dBFS
-  function rmsToDbfs(rms) {
-    if (rms <= 1e-8) return -Infinity;
-    return 20 * Math.log10(rms);
+    return parseFloorDb(floorDbInput.value);
   }
 
   // 音量計算
   const buffer = new Float32Array(2048);
   function computeDb() {
     analyser.getFloatTimeDomainData(buffer);
-    let sumSq = 0;
-    for (let i = 0; i < buffer.length; i++) {
-      const x = buffer[i];
-      sumSq += x * x;
-    }
-    const rms = Math.sqrt(sumSq / buffer.length);
-    const db = rmsToDbfs(rms);
-    return db;
+    return rmsToDbfs(rmsOf(buffer));
   }
 
   // キャンバス描画
@@ -162,31 +137,22 @@
     ctx.stroke();
   }
 
-  function updateStats(db) {
-    if (!Number.isFinite(db)) return;
-    sum += db;
-    n += 1;
-    minDb = Math.min(minDb, db);
-    maxDb = Math.max(maxDb, db);
+  function renderStats(text) {
+    avgEl.textContent = text.avg;
+    maxEl.textContent = text.max;
+    minEl.textContent = text.min;
+    rangeEl.textContent = text.range;
+    countEl.textContent = text.count;
+  }
 
-    avgEl.textContent = `${(sum / n).toFixed(1)} dBFS`;
-    maxEl.textContent = `${maxDb.toFixed(1)} dBFS`;
-    minEl.textContent = `${minDb.toFixed(1)} dBFS`;
-    const rng = (Number.isFinite(minDb) && Number.isFinite(maxDb)) ? (maxDb - minDb) : 0;
-    rangeEl.textContent = `${rng.toFixed(1)} dB`;
-    countEl.textContent = String(logs.length);
+  function updateStats(db) {
+    if (!addStatsSample(stats, db)) return;
+    renderStats(formatStats(stats, logs.length));
   }
 
   function resetStats() {
-    sum = 0;
-    n = 0;
-    minDb = Infinity;
-    maxDb = -Infinity;
-    avgEl.textContent = `--.- dBFS`;
-    maxEl.textContent = `--.- dBFS`;
-    minEl.textContent = `--.- dBFS`;
-    rangeEl.textContent = `--.- dB`;
-    countEl.textContent = `0`;
+    stats = createStats();
+    renderStats(emptyStatsText());
   }
 
   function setStatus(text, kind='ok') {
@@ -358,7 +324,7 @@
     uptimeEl.textContent = formatHMS(nowSec - startedAt);
 
     // ログ（間隔ごとに）
-    const intervalSec = Math.max(0.2, parseFloat(logIntervalInput.value) || 1);
+    const intervalSec = parseIntervalSec(logIntervalInput.value);
     if (nowSec - lastLogTime >= intervalSec) {
       if (Number.isFinite(db)) {
         const wasEmpty = logs.length === 0; // 最初のログかどうかを記録
@@ -383,16 +349,13 @@
       setStatus('書き出すログがありません', 'warn');
       return;
     }
-    const header = 'timestamp,dbfs\n';
-    const lines = logs.map(r => `${r.ts.toISOString()},${r.db.toFixed(2)}`).join('\n');
-    const csv = header + lines;
+    const csv = buildCsv(logs);
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const ts = new Date().toISOString().replace(/[:.]/g,'-');
     a.href = url;
-    a.download = `mic-gain-logs-${ts}.csv`;
+    a.download = csvFileName(new Date());
     document.body.appendChild(a);
     a.click();
     a.remove();
