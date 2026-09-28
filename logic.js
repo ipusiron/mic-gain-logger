@@ -241,6 +241,54 @@ const MicGainLogic = (() => {
     };
   }
 
+  // ---- マイクの取得の試行 ----
+  //
+  // getUserMedia をタイムアウトなしで await していたため、許可プロンプトを
+  // 放置すると「マイクに接続中…」の表示のまま記録開始・停止の両方が無効になり、
+  // リロード以外に復帰手段がなかった。
+  //
+  // 試行に世代番号（トークン）を持たせ、取り消し・時間切れのあとに遅れて
+  // 届いたストリームを捨てられるようにする。
+
+  const CONNECT_HINT_MS = 8000;      // これを過ぎたら「応答してください」と出す
+  const CONNECT_TIMEOUT_MS = 20000;  // これを過ぎたら試行を打ち切る
+
+  function createAttemptGate() {
+    let current = 0;
+    return {
+      begin() { current += 1; return current; },
+      isCurrent(token) { return token > 0 && token === current; },
+      cancel() { current += 1; },
+      generation() { return current; }
+    };
+  }
+
+  // 約束にタイムアウトを噛ませる。
+  // 時間切れなら { timedOut: true }、成功なら { value }、失敗なら { error }。
+  // 元の約束は捨てないので、呼び出し側が遅れて届いたストリームを止められる。
+  // 既定のタイマー。ブラウザーの setTimeout は this が Window でないと
+  // Illegal invocation になるので、オブジェクトへ直に入れずに包む。
+  const DEFAULT_TIMERS = {
+    setTimeout: (fn, ms) => setTimeout(fn, ms),
+    clearTimeout: (id) => clearTimeout(id)
+  };
+
+  function raceWithTimeout(promise, ms, timers) {
+    const t = timers || DEFAULT_TIMERS;
+    let timer = null;
+    const timeout = new Promise((resolve) => {
+      timer = t.setTimeout(() => resolve({ timedOut: true }), ms);
+    });
+    const settled = Promise.resolve(promise).then(
+      (value) => ({ value }),
+      (error) => ({ error })
+    );
+    return Promise.race([settled, timeout]).then((result) => {
+      if (timer !== null) t.clearTimeout(timer);
+      return result;
+    });
+  }
+
   // ---- マイクのデバイス喪失 ----
   //
   // トラックを stop しても MediaStreamAudioSourceNode はデジタル無音を流し続ける。
@@ -335,6 +383,10 @@ const MicGainLogic = (() => {
     detectClockJump,
     reanchorClock,
     clipForDisplay,
+    CONNECT_HINT_MS,
+    CONNECT_TIMEOUT_MS,
+    createAttemptGate,
+    raceWithTimeout,
     TRACK_LIVE,
     TRACK_ENDED,
     DEVICE_LOST_ENDED,

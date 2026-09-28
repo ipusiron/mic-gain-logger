@@ -11,6 +11,7 @@
     ENGINE_WORKLET, ENGINE_FALLBACK, framesForInterval,
     CLOCK_BREAK_SUSPEND, CLOCK_BREAK_STALL,
     createClockAnchor, detectClockJump, reanchorClock,
+    CONNECT_HINT_MS, CONNECT_TIMEOUT_MS, createAttemptGate, raceWithTimeout,
     DEVICE_LOST_ENDED, DEVICE_LOST_GONE,
     readTrackState, isTrackLost, markDeviceLoss,
     buildIntervalRecord, buildFallbackRecord,
@@ -70,6 +71,11 @@
   let clockWatchId = null;       // 壁時計側の監視タイマー
   let ctxSuspendedSince = 0;     // suspended を観測した時刻（0＝観測していない）
   const CLOCK_WATCH_MS = 1000;
+
+  // マイクの取得の試行（取り消し・時間切れに備える）
+  const attemptGate = createAttemptGate();
+  let connecting = false;
+  let connectHintId = null;
 
   // マイクのデバイス喪失
   let deviceLoss = null;         // { reason, atWallMs, lastSeq, rowsKept }
@@ -470,22 +476,54 @@
     return true;
   }
 
+  // 遅れて届いたストリームを捨てる（取り消し・時間切れのあと）
+  function discardStream(promise) {
+    Promise.resolve(promise)
+      .then(stream => { if (stream) stream.getTracks().forEach(t => t.stop()); })
+      .catch(() => {});
+  }
+
+  function clearConnectHint() {
+    if (connectHintId !== null) {
+      clearTimeout(connectHintId);
+      connectHintId = null;
+    }
+  }
+
+  // 接続の試みを終える（成功・取り消し・時間切れのいずれでも通る）
+  function finishConnecting() {
+    connecting = false;
+    clearConnectHint();
+  }
+
+  // 取得の取り消し。UI を待機状態へ戻す
+  function cancelConnect(message, kind) {
+    attemptGate.cancel();
+    finishConnecting();
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    updateButtonStates();
+    setStatus(message, kind || 'warn');
+  }
+
   async function start() {
-    if (running) return;
-    
-    // デバッグ: バージョン確認
-    console.log('Mic Gain Logger v2.0 - 新しいstart()関数が実行されました');
-    
-    // ボタンを即座に無効化
+    if (running || connecting) return;
+
+    // この試行の世代番号。取り消されたら以降の処理をすべて捨てる
+    const token = attemptGate.begin();
+    connecting = true;
     startBtn.disabled = true;
-    
+    stopBtn.disabled = false;   // 接続中も「停止」で取り消せる
+    setStatus('マイクに接続中…', 'warn');
+
     // 前回のクリーンアップが完了していることを確認
     if (audioCtx || mediaStream) {
       await cleanup();
       // クリーンアップ後に少し待つ
       await new Promise(resolve => setTimeout(resolve, 300));
     }
-    
+    if (!attemptGate.isCurrent(token)) return;
+
     // 停止直後の場合、警告を表示
     const timeSinceStop = Date.now() - lastStopTime;
     if (lastStopTime > 0 && timeSinceStop < 2000) {
@@ -493,12 +531,22 @@
       // 少し待ってから再試行
       await new Promise(resolve => setTimeout(resolve, 500));
     }
-    
+    if (!attemptGate.isCurrent(token)) return;
+
     try {
       setStatus('マイクに接続中…', 'warn');
 
-      // 新しいメディアストリームを取得
-      mediaStream = await navigator.mediaDevices.getUserMedia({
+      // 許可ダイアログを放置されたときの案内。これが無いと
+      // 「マイクに接続中…」のまま何が起きているのか分からない
+      clearConnectHint();
+      connectHintId = setTimeout(() => {
+        if (attemptGate.isCurrent(token)) {
+          setStatus('マイクの許可ダイアログに応答してください（「停止」で取り消せます）', 'warn');
+        }
+      }, CONNECT_HINT_MS);
+
+      // 新しいメディアストリームを取得（時間切れを設ける）
+      const attempt = navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
@@ -506,6 +554,26 @@
         },
         video: false
       });
+      const outcome = await raceWithTimeout(attempt, CONNECT_TIMEOUT_MS);
+      clearConnectHint();
+
+      if (!attemptGate.isCurrent(token)) {
+        // すでに取り消されている。遅れて届いたストリームは捨てる
+        discardStream(attempt);
+        return;
+      }
+      if (outcome.timedOut) {
+        discardStream(attempt);
+        cancelConnect(
+          `マイクを${Math.round(CONNECT_TIMEOUT_MS / 1000)}秒以内に取得できませんでした。`
+          + '許可ダイアログに応答してから、もう一度お試しください',
+          'err'
+        );
+        return;
+      }
+      if (outcome.error) throw outcome.error;
+      mediaStream = outcome.value;
+      finishConnecting();
 
       // デバイス喪失の監視（記録中に切断されたら止める）
       deviceLoss = null;
@@ -565,13 +633,20 @@
       }
       
       running = false;
+      finishConnecting();
       startBtn.disabled = false;
+      stopBtn.disabled = true;
       updateButtonStates(); // エラー時にもボタン状態を更新
       await cleanup();
     }
   }
 
   async function stop() {
+    // 接続中なら、記録の停止ではなく取得の取り消しとして扱う
+    if (connecting) {
+      cancelConnect('マイクの取得を取り消しました');
+      return;
+    }
     if (!running) return;
     running = false;
     lastStopTime = Date.now();  // 停止時刻を記録
