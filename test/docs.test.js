@@ -122,6 +122,52 @@ test('フロントマターの説明が「調査員・探偵・法執行機関�
   }
 });
 
+test('想定ターゲット層が「調査員・探偵・法執行機関」を利用者に置いていない', () => {
+  const head = readme.indexOf('## 👥 想定ターゲット層');
+  const tail = readme.indexOf('### 🎯 想定する使い方');
+  assert.ok(head !== -1 && tail > head, '想定ターゲット層の節が見つからない');
+  const block = readme.slice(head, tail);
+  for (const s of ['調査員', '探偵', '法執行']) {
+    assert.ok(!block.includes(s), `想定ターゲット層に ${s} が残っている`);
+  }
+});
+
+test('将来案が、入れないと決めた案を「いずれ入る」ものとして並べていない', () => {
+  const head = readme.indexOf('## 💡 将来的な追加アイデア');
+  const tail = readme.indexOf('## 📊 CSVデータの活用方法');
+  assert.ok(head !== -1 && tail > head, '将来案の節が見つからない');
+  const block = readme.slice(head, tail);
+
+  const cut = block.indexOf('### 将来案に入れないもの');
+  assert.notEqual(cut, -1, '「将来案に入れないもの」の見出しが無い');
+  const plan = block.slice(0, cut);
+  for (const s of ['A特性', 'キャリブレーション', 'ステルスモード', 'L10']) {
+    assert.ok(!plan.includes(s), `入れないと決めた案が将来案の側に残っている: ${s}`);
+  }
+
+  // 第2弾の名乗り。スペクトログラムは主役ではなくファインダーである
+  assert.ok(block.includes('聞こえない帯域を、穴の無い記録として残す'), '第2弾の名乗りが無い');
+  assert.ok(block.includes('18〜22kHz'), '第2弾で扱う帯域が書かれていない');
+  // ⚠ 検出・診断は第3弾である。第1弾のハッシュチェーンと同じ作法で、
+  //    示せることだけを書く
+  assert.ok(
+    block.includes('「超音波ビーコンを検出する」とは書きません'),
+    '検出を名乗らないことが書かれていない'
+  );
+});
+
+test('廃止したスムージングの置き換え（時間重み）の約束が残り、記録の側だけ狭まっている', () => {
+  // 時間重みは第1弾でスライダーを外したときの約束である。消してはいけない。
+  // ただし「記録にも反映」は言い過ぎだった。区間 Leq は区間の完全な要約なので、
+  // 時間重みをかけても区間の平均は変わらない。記録に足せるのは LFmax / LSmax
+  assert.ok(readme.includes('時間重み'), '時間重みの約束が消えている');
+  assert.ok(
+    !readme.includes('表示と記録の両方に反映される形'),
+    '記録にも反映すると約束したままになっている'
+  );
+  assert.ok(readme.includes('LFmax'), '記録に足せる範囲（LFmax／LSmax）が書かれていない');
+});
+
 // ---- README の記述と実装の照合 ----
 
 test('廃止した TECHNICAL.md を README が参照していない', () => {
