@@ -8,7 +8,7 @@ Mic Gain Logger is a web-based audio level monitoring tool designed for physical
 
 Part of the "生成AIで作るセキュリティツール100" (100 Security Tools with AI) project - Day041.
 
-The tool records **relative** levels. dBFS is not dB SPL, and its output must not be presented as a measurement that can be compared with regulatory limits. READMEの「🚫 規制値・基準値との比較には使えません」と「⚖️ 利用上の注意」を読んでから、ツールが何を示せるかに関わる文言に触れること。
+The tool records **relative** levels. dBFS is not dB SPL, and its output must not be presented as a measurement that can be compared with regulatory limits. READMEの「🚫 規制値・基準値とは比較できない」と「⚖️ 利用上の注意（法的な助言ではありません）」を読んでから、ツールが何を示せるかに関わる文言に触れること。
 
 ## Architecture
 
@@ -62,17 +62,17 @@ python -m http.server 8000
 npx serve .
 ```
 
-CI は `.github/workflows/test.yml`（push と pull request で `npm test`）。
+CIは`.github/workflows/test.yml`（pushとpull requestで`npm test`）。
 
 ## Key Implementation Notes
 
-- **Audio constraints**: 加工はすべて無効を要求する（`echoCancellation`・`noiseSuppression`・`autoGainControl`=false）。ただし要求が通るとは限らないので、`track.getSettings()`の実値をセッションのメタデータに残し、加工が効いていれば画面で警告する
+- **Audio constraints**: 加工はすべて無効を要求する（`echoCancellation`・`noiseSuppression`・`autoGainControl`=false）。ただし要求が通るとは限らないので、`track.getSettings()`の実値をセッションのメタデータに残し、加工が有効なままなら画面で警告する
 - **dBFS range**: -∞から0。0がデジタル最大。端末に依存する相対値であり、dB SPLへは変換できない
 - **CSP**: `index.html`のmetaで`connect-src 'none'`を宣言している。外部送信をブラウザーの機能として止めるためのものなので、`fetch`や外部CDNを足さない（足すと無言で壊れる）
 - **crypto.subtle**: 安全なコンテキスト（https／localhost）でしか使えない。`file://`ではハッシュ列が空になる
 - **Microphone acquisition**: 20秒のタイムアウトと取り消しを入れてある（許可プロンプト放置でUIが固まっていた）
 - **Microphone reconnection**: 停止と再開の間に300ms空ける（ブラウザーの状態の問題を避けるため。`lastStopTime`）
-- **High-DPI Canvas**: `devicePixelRatio`を使う。CSSのピクセル値を焼き込まない
+- **High-DPI Canvas**: `devicePixelRatio`を使う。CSSのピクセル値を直に書き込まない
 - **Theme persistence**: localStorageの`theme`キー。既定はライト
 - **Mobile responsiveness**: 480pxで`handleMobileButtonLayout()`がボタンの親要素を付け替える。⚠この仕組みは壊れやすい（resizeが届かない経路で不整合が固定される）ので、3つ目のボタンをここへ乗せない
 
@@ -80,7 +80,7 @@ CI は `.github/workflows/test.yml`（push と pull request で `npm test`）。
 
 - **README.mdがユーザー向けの唯一の説明である。**TECHNICAL.mdは廃止した。実在しない関数（`updateDisplay`・`shouldLog`・`createLogEntry`）の擬似コードが載っており、第1弾の改修で記述のほぼ全部が実装と食い違ったためである
 - 実装の理由はコードのコメントとテストに書く。READMEに書くのは「何ができて、何ができないか」に限る
-- READMEのディレクトリー構成は`test/docs.test.js`が実ファイルと照合している。ファイルを足したらREADMEも直す（直さないとテストが落ちる）
+- READMEのディレクトリー構成は`test/docs.test.js`が実ファイルと比べている。ファイルを足したらREADMEも直す（直さないとテストが落ちる）
 
 ## Browser Requirements
 

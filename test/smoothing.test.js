@@ -48,7 +48,8 @@ test('画面の文章がスムージングを案内していない', () => {
 test('README が「なぜ消したか」を書いている', () => {
   const body = removalSection();
   assert.match(body, /smoothingTimeConstant/, '何が動いていなかったのかを書いていない');
-  assert.match(body, /表示にも記録にも一切効いていませんでした/, '効いていなかったことを書いていない');
+  // 「効く」は直訳調の語なので、README では「反映されていません」に言い換えた
+  assert.match(body, /表示にも記録にも一切反映されていませんでした/, '反映されていなかったことを書いていない');
   assert.match(body, /時間重み/, '次の弾での置き換えを書いていない');
 });
 
