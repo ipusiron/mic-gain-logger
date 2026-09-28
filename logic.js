@@ -247,6 +247,25 @@ const MicGainLogic = (() => {
   }
 
   // 窓の外へ出た点を落とす。線が左端まで届くように、窓の外の直近1点は残す
+  // グラフの点を、記録された区間から作る。
+  //
+  // ⚠ 点は記録（CSVの行）と同じ源から積む。
+  // 改修前は requestAnimationFrame の中で積んでいたため、タブが裏に回る・画面が
+  // ロックされる・CPUが詰まると点が積まれず、再開したときに前後の点が1本の直線で
+  // 結ばれていた。記録は AudioWorklet のクロックで穴なく続いているのに、
+  // グラフだけが「測っていない時間」を直線で描いていたことになる。
+  //
+  // gap は「前の点から続いていない」という印である。描画側で線を切るために使う。
+  // 記録を止めて再開したとき、区間が飛んだとき、時刻の跳びがあったときに立つ。
+  function seriesPointOf(rec, prev, intervalMs) {
+    const tMs = rec.ts.getTime();
+    const span = (Number.isFinite(intervalMs) && intervalMs > 0) ? intervalMs : 1000;
+    const gap = !prev
+      || (tMs - prev.tMs) > span * 1.5
+      || !!rec.clockBreakKind;
+    return { tMs, db: rec.rawDb, gap };
+  }
+
   function pruneSeries(series, nowMs, windowMs) {
     if (!series.length) return series;
     const cutoff = nowMs - windowMs;
@@ -764,6 +783,7 @@ const MicGainLogic = (() => {
     dbTickStep,
     dbTicks,
     pruneSeries,
+    seriesPointOf,
     ENGINE_WORKLET,
     ENGINE_FALLBACK,
     framesForInterval,

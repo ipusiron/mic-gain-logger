@@ -12,7 +12,7 @@ const path = require('node:path');
 const {
   GRAPH_WINDOW_SEC, GRAPH_TOP_DB,
   graphArea, timeToX, dbToY,
-  timeTickStepSec, timeTicks, dbTickStep, dbTicks, pruneSeries
+  timeTickStepSec, timeTicks, dbTickStep, dbTicks, pruneSeries, seriesPointOf
 } = require('../logic.js');
 
 const SCRIPT = fs.readFileSync(path.join(__dirname, '..', 'script.js'), 'utf8');
@@ -151,9 +151,65 @@ test('pruneSeries: 60Hz で窓ぶん積んでも点数が窓×レート＋1 を�
   assert.ok(series.length <= GRAPH_WINDOW_SEC * 60 + 2, `点数 ${series.length}`);
 });
 
-test('script.js: グラフの点を 0..1 へ正規化して積んでいない', () => {
+test('script.js: グラフの点を、記録された区間から積む', () => {
+  // ⚠ 改修前は requestAnimationFrame の中で積んでいた。
+  // タブが裏に回る・画面がロックされる・CPUが詰まると点が積まれず、再開したときに
+  // 前後の点が1本の直線で結ばれる。記録（CSV）は AudioWorklet のクロックで穴なく
+  // 続いているのに、グラフだけが「測っていない時間」を直線で描いていた。
   assert.ok(!/series\.push\(clamp\(/.test(SCRIPT), '正規化した値を積んでいる');
-  assert.ok(/series\.push\(\{\s*tMs/.test(SCRIPT), '時刻つきの点を積んでいない');
+  assert.ok(/series\.push\(seriesPointOf\(/.test(SCRIPT), '区間から点を作っていない');
+
+  const pushRecord = SCRIPT.slice(
+    SCRIPT.indexOf('function pushRecord'),
+    SCRIPT.indexOf('function handleIntervalMessage'));
+  assert.ok(/series\.push\(/.test(pushRecord), 'pushRecord（記録された区間）で積んでいない');
+
+  const animate = SCRIPT.slice(
+    SCRIPT.indexOf('function animate()'),
+    SCRIPT.indexOf('function exportCSV'));
+  assert.ok(!/series\.push\(/.test(animate), 'rAF の中で点を積んでいる');
+  // 描き直しそのものは rAF で続ける（横軸が実時間なので、点が増えなくても右へ流れる）
+  assert.ok(/drawSeries\(\)/.test(animate), 'rAF で描き直していない');
+});
+
+test('script.js: 続いていない点は線をつなげない', () => {
+  const draw = SCRIPT.slice(SCRIPT.indexOf('function drawSeries'),
+    SCRIPT.indexOf('function renderStats'));
+  // gap が立っている点は moveTo で描き直す。lineTo でつなぐと、
+  // 測っていない時間を直線で埋めることになる
+  assert.match(draw, /p\.gap/);
+});
+
+test('seriesPointOf: 記録の区間から点を作り、続いていなければ印を立てる', () => {
+  const rec = (sec, db, extra) => Object.assign({
+    ts: new Date(Date.UTC(2026, 8, 28, 5, 0, sec)),
+    rawDb: db, db
+  }, extra || {});
+
+  // 最初の点は、前が無いので必ず切る
+  const first = seriesPointOf(rec(1, -20), null, 1000);
+  assert.equal(first.gap, true);
+  assert.equal(first.db, -20);
+  assert.equal(first.tMs, Date.UTC(2026, 8, 28, 5, 0, 1));
+
+  // 1秒間隔で続いていれば、つなぐ
+  const second = seriesPointOf(rec(2, -25), first, 1000);
+  assert.equal(second.gap, false);
+
+  // 区間が飛んだら切る（1.5倍を超えたとき）
+  assert.equal(seriesPointOf(rec(4, -25), second, 1000).gap, true);
+  assert.equal(seriesPointOf(rec(3, -25), second, 1000).gap, false);
+
+  // 時刻の跳びがあった区間は、間隔が詰まっていても切る
+  const jumped = seriesPointOf(rec(3, -25, { clockBreakKind: 'suspend' }), second, 1000);
+  assert.equal(jumped.gap, true);
+
+  // 無音は -Infinity のまま持つ（下端へ張り付かせるのは描画側）
+  assert.equal(seriesPointOf(rec(4, -Infinity), second, 1000).db, -Infinity);
+
+  // 間隔が分からないときは1秒とみなす
+  assert.equal(seriesPointOf(rec(2, -25), first, null).gap, false);
+  assert.equal(seriesPointOf(rec(4, -25), first, null).gap, true);
 });
 
 test('script.js: キャンバスの色をベタ書きしない（テーマ変数から取る）', () => {

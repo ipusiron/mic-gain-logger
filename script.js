@@ -8,7 +8,7 @@
     clamp, dbToPercent, formatHMS, rmsToDbfs, rmsOf,
     parseFloorDb, parseIntervalSec, canvasPixelSize,
     GRAPH_WINDOW_SEC, GRAPH_TOP_DB, graphArea, timeToX, dbToY,
-    timeTickStepSec, timeTicks, dbTickStep, dbTicks, pruneSeries,
+    timeTickStepSec, timeTicks, dbTickStep, dbTicks, pruneSeries, seriesPointOf,
     createStats, addStatsSample, formatStats, emptyStatsText,
     ENGINE_WORKLET, ENGINE_FALLBACK, framesForInterval,
     CLOCK_BREAK_SUSPEND, CLOCK_BREAK_STALL,
@@ -260,7 +260,8 @@
         const p = series[i];
         const x = timeToX(p.tMs, nowMs, windowMs, area);
         const y = dbToY(p.db, floorDb, GRAPH_TOP_DB, area);
-        if (i === 0) ctx.moveTo(x, y);
+        // gap が立っている点は前とつなげない。測っていない時間を線で埋めないため
+        if (i === 0 || p.gap) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
       ctx.stroke();
@@ -531,6 +532,12 @@
     if (Number.isFinite(lastIntervalSec) && !usedIntervals.includes(lastIntervalSec)) {
       usedIntervals.push(lastIntervalSec);
     }
+    // グラフの点も、ここで積む（記録と同じ源にする）。
+    // rAF で積むと、タブが裏に回ったあいだの点が抜けて直線で補間されてしまう
+    const intervalMs = Number.isFinite(lastIntervalSec) ? lastIntervalSec * 1000 : null;
+    series.push(seriesPointOf(rec, series[series.length - 1] || null, intervalMs));
+    series = pruneSeries(series, Date.now(), GRAPH_WINDOW_SEC * 1000);
+
     if (wasEmpty) updateButtonStates();
     // ⚠ 統計に入れるのは rawDb（記録される生値）である。
     //    表示用の db を使うと、表示下限を変えただけで統計が動いてしまう
@@ -897,10 +904,11 @@
     else if (db >= -40) meterBar.style.filter = 'hue-rotate(-25deg)'; // 黄寄り
     else meterBar.style.filter = 'hue-rotate(-60deg)';                 // 緑寄り
 
-    // 可視化シリーズ更新。dB の生値を時刻つきで積み、窓の外は落とす
-    const nowMs = Date.now();
-    series.push({ tMs: nowMs, db });
-    series = pruneSeries(series, nowMs, GRAPH_WINDOW_SEC * 1000);
+    // ⚠ ここでは点を積まない。
+    // 点は pushRecord（記録された区間）から積む。rAF で積むと、タブが裏に回った
+    // あいだの点が抜け、再開時に前後が直線で結ばれて「測っていない時間」を描くことになる。
+    // 描き直しだけを続ける（横軸が実時間なので、点が増えなくても右へ流れる）
+    series = pruneSeries(series, Date.now(), GRAPH_WINDOW_SEC * 1000);
     drawSeries();
 
     // 統計はここでは進めない。母集団を CSV の行（区間）にそろえるため、
