@@ -223,14 +223,42 @@ dBFSの±0.0002dBは「デジタルサンプルからdBFSを求める計算が�
 
 ```
 mic-gain-logger/
-├── index.html             # メインページ（レスポンシブ対応UI・ヘルプモーダル）
-├── style.css              # スタイルシート（ダーク/ライトモード、モバイル最適化）
-├── script.js              # アプリケーションロジック（音量取得・可視化・CSV出力・ヘルプ機能）
-├── CLAUDE.md              # AI開発支援用ドキュメント（プロジェクト概要・開発ガイド）
-├── assets/                # README.md用画像リソース
-│   └── iphone_chrome.png  # メインスクリーンショット（iPhone Chromeでの表示例）
-├── README.md              # プロジェクト説明書（機能・使用法・法的注意・トラブルシューティング）
-└── LICENSE                # MITライセンス
+├── index.html                     # メインページ（UI・ヘルプモーダル・CSPの宣言）
+├── style.css                      # スタイルシート（ダーク/ライトモード・モバイル最適化）
+├── script.js                      # DOMとブラウザーAPI（マイク取得・描画・CSV書き出し）
+├── logic.js                       # 純ロジック（dBFS換算・区間・統計・グラフ座標・CSV組み立て）
+├── worklet/                       # オーディオスレッドで動くコード
+│   └── meter-processor.js         # AudioWorkletProcessor（区間ごとの集計）
+├── test/                          # テスト（node:test・依存パッケージなし）
+│   ├── logic.test.js              # 段階0: 純関数（clamp・dBFS換算・時刻整形ほか）
+│   ├── interval.test.js           # 段階1: 「1行＝1区間」の組み立て
+│   ├── meter-processor.test.js    # 段階1: ワークレット本体をnode:vmの中で動かす
+│   ├── clock.test.js              # 段階2-1: AudioContextの中断による時刻のずれ
+│   ├── silence.test.js            # 段階2-2: デジタル無音を記録に残す
+│   ├── device.test.js             # 段階2-3: マイクのデバイス喪失の検出
+│   ├── connect.test.js            # 段階2-4: マイク取得のタイムアウトと取り消し
+│   ├── meta.test.js               # 段階2-5: 測定条件のメタデータ
+│   ├── css.test.js                # 段階3-1: セレクターの記述順（スマートフォンの設定UI）
+│   ├── canvas.test.js             # 段階3-2: キャンバスの大きさ（RangeError・px焼き込み・横はみ出し）
+│   ├── graph.test.js              # 段階3-3: 横軸の実時間化・目盛りとラベル
+│   ├── stats-csv.test.js          # 段階3-4: 画面の統計とCSVから再計算した統計の一致
+│   ├── contrast.test.js           # 段階3-6: 両テーマのコントラスト比
+│   ├── cleanup.test.js            # 段階3-7: 死にコード・入力フォント・タッチターゲット
+│   ├── hashchain.test.js          # 段階4-1: ハッシュチェーン
+│   ├── dbfs-fixture.test.js       # 既知振幅の正弦波に対するdBFSの計算精度
+│   ├── docs.test.js               # READMEと実装・実ファイルの照合（この構成図を含む）
+│   └── fixtures/                  # テストの期待値
+│       └── expected_dbfs.json     # 既知振幅の正弦波から作った期待dBFS
+├── assets/                        # README.md用の画像
+│   └── iphone_chrome.png          # スクリーンショット（iPhone Chromeでの表示例）
+├── .github/                       # GitHubの設定
+│   └── workflows/                 # GitHub Actionsのワークフロー
+│       └── test.yml               # CI（pushとpull requestで npm test を走らせる）
+├── package.json                   # npm test の定義（依存パッケージなし）
+├── .gitignore                     # Gitの除外設定
+├── CLAUDE.md                      # 開発ガイド（ファイルの役割分担・計測の要点・CSVの約束）
+├── README.md                      # プロジェクト説明書（本ファイル）
+└── LICENSE                        # MITライセンス
 ```
 
 ---
