@@ -4,8 +4,8 @@
 //
 // 改修前はワークレットが正しく出した無音区間（rawDb = -Infinity）を
 // script.js 側で捨てていたため、CSV には無標識の穴だけが残った。
-// 「音がなかった」と「記録していなかった」が区別できないのは、
-// 証拠保全を掲げるツールとして成立しない。
+// 「音がなかった」と「記録していなかった」が区別できないなら、
+// 記録として読めない。
 
 const test = require('node:test');
 const assert = require('node:assert/strict');

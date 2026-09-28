@@ -95,7 +95,9 @@
   //    鎖の進め方そのものは logic.js の createHashChain にある（テストから回せる
   //    ようにするため）。ここが渡すのは crypto を使う digest だけで、
   //    決めるのは「いつ始めるか・いつ伸ばすか」だけである。
-  // ⚠ 作った本人はチェーンごと作り直せる。防げるのは第三者による後からの改変だけ。
+  // ⚠ 分かるのは、うっかりの破損・部分的な欠落・順序の入れ替わりまでである。
+  //    意図的な改変には、相手が誰であっても耐えない（誰でも鎖を張り直せる）。
+  //    名乗りの根拠は logic.js のハッシュチェーンの節にある。
   const hashChain = createHashChain(sha256Hex);
 
   // 時刻のアンカーと、中断の検出
@@ -973,8 +975,12 @@
     rafId = requestAnimationFrame(animate);
   }
 
-  // crypto.subtle は安全なコンテキスト（https または localhost）でしか使えない。
-  // file:// で開いたときはハッシュを計算できないので、鎖そのものを作らない。
+  // crypto.subtle は安全なコンテキストでしか使えない。使えないときは
+  // 鎖そのものを作らない（hash 列は空、`# hash=` の行も出ない）。
+  // ⚠ file:// は安全なコンテキストである。Chromium で実測したところ
+  //    isSecureContext は true で crypto.subtle も使え、file:// のまま
+  //    書き出した CSV の hash 列は埋まった。ここで落ちるのは https でない
+  //    ホスト名つきの URL（http://192.168.1.10:8000/ など）のほうである。
   function hashAvailable() {
     return !!(window.crypto && window.crypto.subtle);
   }
