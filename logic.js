@@ -356,8 +356,14 @@ const MicGainLogic = (() => {
     const startWall = new Date(audioTimeToWallMs(startTime, anchor));
     const endWall = new Date(audioTimeToWallMs(endTime, anchor));
     const brk = (extra && extra.clockBreak) || null;
+    // seq は「1つのCSVの中での通し番号」である。
+    // ⚠ ワークレット側のカウンターは記録開始のたびに0から振り直される
+    //   （記録開始のたびに新しい AudioWorkletNode を作るため）。ログは累積するので、
+    //   そのまま載せると1つのCSVの中で seq が 0 に戻る。呼ぶ側が起点をずらす。
+    //   区間を捨てたときの欠番は、ずらしても残る（欠番＝行が抜けた印であるため）。
+    const seqBase = (extra && Number.isFinite(extra.seqBase)) ? extra.seqBase : 0;
     return {
-      seq: msg.seq,
+      seq: Number.isFinite(msg.seq) ? seqBase + msg.seq : msg.seq,
       engine: ENGINE_WORKLET,
       startTime,
       endTime,

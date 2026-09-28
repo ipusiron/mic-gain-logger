@@ -4,6 +4,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const {
   ENGINE_WORKLET,
@@ -178,4 +180,52 @@ test('CSV: 表示下限を変えても記録される値は動かない（表示
   // 末尾一致は列が増えると壊れる。B列（dbfs）を明示的に見る
   const row = buildCsv([clipped]).split('\n').filter(l => l && !l.startsWith('#')).pop();
   assert.equal(row.split(',')[1], '-20.00', row);
+});
+
+// ---- seq は1つのCSVの中での通し番号 ----
+//
+// ⚠ ワークレットの seq は記録開始のたびに 0 から振り直される（記録開始のたびに
+// 新しい AudioWorkletNode を作るため）。ところがログは累積するので、
+// 1つのCSVの中で seq が 0 に戻っていた。列の意味が「通し番号」なのに
+// 同じ値の行が2つ出るのは、Excel で並べ替えたときにそのまま事故になる。
+// 呼ぶ側が起点（seqBase）をずらして足すことで、ファイルの中では通しにする。
+
+test('seqBase: セッションをまたいでも1つのCSVの中で通し番号になる', () => {
+  // 1回目のセッション（ワークレットの seq は 0,1,2）
+  const first = [0, 1, 2].map(i => buildIntervalRecord(message({ seq: i }), ANCHOR, -60));
+  assert.deepEqual(first.map(r => r.seq), [0, 1, 2]);
+
+  // 2回目。ワークレットは また 0 から振り直す。起点を前の続きへずらす
+  const base = Math.max(...first.map(r => r.seq)) + 1;
+  const second = [0, 1].map(i => buildIntervalRecord(
+    message({ seq: i }), ANCHOR, -60, { seqBase: base }
+  ));
+  assert.deepEqual(second.map(r => r.seq), [3, 4]);
+
+  const all = first.concat(second).map(r => r.seq);
+  assert.equal(new Set(all).size, all.length, '1つのCSVの中で seq が重複している');
+});
+
+test('seqBase: ずらしても、捨てた区間の欠番は残る', () => {
+  // seq=1 の区間を捨てた場合（NaN で届いた、など）。欠番は行が抜けた印なので消さない
+  const recs = [0, 2, 3].map(i => buildIntervalRecord(
+    message({ seq: i }), ANCHOR, -60, { seqBase: 10 }
+  ));
+  assert.deepEqual(recs.map(r => r.seq), [10, 12, 13]);
+});
+
+test('seqBase: 省略すれば従来どおり msg.seq のまま', () => {
+  assert.equal(buildIntervalRecord(message({ seq: 7 }), ANCHOR, -60).seq, 7);
+  assert.equal(buildIntervalRecord(message({ seq: 7 }), ANCHOR, -60, {}).seq, 7);
+  // seq が無いメッセージを NaN に変えない（CSV では空欄のままにする）
+  assert.equal(buildIntervalRecord(message({ seq: undefined }), ANCHOR, -60).seq, undefined);
+});
+
+test('script.js: 記録開始のたびに seq の起点をずらしている', () => {
+  // ここが外れると、1つのCSVの中で seq が 0 に戻る状態へ戻ってしまう
+  const script = fs.readFileSync(path.join(__dirname, '..', 'script.js'), 'utf8');
+  assert.match(script, /seqBase = seqMax \+ 1/, '記録開始で起点をずらしていない');
+  assert.match(script, /rec\.seq > seqMax/, 'ログに入った最大の seq を追っていない');
+  assert.match(script, /seq: seqBase \+ seqCounter\+\+/, '簡易モードが起点を足していない');
+  assert.match(script, /seqBase,/, '高精度モードへ起点を渡していない');
 });

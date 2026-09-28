@@ -61,7 +61,15 @@
   let workletNode = null;
   let silentGain = null;
   let engineMode = null;      // null=未開始 / ENGINE_WORKLET / ENGINE_FALLBACK
-  let seqCounter = 0;
+
+  // CSV の seq は「1つのファイルの中での通し番号」である。
+  // ⚠ 高精度モードの seq はワークレット側のカウンターで、記録開始のたびに
+  //    新しい AudioWorkletNode を作るので 0 から振り直される。ログは累積するので、
+  //    そのまま載せると1つのCSVの中で seq が 0 に戻る（実測で戻った）。
+  //    セッションごとに起点をずらして足す。区間を捨てたときの欠番は残す。
+  let seqCounter = 0;         // 簡易モードのセッション内カウンター
+  let seqBase = 0;            // このセッションの起点
+  let seqMax = -1;            // ログに入っている最大の seq（次の起点の元）
   let lastIntervalSec = null;
 
   // 時刻のアンカーと、中断の検出
@@ -508,6 +516,8 @@
   function pushRecord(rec) {
     const wasEmpty = logs.length === 0;
     logs.push(rec);
+    // 次のセッションの起点。捨てた区間の欠番はそのまま残す
+    if (Number.isFinite(rec.seq) && rec.seq > seqMax) seqMax = rec.seq;
     if (wasEmpty) updateButtonStates();
     // ⚠ 統計に入れるのは rawDb（記録される生値）である。
     //    表示用の db を使うと、表示下限を変えただけで統計が動いてしまう
@@ -521,6 +531,7 @@
     if (!running || !clockAnchor) return;
     const rec = buildIntervalRecord(msg, clockAnchor, getFloorDb(), {
       clockBreak: pendingClockBreak,
+      seqBase,
       meta: sessionMeta
     });
     // デジタル無音（-Infinity）は「音がなかった」という記録なので残す。
@@ -542,7 +553,7 @@
     const nowMs = Date.now();
     const sr = audioCtx ? audioCtx.sampleRate : 48000;
     pushRecord(buildFallbackRecord({
-      seq: seqCounter++,
+      seq: seqBase + seqCounter++,
       db,
       floorDb,
       startTime: startSec,
@@ -710,6 +721,10 @@
 
       sourceNode = audioCtx.createMediaStreamSource(mediaStream);
       sourceNode.connect(analyser);
+
+      // seq の起点。前のセッションの続きから振る（1つのCSVの中で0へ戻さない）
+      seqBase = seqMax + 1;
+      seqCounter = 0;
 
       // 記録はオーディオスレッドへ。使えない環境は簡易モードへ落とす
       lastIntervalSec = currentIntervalSec();
@@ -976,6 +991,8 @@
     resetStats();
     logs.length = 0;
     seqCounter = 0;
+    seqBase = 0;
+    seqMax = -1;
     updateButtonStates(); // ボタン状態を更新
     setStatus('統計とログをリセットしました', 'ok');
   }
