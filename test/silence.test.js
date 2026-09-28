@@ -15,7 +15,8 @@ const {
   formatCsvDb,
   buildCsv,
   buildIntervalRecord,
-  buildFallbackRecord
+  buildFallbackRecord,
+  CSV_COLUMNS
 } = require('../logic.js');
 
 test('clipForDisplay: 有限値だけを表示下限で切る。無音は通す', () => {
@@ -89,7 +90,10 @@ test('簡易モードでも無音は -Infinity のまま残る', () => {
   assert.equal(rec.silent, true);
 });
 
-test('CSV: 無音の行が出て、印の行が先頭に付く', () => {
+test('CSV: 無音の行が出て、印の行が末尾のトレーラーに付く', () => {
+  // ⚠⚠ 2026-09-29 に、この印を鎖の起点（ヘッダー）からトレーラーへ移した。
+  //    無音は記録が終わってから分かる事実なので、起点に入れると
+  //    無音の行が1行増えるだけで1行目のハッシュまで変わっていた。
   const t = (sec) => new Date(ANCHOR.wallMs + sec * 1000);
   const logs = [
     { ts: t(1), rawDb: -20, db: -20 },
@@ -98,12 +102,15 @@ test('CSV: 無音の行が出て、印の行が先頭に付く', () => {
   ];
   const csv = buildCsv(logs, { engine: 'worklet' });
   const lines = csv.split('\n');
-  const metaLines = lines.filter(l => l.startsWith('#'));
+  const at = lines.indexOf(CSV_COLUMNS.join(','));
+  const head = lines.slice(0, at);
+  const trailer = lines.slice(at + 1).filter(l => l.startsWith('#'));
   const dataLines = lines.filter(l => l && !l.startsWith('#'));
 
-  // メタ行の本数には依存しない（段階4で項目が増えた）。印が出ていることだけ見る
-  assert.ok(metaLines.includes('# engine=worklet'));
-  assert.ok(metaLines.includes('# silence=-Infinity'));
+  // ヘッダーの本数には依存しない（段階4で項目が増えた）。印の位置だけ見る
+  assert.ok(head.includes('# engine=worklet'));
+  assert.ok(trailer.includes('# silence=-Infinity'), trailer.join(' / '));
+  assert.ok(!head.join('\n').includes('silence'), '起点に無音の印が混ざっている');
   assert.equal(dataLines[0], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash');
   assert.equal(dataLines.length, 4);   // ヘッダー＋3行
 

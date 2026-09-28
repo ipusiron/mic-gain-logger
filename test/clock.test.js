@@ -23,7 +23,7 @@ const {
   buildIntervalRecord,
   buildFallbackRecord,
   buildCsv,
-  clockMetaLines
+  clockTrailerLines
 } = require('../logic.js');
 
 test('createClockAnchor: epoch は0から始まる', () => {
@@ -223,7 +223,7 @@ function metaOf(csv) {
   return csv.split('\n').filter(l => l.charAt(0) === '#');
 }
 
-test('CSV: 中断を1回検出したら、回数・位置・累計がメタ行に出る', () => {
+test('CSV: 中断を1回検出したら、回数・位置・累計がトレーラー行に出る', () => {
   const t0 = Date.UTC(2026, 8, 28, 3, 0, 0);
   const anchor0 = createClockAnchor(0, t0);
   const anchor1 = reanchorClock(anchor0, 1, t0 + 11000);
@@ -276,14 +276,14 @@ test('簡易モードの行も中断の印として数える', () => {
       clockEpoch: 1, clockBreak: { kind: CLOCK_BREAK_SUSPEND, jumpMs: 10000 }
     })
   ];
-  assert.deepEqual(clockMetaLines(rows), [
+  assert.deepEqual(clockTrailerLines(rows), [
     '# clockBreaks=1',
     '# clockBreakAt=1',
     '# clockDriftMs=10000'
   ]);
 });
 
-test('clockMetaLines: 空のログでも落ちない', () => {
-  assert.deepEqual(clockMetaLines([]), []);
-  assert.deepEqual(clockMetaLines(null), []);
+test('clockTrailerLines: 空のログでも落ちない', () => {
+  assert.deepEqual(clockTrailerLines([]), []);
+  assert.deepEqual(clockTrailerLines(null), []);
 });

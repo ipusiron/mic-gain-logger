@@ -600,8 +600,8 @@ const MicGainLogic = (() => {
   }
 
   // ---- CSV ----
-  // 列は増やさない（timestamp,dbfs のまま。列の確定は段階4の CSV v2）。
-  // どちらの計測モードで取った記録かだけを、先頭のコメント行で残す。
+  // 列は 7列（CSV_COLUMNS）で確定。⚠ 列は増やさない。
+  // 行ごとに残したい印は、回数と位置をヘッダーかトレーラーの行で示す。
 
   // dBFS を1セルへ。無音は数値へ丸めず -Infinity と書く。
   // 数値に見える値を書かないので、集計側が無音を測定値として取り込むことがない。
@@ -611,13 +611,16 @@ const MicGainLogic = (() => {
   }
 
   // 鎖の起点。
-  // ⚠ 「出力されるメタ行そのもの」でなければならない。
-  // hashAlgo や silence の印は buildCsv の中で足されるので、呼ぶ側が組んだ
-  // メタ行で seed を作ると、受け取った側の再計算と一致しない（実際にずれた）。
-  // 実装もテストもこの関数を通すことで、その食い違いを起こさないようにする。
-  function csvSeed(logs, opts) {
-    const probe = buildCsv(logs, Object.assign({}, opts || {}, { hashes: logs.map(() => '') }));
-    return probe.split('\n').filter(l => l.charAt(0) === '#').join('\n');
+  //
+  // ⚠ 材料は「記録を始めた瞬間に確定する事実」だけである。
+  // 以前は buildCsv の出力（＝メタ行そのもの）を起点にしていた。メタ行には
+  // 記録が終わってから分かる事実（無音の有無・中断の回数・使ったログ間隔）が
+  // 混ざるので、同じセッションを2回書き出すと同じ行のハッシュが変わった。
+  // 実測では「途中で10行を書き出したあと、無音の行が1行増えるだけで
+  // 1行目のハッシュまで変わった」。受け取った側には改変されたように見える。
+  // あとから分かる事実は csvTrailerLines へ出し、鎖の最後の輪にする。
+  function csvSeed(meta) {
+    return csvHeaderLines(meta).join('\n');
   }
 
   // ⚠ 書き出すのは rawDb（生値）である。
@@ -677,37 +680,81 @@ const MicGainLogic = (() => {
     ];
   }
 
-  // メタ行。記録の条件をあとから読み直せるようにする。
+  // 1行1項目。改行は値に入れない（入れると行が割れる）。
+  // 値が無い項目は行そのものを出さない（空欄の行を並べても読めないだけである）。
+  function metaLine(key, value) {
+    if (value === null || value === undefined || value === '') return null;
+    return `# ${key}=${String(value).replace(/[\r\n]+/g, ' ')}`;
+  }
+
+  // 起点になるヘッダーのメタ行。記録の条件をあとから読み直せるようにする。
   // これが無いと、そのCSVがどの端末のどの設定で採られたのか分からない。
-  function csvMetaLines(meta) {
+  //
+  // ⚠⚠ ここに入れてよいのは、記録を始めた瞬間に確定する事実だけである。
+  // 記録が終わってから分かる事実を混ぜると、起点があとから動く。
+  // とくに intervalSec は記録中に変えられるので、ここには絶対に入れない
+  // （トレーラーへ出す）。
+  function csvHeaderLines(meta) {
     const m = meta || {};
     const out = [];
-    const put = (k, v) => {
-      if (v === null || v === undefined || v === '') return;
-      // 改行は値に入れない（1行1項目を壊さないため）
-      out.push(`# ${k}=${String(v).replace(/[\r\n]+/g, ' ')}`);
-    };
+    const put = (k, v) => { const line = metaLine(k, v); if (line) out.push(line); };
     put('format', 'mic-gain-logger/2');
     put('engine', m.engine);
     put('started', m.started);
     put('sampleRate', m.sampleRate);
-    put('intervalSec', m.intervalSec);
     put('device', m.device);
     put('processing', m.processing);
     put('weighting', 'Z');   // 周波数重み付けは入れていない（A特性は次の弾）
-    if (m.hashAlgo) put('hash', m.hashAlgo);
+    put('hash', m.hashAlgo);
     return out;
   }
 
-  // AudioContext の中断（時刻の跳び）をメタ行へ出す。
+  // トレーラー行（ハッシュの行を除いた本体）。
+  //
+  // 記録が終わってから分かる事実はすべてここへ集める。起点に混ぜないためである。
+  // extra = { intervalSec } — 行を採ったときのログ間隔（記録中に変えられる）
+  function csvTrailerLines(logs, extra) {
+    const rows = logs || [];
+    const e = extra || {};
+    const out = [];
+    const put = (k, v) => { const line = metaLine(k, v); if (line) out.push(line); };
+    // 行数。末尾の行をまとめて削られたことも、これとトレーラーのハッシュで分かる。
+    // 0件でも出す（トレーラーが必ず在ることで、丸ごと落とされたら気づける）
+    out.push(`# rows=${rows.length}`);
+    put('intervalSec', e.intervalSec);
+    // 計測モードが途中で変わった記録（記録開始→停止→開始のあいだにモードが変わる）。
+    // ヘッダーの engine は記録を始めたときの値で凍結されるので、その差をここで示す
+    const engines = [];
+    for (const r of rows) {
+      if (r && r.engine && engines.indexOf(r.engine) === -1) engines.push(r.engine);
+    }
+    if (engines.length > 1) put('engines', engines.join('+'));
+    // このCSVに入っている計測セッションの数（記録開始→停止→記録開始で増える）。
+    // ⚠ ヘッダーは1つめのセッションの条件で凍結される。2つめ以降で別のマイクへ
+    //    差し替えられていても、ヘッダーからは分からない。数だけでも残しておけば、
+    //    「ヘッダーが後半の行を説明していない」ことに気づける。
+    const sessions = [];
+    for (const r of rows) {
+      if (r && r.metaId && sessions.indexOf(r.metaId) === -1) sessions.push(r.metaId);
+    }
+    if (sessions.length > 1) put('sessions', sessions.length);
+    if (rows.some(r => r && r.rawDb === -Infinity)) {
+      // 無音は -Infinity で残す。行を落とすと「活動がなかった」証拠にならない
+      put('silence', '-Infinity');
+    }
+    for (const line of clockTrailerLines(rows)) out.push(line);
+    return out;
+  }
+
+  // AudioContext の中断（時刻の跳び）をトレーラー行へ出す。
   //
   // ⚠ 列は増やさない。clockStatus / clockBreakKind / clockJumpMs はレコードには
   // 載っているが、CSV の列は段階4で 7列に確定させた。列を足すと README・テスト・
-  // Excel の手順まで波が及ぶので、回数と位置だけをメタ行で示す。
+  // Excel の手順まで波が及ぶので、回数と位置だけを行で示す。
   //
   // これが無いあいだ、画面は「該当区間に印を付けた」と言うのに CSV には何も出ていなかった。
   // clockBreakAt は印が付いた区間の seq で、その行の直前でアンカーを取り直している。
-  function clockMetaLines(logs) {
+  function clockTrailerLines(logs) {
     const marked = (logs || []).filter(r => r && r.clockStatus === CLOCK_RESYNC);
     if (!marked.length) return [];   // 中断が0回なら行そのものを出さない
     const drift = marked.reduce(
@@ -720,33 +767,163 @@ const MicGainLogic = (() => {
     ];
   }
 
+  // トレーラーを鎖の最後の輪にする。
+  //
+  // 最後の行のハッシュを材料に混ぜるので、トレーラーを書き換えても、
+  // 末尾の行をまとめて削っても（行数が合わなくなるので）検出できる。
+  // 行の材料はコンマ区切りだが、トレーラーの材料はファイルに並んでいるとおり
+  // 改行でつなぐ。1行1項目なので、そのまま読み直せる。
+  function trailerHashInput(prevHex, lines) {
+    return String(prevHex || '') + '|' + lines.join('\n');
+  }
+
+  // ---- 記録中に鎖を進める入れ物 ----
+  //
+  // ⚠⚠ ハッシュは1区間につき1回だけ計算する。
+  // 改修前は書き出しのたびに全行を計算し直していた。起点にあとから分かる事実が
+  // 混ざっていたため、同じセッションを2回書き出すと同じ行のハッシュが変わった。
+  // 記録中に計算して行へ貼っておけば、書き出しは組み立てるだけになる。
+  //
+  // digest(text) は SHA-256 の16進文字列を返す関数（使えない環境では null）。
+  // ブラウザーの crypto は呼ぶ側から渡す。logic.js を DOM もブラウザーAPIも
+  // 触らない純ロジックに保ち、テストからも回せるようにするためである。
+  const CHAIN_SKIP = {};   // 「この区間は計算しない」ことを表す内側の印
+
+  function createHashChain(digest) {
+    let meta = null;                    // 凍結した起点のヘッダー
+    let prev = null;                    // 直前の行のハッシュ
+    let tail = Promise.resolve();       // 計算を並べる待ち行列（順番を崩さない）
+    let unavailable = false;            // 鎖を作れない（digest が null を返す環境）
+    let gen = 0;                        // 鎖の世代
+    const errors = [];
+
+    // ⚠ 計算中にログを捨てられると、古い鎖の計算があとから解決して
+    //    新しい鎖の prev を上書きしうる。世代が変わった計算はその場で捨てる。
+    function reset() {
+      gen += 1;
+      meta = null;
+      prev = null;
+      tail = Promise.resolve();
+      unavailable = false;
+      errors.length = 0;
+    }
+
+    // 1行目が確定した時点で起点を凍結する。以降、何度書き出しても起点は動かない
+    function begin(headerMeta) {
+      meta = headerMeta;
+      prev = null;
+      unavailable = false;
+      const mine = gen;
+      const seed = csvSeed(meta);
+      tail = tail.then(() => digest(seed)).then((full) => {
+        if (mine !== gen) return;
+        if (full === null) {
+          unavailable = true;
+          return;
+        }
+        prev = full.slice(0, HASH_HEX_LEN);
+      }).catch((e) => {
+        if (mine !== gen) return;
+        unavailable = true;
+        errors.push(e);
+      });
+    }
+
+    // 1区間ぶん鎖を伸ばし、その行にハッシュを貼る
+    function extend(rec) {
+      rec.hash = '';
+      const mine = gen;
+      tail = tail.then(() => {
+        if (mine !== gen || unavailable || prev === null) return CHAIN_SKIP;
+        return digest(hashInput(prev, csvDataFields(rec)));
+      }).then((full) => {
+        if (full === CHAIN_SKIP || mine !== gen) return;
+        if (full === null) {
+          unavailable = true;
+          return;
+        }
+        prev = full.slice(0, HASH_HEX_LEN);
+        rec.hash = prev;
+      }).catch((e) => {
+        if (mine !== gen) return;
+        unavailable = true;
+        errors.push(e);
+      });
+    }
+
+    // 記録中の計算が全部終わるまで待つ（書き出しの直前で呼ぶ）
+    function settled() {
+      return tail;
+    }
+
+    // 行に貼られたハッシュ。1つでも欠けていたら null（＝鎖を名乗らない）
+    function hashes(logs) {
+      if (unavailable) return null;
+      const out = [];
+      for (const r of (logs || [])) {
+        if (typeof r.hash !== 'string' || !r.hash) return null;
+        out.push(r.hash);
+      }
+      return out.length ? out : null;
+    }
+
+    // トレーラーを鎖の最後の輪として封じる
+    function sealTrailer(lines) {
+      if (unavailable || prev === null) return Promise.resolve(null);
+      return Promise.resolve(digest(trailerHashInput(prev, lines)))
+        .then((full) => (full === null ? null : full.slice(0, HASH_HEX_LEN)))
+        .catch((e) => {
+          errors.push(e);
+          return null;
+        });
+    }
+
+    return {
+      reset,
+      begin,
+      extend,
+      settled,
+      hashes,
+      sealTrailer,
+      get meta() { return meta; },
+      get prev() { return prev; },
+      get unavailable() { return unavailable; },
+      get errors() { return errors; },
+      get generation() { return gen; }
+    };
+  }
+
   // ⚠ 書き出すのは rawDb（生値）である。
   // 改修前は表示下限でクリップした値を記録していたため、記録中に表示の設定を
   // 変えるとログデータ自体が変質していた。表示下限は表示のための設定なので、
   // 記録には触らせない（db は表示用、rawDb は記録用と役割を分ける）。
   //
-  // opts.hashes は csvDataFields と同じ並びの配列（省略可）。
+  // ファイルの形は
+  //   ヘッダーのメタ行（＝鎖の起点）→ 列のヘッダー → データ行 → トレーラー行
+  // である。トレーラーも `#` で始めるので、README が案内している
+  // 「`#` から始まる行を除外する」取り込み手順がそのまま使える。
+  //
+  // opts.hashes      csvDataFields と同じ並びの配列（省略可）。記録中に計算した値を渡す
+  // opts.intervalSec 行を採ったときのログ間隔（トレーラーへ出す）
+  // opts.trailerHash トレーラー行のハッシュ（鎖の最後の輪）
   function buildCsv(logs, opts) {
     const o = opts || {};
     const meta = Object.assign({}, o.meta);
     if (o.engine && !meta.engine) meta.engine = o.engine;
-    if (o.hashes) meta.hashAlgo = o.hashAlgo || HASH_ALGO_LABEL;
+    if (o.hashes && !meta.hashAlgo) meta.hashAlgo = o.hashAlgo || HASH_ALGO_LABEL;
 
-    const metaLines = csvMetaLines(meta);
-    if (logs.some(r => r.rawDb === -Infinity)) {
-      // 無音は -Infinity で残す。行を落とすと「活動がなかった」証拠にならない
-      metaLines.push('# silence=-Infinity');
-    }
-    // 中断の印。0回なら1行も足さない
-    for (const line of clockMetaLines(logs)) metaLines.push(line);
-    const prefix = metaLines.length ? metaLines.join('\n') + '\n' : '';
-    const header = CSV_COLUMNS.join(',') + '\n';
-    const lines = logs.map((r, i) => {
+    const head = csvHeaderLines(meta);
+    const trailer = csvTrailerLines(logs, { intervalSec: o.intervalSec });
+    const trailerHashLine = metaLine('trailerHash', o.trailerHash);
+    if (trailerHashLine) trailer.push(trailerHashLine);
+
+    const rows = logs.map((r, i) => {
       const fields = csvDataFields(r);
       fields.push(o.hashes ? (o.hashes[i] || '') : '');
       return fields.join(',');
-    }).join('\n');
-    return prefix + header + lines;
+    });
+    return head.concat([CSV_COLUMNS.join(',')], rows, trailer)
+      .map(l => l + '\n').join('');
   }
 
   function csvFileName(date) {
@@ -824,10 +1001,14 @@ const MicGainLogic = (() => {
     CSV_COLUMNS,
     formatOptionalDb,
     csvDataFields,
-    csvMetaLines,
-    clockMetaLines,
+    metaLine,
+    csvHeaderLines,
+    csvTrailerLines,
+    clockTrailerLines,
     csvSeed,
     hashInput,
+    trailerHashInput,
+    createHashChain,
     HASH_ALGO_LABEL,
     HASH_HEX_LEN,
     csvFileName

@@ -147,9 +147,13 @@ test('CSV: 列は増えない。モードだけ先頭の1行に残る', () => {
   const logs = [{ ts: new Date('2026-09-28T02:55:02.000Z'), rawDb: -20, db: -20 }];
   // 段階4で列を足した。A列 timestamp・B列 dbfs は動かさない
   // （READMEが案内している Excel の手順が A列=時刻・B列=音量を前提にしている）
-  const plain = buildCsv(logs).split('\n');
-  assert.equal(plain[plain.length - 2], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash');
-  assert.equal(plain[plain.length - 1], '2026-09-28T02:55:02.000Z,-20.00,,,,,');
+  //
+  // ⚠ 行の位置で見ない。CSV はヘッダー行のあとにトレーラー行が付くので、
+  //    末尾からの数え方は壊れる（2026-09-29 に壊れた）
+  const plain = buildCsv(logs).split('\n').filter(l => l.length && l.charAt(0) !== '#');
+  assert.equal(plain[0], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash');
+  assert.equal(plain[1], '2026-09-28T02:55:02.000Z,-20.00,,,,,');
+  assert.equal(plain.length, 2, '列のヘッダーと1行だけのはず');
 
   const worklet = buildCsv(logs, { engine: ENGINE_WORKLET });
   assert.ok(worklet.includes('# engine=worklet'), worklet);
@@ -161,7 +165,7 @@ test('CSV: 列は増えない。モードだけ先頭の1行に残る', () => {
   assert.equal(bodyOf(worklet), bodyOf(fallback));
 
   // 先頭2列は段階0のときと同じ並び
-  const first = plain[plain.length - 1].split(',');
+  const first = plain[1].split(',');
   assert.equal(first[0], '2026-09-28T02:55:02.000Z');
   assert.equal(first[1], '-20.00');
 });

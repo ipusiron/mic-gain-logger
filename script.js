@@ -19,7 +19,7 @@
     readTrackState, isTrackLost, markDeviceLoss,
     buildIntervalRecord, buildFallbackRecord,
     buildCsv, csvFileName,
-    csvDataFields, csvMetaLines, csvSeed, hashInput, HASH_HEX_LEN
+    csvTrailerLines, createHashChain, HASH_ALGO_LABEL
   } = MicGainLogic; // logic.js（classic script のグローバル束縛）
 
   // UI要素取得
@@ -79,7 +79,23 @@
   //    画面の現在値ではなく、行を採ったときの値を持ち回る。
   //    ログ間隔は記録中でも変えられ、ログはセッションをまたいで累積するため、
   //    1つのCSVに複数の間隔が混ざりうる。processing=agc+ns と同じ書き方で全部並べる。
+  //    ⚠ これは記録中に増える値なので、鎖の起点（ヘッダー）ではなくトレーラーへ出す。
   let usedIntervals = [];
+
+  // ---- ハッシュチェーン ----
+  //
+  // ⚠⚠ 鎖は記録中に進める。1区間につき1回だけ計算して、その値を行に貼る。
+  //    書き出しのたびに全行を計算し直していたころは、起点（メタ行）が
+  //    「記録が終わってから分かる事実」を含んでいたため、同じセッションを
+  //    2回書き出すと同じ行のハッシュが変わっていた（無音の行が1行増えるだけで
+  //    1行目のハッシュまで変わった）。受け取った側には改変されたように見える。
+  //    記録中に計算しておけば、書き出しは組み立てるだけになる。
+  //
+  //    鎖の進め方そのものは logic.js の createHashChain にある（テストから回せる
+  //    ようにするため）。ここが渡すのは crypto を使う digest だけで、
+  //    決めるのは「いつ始めるか・いつ伸ばすか」だけである。
+  // ⚠ 作った本人はチェーンごと作り直せる。防げるのは第三者による後からの改変だけ。
+  const hashChain = createHashChain(sha256Hex);
 
   // 時刻のアンカーと、中断の検出
   // clockAnchor = { epoch, audioTime, wallMs } オーディオクロック→壁時計の対応づけ
@@ -525,7 +541,11 @@
   // 統計もここだけで進める（母集団を CSV の行にそろえる）
   function pushRecord(rec) {
     const wasEmpty = logs.length === 0;
+    // 鎖の起点は1行目で凍結する。2回目以降の書き出しでも同じ値になる
+    if (wasEmpty) hashChain.begin(chainMetaOf(rec));
     logs.push(rec);
+    // ハッシュは1区間につき1回だけ計算する（書き出し時に全行を計算し直さない）
+    hashChain.extend(rec);
     // 次のセッションの起点。捨てた区間の欠番はそのまま残す
     if (Number.isFinite(rec.seq) && rec.seq > seqMax) seqMax = rec.seq;
     // 行を採ったときのログ間隔を控える（書き出し時点の設定では嘘になる）
@@ -930,46 +950,46 @@
     rafId = requestAnimationFrame(animate);
   }
 
-  // SHA-256 を16進文字列で。crypto.subtle は安全なコンテキストでしか使えないので、
-  // file:// で開いたときは null を返す（ハッシュ列は空になる）。
+  // crypto.subtle は安全なコンテキスト（https または localhost）でしか使えない。
+  // file:// で開いたときはハッシュを計算できないので、鎖そのものを作らない。
+  function hashAvailable() {
+    return !!(window.crypto && window.crypto.subtle);
+  }
+
+  // SHA-256 を16進文字列で。使えない環境では null を返す（ハッシュ列は空になる）。
   async function sha256Hex(text) {
-    if (!(window.crypto && window.crypto.subtle)) return null;
+    if (!hashAvailable()) return null;
     const buf = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
     return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  // 行を鎖でつなぐ。前の行のハッシュを次の材料に混ぜるので、
-  // 途中の行を消す・入れ替えると、それ以降の値が合わなくなる。
-  // ⚠ 作った本人はチェーンごと作り直せる。防げるのは第三者による後からの改変だけ。
-  async function computeHashChain(rows, seedText) {
-    const first = await sha256Hex(seedText);
-    if (first === null) return null;
-    let prev = first.slice(0, HASH_HEX_LEN);
-    const out = [];
-    for (const r of rows) {
-      const full = await sha256Hex(hashInput(prev, csvDataFields(r)));
-      prev = full.slice(0, HASH_HEX_LEN);
-      out.push(prev);
-    }
-    return out;
-  }
-
-  // 記録の条件。あとから「どの端末のどの設定で採ったCSVか」を読み直せるようにする
-  function csvMetaOf(engine) {
+  // 鎖の起点になるヘッダー。
+  // ⚠ 記録を始めた瞬間に確定する事実だけを入れる。
+  //    ログ間隔・無音の有無・中断の回数は記録中に変わるので、ここには入れない。
+  function chainMetaOf(firstRec) {
     const m = sessionMeta || {};
     const proc = Array.isArray(m.processingActive) && m.processingActive.length
       ? m.processingActive.join('+')
       : 'off';
     return {
-      engine,
+      engine: firstRec.engine || engineMode,
       // アンカーは中断のたびに取り直すので、記録開始の時刻には使えない。
-      // 最初の区間の時刻をそのまま載せる
-      started: logs.length ? logs[0].ts.toISOString() : null,
+      // 1行目の区間の時刻をそのまま載せる
+      started: firstRec.ts.toISOString(),
       sampleRate: m.contextSampleRate || null,
-      // 書き出し時点の設定ではなく、行を採ったときの値。混ざっていれば全部並べる
-      intervalSec: usedIntervals.length ? usedIntervals.join('+') : null,
       device: m.deviceLabel || null,
-      processing: proc
+      processing: proc,
+      hashAlgo: hashAvailable() ? HASH_ALGO_LABEL : null
+    };
+  }
+
+  // 記録が終わってから分かる事実。トレーラー行へ出す。
+  // ⚠ 起点（ヘッダー）に混ぜてはいけない。混ぜると、同じセッションを2回
+  //    書き出したときに同じ行のハッシュが変わる。
+  function csvTrailerExtraOf() {
+    return {
+      // 書き出し時点の設定ではなく、行を採ったときの値。混ざっていれば全部並べる
+      intervalSec: usedIntervals.length ? usedIntervals.join('+') : null
     };
   }
 
@@ -979,22 +999,31 @@
       return;
     }
     // A列 timestamp・B列 dbfs は動かさない（READMEのExcel手順がこれを前提にしている）
-    const engines = Array.from(new Set(logs.map(r => r.engine).filter(Boolean)));
-    const engine = engines.length === 1 ? engines[0] : (engines.length ? 'mixed' : engineMode);
-    const meta = csvMetaOf(engine);
+    //
+    // ハッシュは記録中に計算済みである。ここでは計算し直さず、待って集めるだけ。
+    // 計算し直すと、起点と同じ理由で「書き出すたびに値が変わる」余地が戻る
+    await hashChain.settled();
 
-    // 鎖の起点は記録の条件そのもの。条件が違えば別の鎖になる
-    // 鎖の起点は「出力されるメタ行そのもの」である。
-    // 自分で組み立てると hashAlgo や silence の印が抜けて、受け取った側の
-    // 再計算と一致しなくなる（実測でそうなった）。実装もテストも csvSeed を通す
-    const seed = csvSeed(logs, { engine, meta });
-    let hashes = null;
-    try {
-      hashes = await computeHashChain(logs, seed);
-    } catch (e) {
-      console.warn('ハッシュチェーンを作れませんでした', e);
-    }
-    const csv = buildCsv(logs, { engine, meta, hashes });
+    const extra = csvTrailerExtraOf();
+    const hashes = hashChain.hashes(logs);
+    // トレーラーを鎖の最後の輪にする。
+    // 最後の行のハッシュを材料に混ぜるので、トレーラーの書き換えも、
+    // 末尾の行をまとめて削ることも検出できる
+    const trailerHash = hashes
+      ? await hashChain.sealTrailer(csvTrailerLines(logs, extra))
+      : null;
+    // 鎖が作れなかった記録では、ヘッダーで方式を名乗らない（列も空になる）
+    const meta = hashes
+      ? hashChain.meta
+      : Object.assign({}, hashChain.meta, { hashAlgo: null });
+    for (const e of hashChain.errors) console.warn('ハッシュチェーン', e);
+
+    const csv = buildCsv(logs, {
+      meta,
+      hashes,
+      intervalSec: extra.intervalSec,
+      trailerHash
+    });
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -1016,6 +1045,8 @@
     seqBase = 0;
     seqMax = -1;
     usedIntervals = [];
+    // ログを捨てたら鎖も捨てる。次の1行目で新しい起点を凍結する
+    hashChain.reset();
     updateButtonStates(); // ボタン状態を更新
     setStatus('統計とログをリセットしました', 'ok');
   }

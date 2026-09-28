@@ -194,13 +194,52 @@ test('画面内のヘルプが CSV を2列だと言っていない', () => {
   );
 });
 
-test('ヘルプの CSV の説明が7列とメタ行に触れている', () => {
+test('ヘルプの CSV の説明が7列とヘッダー・トレーラーに触れている', () => {
   const item = helpItem('CSV形式：');
   for (const c of logic.CSV_COLUMNS) {
     assert.ok(item.includes(c), `ヘルプが列 ${c} を書いていない`);
   }
-  assert.match(item, /メタ行/, 'ヘルプがメタ行に触れていない');
+  assert.match(item, /ヘッダー行/, 'ヘルプがヘッダー行に触れていない');
+  // ⚠ トレーラーはデータ行の「下」に付く。ここを書かないと、
+  //    取り込みのときに末尾の `#` 行を見落とす
+  assert.match(item, /トレーラー行/, 'ヘルプがトレーラー行に触れていない');
   assert.match(html, /CSVには7列/, '「説明と注意事項」が7列だと書いていない');
+  assert.match(html, /下には[^<]*トレーラー行/, '「説明と注意事項」がトレーラー行の位置を書いていない');
+});
+
+test('README が CSV の4つの部分を説明している', () => {
+  // ⚠ 起点とトレーラーの区別が README から消えると、受け取った側は
+  //    検証の手順を組めない（`#` の行をまとめて起点にしてしまう）
+  assert.ok(readme.includes('# trailerHash='), 'README がトレーラーのハッシュに触れていない');
+  assert.ok(readme.includes('# rows='), 'README が行数のトレーラー行に触れていない');
+  assert.ok(
+    readme.includes('同じセッションを2回書き出すと同じ行のハッシュが変わります'),
+    'README が「起点にあとから分かる事実を入れるとどうなるか」を書いていない'
+  );
+  // 起点の説明が「#で始まる行すべて」に戻っていないこと
+  assert.ok(
+    !readme.includes('起点はメタ行そのもの'),
+    '起点を「メタ行そのもの」と書いた古い説明が残っている'
+  );
+  // 列のヘッダーより上だけが起点である、と言っている
+  assert.ok(
+    readme.includes('その上にある`#`の行が起点'),
+    'README が起点の範囲（列のヘッダーより上）を書いていない'
+  );
+});
+
+test('README の検証手順が実装のハッシュの作り方と合っている', () => {
+  // 行の材料はコンマ区切り、トレーラーの材料は改行区切りである
+  assert.equal(logic.hashInput('ab', ['x', 'y']), 'ab|x,y');
+  assert.equal(logic.trailerHashInput('ab', ['# p=1', '# q=2']), 'ab|# p=1\n# q=2');
+  assert.ok(
+    readme.includes('その行の6つのフィールドをコンマで連結'),
+    'README が行の材料の作り方を書いていない'
+  );
+  assert.ok(
+    readme.includes('ファイルに並んでいる順のまま改行で連結'),
+    'README がトレーラーの材料の作り方を書いていない'
+  );
 });
 
 test('キャンバスの説明が実装の横軸と合っている', () => {

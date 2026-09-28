@@ -23,7 +23,8 @@ const {
   processingVerdict,
   buildIntervalRecord,
   buildFallbackRecord,
-  buildCsv
+  buildCsv,
+  CSV_COLUMNS
 } = require('../logic.js');
 
 const REQUESTED = {
@@ -184,17 +185,19 @@ test('メタが無くても落ちない', () => {
   assert.equal(rec.meta, null);
 });
 
-test('CSV: 測定条件はメタ行に出る（段階4で確定）', () => {
+test('CSV: 測定条件はヘッダーのメタ行に出る（段階4で確定）', () => {
   // 段階2では「列の確定は段階4」として出していなかった。ここで出す。
   // これが無いと、そのCSVがどの端末のどの設定で採られたのか後から読めない。
   const m = meta(REAL_SETTINGS);
   const recs = [0, 1].map(i => buildIntervalRecord(message(i), ANCHOR, -60, { meta: m }));
   const csv = buildCsv(recs, {
     engine: 'worklet',
-    meta: { sampleRate: 48000, intervalSec: 1, device: 'Fake Default Audio Input', processing: 'off' }
+    meta: { sampleRate: 48000, device: 'Fake Default Audio Input', processing: 'off' },
+    intervalSec: 1
   });
   const lines = csv.split('\n');
-  const metaLines = lines.filter(l => l.startsWith('#'));
+  // 起点になるのは列のヘッダーより上の行だけ（トレーラーは含めない）
+  const metaLines = lines.slice(0, lines.indexOf(CSV_COLUMNS.join(',')));
   const dataLines = lines.filter(l => l && !l.startsWith('#'));
 
   assert.ok(metaLines.includes('# engine=worklet'));
@@ -203,6 +206,9 @@ test('CSV: 測定条件はメタ行に出る（段階4で確定）', () => {
   assert.ok(metaLines.includes('# processing=off'));
   // 重み付けは未実装なので Z（平坦）と明記する。A特性は次の弾
   assert.ok(metaLines.includes('# weighting=Z'));
+  // ⚠ ログ間隔は記録中に変えられるので、起点には出ない（トレーラーへ出る）
+  assert.ok(!metaLines.join('\n').includes('intervalSec'), metaLines.join(' / '));
+  assert.ok(lines.includes('# intervalSec=1'), csv);
 
   // ヘッダー＋2行
   assert.equal(dataLines.length, 3);
@@ -218,7 +224,7 @@ test('CSV: メタ行の値に改行を混ぜても1行1項目が崩れない', (
   assert.ok(metaLines.includes('# device=My Mic 2'), metaLines.join(' / '));
 });
 
-// ---- # intervalSec= は「記録に使った値」 ----
+// ---- # intervalSec= は「記録に使った値」で、トレーラーに出る ----
 //
 // ⚠ 改修前は書き出し時に currentIntervalSec() を読んでいた。
 // 1秒で採った行を 3s へ切り替えてから書き出すと「# intervalSec=3」と出る。
@@ -226,15 +232,28 @@ test('CSV: メタ行の値に改行を混ぜても1行1項目が崩れない', (
 // 画面の現在値を書いてはいけない。
 // ログ間隔は記録中でも変えられ、ログはセッションをまたいで累積するため、
 // 1つのCSVに複数の間隔が混ざりうる。processing=agc+ns と同じ書き方で全部並べる。
+//
+// ⚠⚠ 2026-09-29 に、この行を鎖の起点から外してトレーラーへ移した。
+// 記録中に増える値を起点に入れていたため、ログ間隔を変えるだけで、
+// すでに書き出した行のハッシュまで変わっていた。
 
 test('CSV: 混ざったログ間隔はプラスでつないで並ぶ', () => {
-  const csv = buildCsv([], { meta: { intervalSec: '1+3' } });
+  const csv = buildCsv([], { intervalSec: '1+3' });
   assert.ok(csv.split('\n').includes('# intervalSec=1+3'), csv);
 });
 
 test('CSV: ログ間隔が分からなければ、その行を出さない', () => {
   const csv = buildCsv([], { meta: { sampleRate: 48000 } });
   assert.ok(!csv.includes('intervalSec'), csv);
+});
+
+test('CSV: ログ間隔は起点（ヘッダー）に出ない', () => {
+  // 起点に入れると、記録中にログ間隔を変えるだけで既出の行のハッシュが変わる
+  const csv = buildCsv([], { meta: { intervalSec: '1+3', sampleRate: 48000 }, intervalSec: '1+3' });
+  const lines = csv.split('\n');
+  const head = lines.slice(0, lines.indexOf(CSV_COLUMNS.join(',')));
+  assert.ok(!head.join('\n').includes('intervalSec'), head.join(' / '));
+  assert.ok(lines.includes('# intervalSec=1+3'), csv);
 });
 
 test('script.js: 書き出し時点のログ間隔を読んでいない', () => {
@@ -249,4 +268,28 @@ test('script.js: 書き出し時点のログ間隔を読んでいない', () => 
     '記録に使った値を持ち回っていない'
   );
   assert.match(script, /usedIntervals\.push\(lastIntervalSec\)/, '行を採ったときの値を控えていない');
+  // ⚠ ログ間隔を鎖の起点（chainMetaOf）に戻さない
+  const chainMeta = script.slice(script.indexOf('function chainMetaOf'));
+  assert.ok(
+    !/intervalSec/.test(chainMeta.slice(0, chainMeta.indexOf('\n  }'))),
+    '鎖の起点にログ間隔が戻っている'
+  );
+});
+
+// ---- 鎖の起点は記録中に動かさない ----
+
+test('script.js: ハッシュは記録中に1区間1回だけ計算する', () => {
+  const script = fs.readFileSync(path.join(__dirname, '..', 'script.js'), 'utf8');
+  // 1行目で起点を凍結し、区間ごとに伸ばす
+  assert.match(script, /if \(wasEmpty\) hashChain\.begin\(/, '起点を1行目で凍結していない');
+  assert.match(script, /hashChain\.extend\(rec\)/, '区間ごとに鎖を伸ばしていない');
+  // 書き出しでは計算し直さず、凍結した起点をそのまま使う
+  assert.match(script, /await hashChain\.settled\(\)/, '書き出しが記録中の計算を待っていない');
+  assert.match(script, /hashChain\.meta/, '書き出しが凍結した起点を使っていない');
+  assert.ok(
+    !/computeHashChain/.test(script),
+    '書き出しのたびに全行を計算し直す関数が残っている'
+  );
+  // ログを捨てたら鎖も捨てる（走っている計算を無効にする）
+  assert.match(script, /hashChain\.reset\(\)/, 'リセットで鎖を捨てていない');
 });
