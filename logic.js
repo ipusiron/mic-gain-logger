@@ -679,6 +679,28 @@ const MicGainLogic = (() => {
     return PROCESSING_OFF;
   }
 
+  // CSV のメタ行 `# processing=` に書く値。
+  //
+  // ⚠⚠ off と書くのは、3項目すべてが「無効」と報告されたときだけである。
+  //    改修前（c7b6bad）は script.js が「有効と報告された項目が無ければ off」と
+  //    書いていた。報告しない項目があっても off になり、Safari のように
+  //    autoGainControl を報告しない環境で「加工なし」と名乗っていた
+  //    （WebKit Bugzilla 204444）。ここで3値のまま文字列にする。
+  //
+  //    off                                       3項目すべて無効と報告された
+  //    active:echoCancellation                   有効と報告された項目
+  //    unknown:autoGainControl                   報告されなかった項目
+  //    active:echoCancellation;unknown:autoGainControl   両方あるとき
+  function processingLabel(meta) {
+    if (!meta) return PROCESSING_UNKNOWN;
+    const parts = [];
+    const active = meta.processingActive || [];
+    const unknown = meta.processingUnknown || [];
+    if (active.length) parts.push(`${PROCESSING_ACTIVE}:${active.join('+')}`);
+    if (unknown.length) parts.push(`${PROCESSING_UNKNOWN}:${unknown.join('+')}`);
+    return parts.length ? parts.join(';') : PROCESSING_OFF;
+  }
+
   // ---- マイクの取得の試行 ----
   //
   // getUserMedia をタイムアウトなしで await していたため、許可プロンプトを
@@ -1229,6 +1251,7 @@ const MicGainLogic = (() => {
     PROCESSING_UNKNOWN,
     buildSessionMeta,
     processingVerdict,
+    processingLabel,
     CONNECT_HINT_MS,
     CONNECT_TIMEOUT_MS,
     createAttemptGate,

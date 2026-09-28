@@ -281,6 +281,7 @@ mic-gain-logger/
 │   ├── interval-label.test.js     # 公開前の直し: 行に貼るログ間隔を実測の区間長にする
 │   ├── session-weight.test.js     # 公開前の直し: 停止→再開をまたいで重みを取る手順と検算値
 │   ├── reset.test.js              # 第2弾a: 統計リセットで母集団（ログ・統計・グラフ・注意書き）をまとめて捨てる
+│   ├── processing-label.test.js   # 第2弾a: メタ行の processing を off／active／unknown の3値で書く
 │   ├── dbfs-fixture.test.js       # 既知振幅の正弦波に対するdBFSの計算精度
 │   ├── docs.test.js               # READMEと実装・実ファイルが合っているかの検査（構成図を含む）
 │   └── fixtures/                  # テストの期待値
@@ -562,7 +563,7 @@ timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash
 | `started` | 最初の区間の時刻 |
 | `sampleRate` | AudioContextのサンプルレート |
 | `device` | マイクのデバイス名 |
-| `processing` | マイク側の音の加工（AGC・ノイズ抑制・エコーキャンセル）の適用状態。`off`なら加工なし |
+| `processing` | マイク側の音の加工（AGC・ノイズ抑制・エコーキャンセル）について、ブラウザーの`getSettings()`が報告した状態。`off`＝3項目すべてが無効と報告された。`active:<項目>`＝有効と報告された項目。`unknown:<項目>`＝ブラウザーが報告しなかった項目（Safariは`autoGainControl`を報告しないことがある）。両方あるときは`active:echoCancellation;unknown:autoGainControl`のように`;`でつなぐ。⚠**c7b6bad（2026-09-29公開）までの版は、報告しない項目があっても`# processing=off`と書いていた。**その版のCSVの`off`は「加工が切れていた」の証明にならない |
 | `weighting` | 周波数の重み付け。本ツールは重み付けをしないので常に`Z` |
 | `hash` | ハッシュチェーンの方式。鎖を作れなかった記録では行そのものが出ない |
 

@@ -15,7 +15,8 @@
     CLOCK_BREAK_SUSPEND, CLOCK_BREAK_STALL,
     createClockAnchor, detectClockJump, reanchorClock,
     CONNECT_HINT_MS, CONNECT_TIMEOUT_MS, createAttemptGate, raceWithTimeout,
-    PROCESSING_ACTIVE, buildSessionMeta, processingVerdict,
+    PROCESSING_ACTIVE, PROCESSING_UNKNOWN, buildSessionMeta, processingVerdict,
+    processingLabel,
     DEVICE_LOST_ENDED, DEVICE_LOST_GONE,
     readTrackState, isTrackLost, markDeviceLoss,
     buildIntervalRecord, buildFallbackRecord,
@@ -393,6 +394,13 @@
       parts.push(
         `マイク側の音の加工が有効です（${sessionMeta.processingActive.join(', ')}）。`
         + '利得が自動で動くため、この記録の dBFS は絶対値として扱えません'
+      );
+    } else if (sessionMeta && processingVerdict(sessionMeta) === PROCESSING_UNKNOWN) {
+      // 報告しない項目がある（Safari の autoGainControl など）。
+      // 黙っていると「加工なし」と読まれるので、分からないことを出す
+      parts.push(
+        `マイク側の音の加工（${sessionMeta.processingUnknown.join(', ')}）の状態を、`
+        + 'このブラウザーは報告しません。利得が自動で動いていても、この画面とCSVからは分かりません'
       );
     }
     if (clockBreaks.length) {
@@ -1017,9 +1025,6 @@
   //    ログ間隔・無音の有無・中断の回数は記録中に変わるので、ここには入れない。
   function chainMetaOf(firstRec) {
     const m = sessionMeta || {};
-    const proc = Array.isArray(m.processingActive) && m.processingActive.length
-      ? m.processingActive.join('+')
-      : 'off';
     return {
       engine: firstRec.engine || engineMode,
       // アンカーは中断のたびに取り直すので、記録開始の時刻には使えない。
@@ -1027,7 +1032,9 @@
       started: firstRec.ts.toISOString(),
       sampleRate: m.contextSampleRate || null,
       device: m.deviceLabel || null,
-      processing: proc,
+      // ⚠ 報告しない項目があれば unknown と書く（logic.js の processingLabel）。
+      //    改修前はここで「有効が無ければ off」と決め打ちしていた
+      processing: processingLabel(sessionMeta),
       hashAlgo: hashAvailable() ? HASH_ALGO_LABEL : null
     };
   }
