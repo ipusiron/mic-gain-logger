@@ -304,6 +304,8 @@
     const wasEmpty = logs.length === 0;
     logs.push(rec);
     if (wasEmpty) updateButtonStates();
+    // 件数は行が増えたら必ず出す。無音だけの区間が続いても 0 のままにしない
+    countEl.textContent = String(logs.length);
   }
 
   // ワークレットからの1区間
@@ -312,8 +314,9 @@
     const rec = buildIntervalRecord(msg, clockAnchor, getFloorDb(), {
       clockBreak: pendingClockBreak
     });
-    // 無音（-Infinity）を捨てる現状の振る舞いはそのまま。直すのは段階2の2番
-    if (!Number.isFinite(rec.rawDb)) return;
+    // デジタル無音（-Infinity）は「音がなかった」という記録なので残す。
+    // 捨てるのは数値にならなかったものだけ
+    if (Number.isNaN(rec.rawDb)) return;
     // 印は行が確定してから外す（捨てた行で印を失わない）
     pendingClockBreak = null;
     pushRecord(rec);
@@ -322,9 +325,11 @@
   // 簡易モードの1区間（現行の rAF 経路のまま。瞬時値しか取れない）
   function recordFallbackInterval(db, floorDb, nowSec) {
     if (nowSec - lastLogTime < lastIntervalSec) return;
+    // 捨てる場合はログ枠を消費しない（lastLogTime を進めない）。
+    // 改修前は更新がガードの外にあり、捨てたサンプルでも枠が消えていた
+    if (Number.isNaN(db)) return;
     const startSec = lastLogTime;
     lastLogTime = nowSec;
-    if (!Number.isFinite(db)) return;
     const nowMs = Date.now();
     const sr = audioCtx ? audioCtx.sampleRate : 48000;
     pushRecord(buildFallbackRecord({
@@ -456,6 +461,9 @@
       renderEngineMode();
 
       startedAt = performance.now() / 1000;
+      // 簡易モードの1行目を「ページを開いてから」ではなく
+      // 「記録を開始してから」ログ間隔ぶん後に出す
+      lastLogTime = startedAt;
       running = true;
       stopBtn.disabled = false;
       updateButtonStates(); // ボタン状態を更新（記録中はCSV書き出し無効）

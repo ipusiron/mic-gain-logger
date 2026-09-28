@@ -161,6 +161,21 @@ const MicGainLogic = (() => {
     return { epoch: anchor.epoch + 1, audioTime, wallMs };
   }
 
+  // ---- デジタル無音の扱い ----
+  //
+  // 振幅が完全に0の区間の dBFS は、定義上 -Infinity である。
+  // 改修前はこれを「値が取れなかった」とみなして行ごと捨てていたため、
+  // CSV には無標識の穴だけが残り、「対象時刻に音響活動がなかった」ことを
+  // 示せなかった。証拠保全を掲げるツールとして、これは成立しない。
+  //
+  // 表示下限（floorDb）は表示のための設定なので、-Infinity をそこへ丸めない。
+  // 丸めると「測っていない値」を作ってしまう。CSV には -Infinity と書く。
+
+  function clipForDisplay(db, floorDb) {
+    // 有限値だけを表示下限で切る（-Infinity はそのまま通す）
+    return Number.isFinite(db) ? Math.max(db, floorDb) : db;
+  }
+
   // ワークレットからの1メッセージを1行分の区間レコードへ
   // extra = { clockBreak: { kind, jumpMs } | null }
   function buildIntervalRecord(msg, anchor, floorDb, extra) {
@@ -181,7 +196,8 @@ const MicGainLogic = (() => {
       endWall,
       ts: endWall,                       // CSV の timestamp 列（区間の終わり）
       rawDb,                             // 区間のエネルギー平均（生値）
-      db: Math.max(rawDb, floorDb),      // 表示下限でのクリップ（段階3で表示専用へ移す）
+      db: clipForDisplay(rawDb, floorDb),
+      silent: rawDb === -Infinity,       // デジタル無音（振幅が完全に0の区間）
       peak: msg.peak,
       peakDb: rmsToDbfs(msg.peak),
       clipCount: msg.clip,
@@ -210,7 +226,8 @@ const MicGainLogic = (() => {
       endWall,
       ts: endWall,
       rawDb,
-      db: Math.max(rawDb, opts.floorDb),
+      db: clipForDisplay(rawDb, opts.floorDb),
+      silent: rawDb === -Infinity,
       peak: null,
       peakDb: null,
       clipCount: null,
@@ -225,12 +242,21 @@ const MicGainLogic = (() => {
   }
 
   // ---- CSV ----
-  // 列は段階1では増やさない（timestamp,dbfs のまま）。
-  // どちらの計測モードで取った記録かだけを、先頭の1行のコメントで残す。
+  // 列は増やさない（timestamp,dbfs のまま。列の確定は段階4の CSV v2）。
+  // どちらの計測モードで取った記録かだけを、先頭のコメント行で残す。
+
+  // dBFS を1セルへ。無音は数値へ丸めず -Infinity と書く。
+  // 数値に見える値を書かないので、集計側が無音を測定値として取り込むことがない。
+  function formatCsvDb(db) {
+    if (Number.isFinite(db)) return db.toFixed(2);
+    return String(db);   // -Infinity（無音）。想定外の値も隠さずそのまま出す
+  }
+
   function buildCsv(logs, opts) {
     const header = 'timestamp,dbfs\n';
-    const lines = logs.map(r => `${r.ts.toISOString()},${r.db.toFixed(2)}`).join('\n');
-    const prefix = (opts && opts.engine) ? `# engine=${opts.engine}\n` : '';
+    const lines = logs.map(r => `${r.ts.toISOString()},${formatCsvDb(r.db)}`).join('\n');
+    let prefix = (opts && opts.engine) ? `# engine=${opts.engine}\n` : '';
+    if (logs.some(r => r.db === -Infinity)) prefix += '# silence=-Infinity\n';
     return prefix + header + lines;
   }
 
@@ -265,8 +291,10 @@ const MicGainLogic = (() => {
     clockDriftMs,
     detectClockJump,
     reanchorClock,
+    clipForDisplay,
     buildIntervalRecord,
     buildFallbackRecord,
+    formatCsvDb,
     buildCsv,
     csvFileName
   };
