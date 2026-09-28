@@ -8,6 +8,8 @@
     clamp, dbToPercent, formatHMS, rmsToDbfs, rmsOf,
     parseFloorDb, parseIntervalSec,
     createStats, addStatsSample, formatStats, emptyStatsText,
+    ENGINE_WORKLET, ENGINE_FALLBACK, framesForInterval,
+    buildIntervalRecord, buildFallbackRecord,
     buildCsv, csvFileName
   } = MicGainLogic; // logic.js（classic script のグローバル束縛）
 
@@ -35,6 +37,8 @@
   const smoothingInput = document.getElementById('smoothing');
   const floorDbInput = document.getElementById('floorDb');
 
+  const engineModeEl = document.getElementById('engineMode');
+
   const canvas = document.getElementById('levelCanvas');
   const ctx = canvas.getContext('2d');
 
@@ -43,6 +47,14 @@
   let analyser = null;
   let sourceNode = null;
   let mediaStream = null;
+
+  // 計測エンジン（記録側）。rAF は描画専用に降格し、記録はここが担う
+  let workletNode = null;
+  let silentGain = null;
+  let engineMode = null;      // null=未開始 / ENGINE_WORKLET / ENGINE_FALLBACK
+  let clockAnchor = null;     // { audioTime, wallMs } オーディオクロック→壁時計の対応づけ
+  let seqCounter = 0;
+  let lastIntervalSec = null;
 
   let rafId = null;
   let running = false;
@@ -160,6 +172,107 @@
     statusEl.textContent = text;
   }
 
+  // 計測エンジンの表示（どちらのモードで動いているかを画面に残す）
+  function renderEngineMode() {
+    if (engineMode === ENGINE_WORKLET) {
+      engineModeEl.className = 'engine-mode ok';
+      engineModeEl.textContent = '計測エンジン: 高精度モード（AudioWorklet・オーディオクロック基準）';
+    } else if (engineMode === ENGINE_FALLBACK) {
+      engineModeEl.className = 'engine-mode warn';
+      engineModeEl.textContent = '計測エンジン: 簡易モード（欠測の可能性あり）';
+    } else {
+      engineModeEl.className = 'engine-mode';
+      engineModeEl.textContent = '';
+    }
+  }
+
+  function currentIntervalSec() {
+    return parseIntervalSec(logIntervalInput.value);
+  }
+
+  // 1行＝1区間。ここだけがログを増やす
+  function pushRecord(rec) {
+    const wasEmpty = logs.length === 0;
+    logs.push(rec);
+    if (wasEmpty) updateButtonStates();
+  }
+
+  // ワークレットからの1区間
+  function handleIntervalMessage(msg) {
+    if (!running || !clockAnchor) return;
+    const rec = buildIntervalRecord(msg, clockAnchor, getFloorDb());
+    // 無音（-Infinity）を捨てる現状の振る舞いはそのまま。直すのは段階2
+    if (!Number.isFinite(rec.rawDb)) return;
+    pushRecord(rec);
+  }
+
+  // 簡易モードの1区間（現行の rAF 経路のまま。瞬時値しか取れない）
+  function recordFallbackInterval(db, floorDb, nowSec) {
+    if (nowSec - lastLogTime < lastIntervalSec) return;
+    const startSec = lastLogTime;
+    lastLogTime = nowSec;
+    if (!Number.isFinite(db)) return;
+    const nowMs = Date.now();
+    const sr = audioCtx ? audioCtx.sampleRate : 48000;
+    pushRecord(buildFallbackRecord({
+      seq: seqCounter++,
+      db,
+      floorDb,
+      startTime: startSec,
+      endTime: nowSec,
+      startWallMs: nowMs - (nowSec - startSec) * 1000,
+      endWallMs: nowMs,
+      expectedSamples: Math.round(lastIntervalSec * sr)
+    }));
+  }
+
+  // ログ間隔の変更をワークレットへ伝える（記録中でも変えられる既存の仕様を保つ）
+  function syncInterval() {
+    const sec = currentIntervalSec();
+    if (sec === lastIntervalSec) return;
+    lastIntervalSec = sec;
+    if (workletNode && audioCtx) {
+      workletNode.port.postMessage({
+        type: 'config',
+        intervalFrames: framesForInterval(sec, audioCtx.sampleRate)
+      });
+    }
+  }
+
+  // 計測エンジンの組み立て。使えなければ false を返して簡易モードへ落ちる
+  async function setupWorklet() {
+    if (!audioCtx.audioWorklet || typeof audioCtx.audioWorklet.addModule !== 'function') {
+      return false;
+    }
+    if (typeof AudioWorkletNode !== 'function') return false;
+
+    await audioCtx.audioWorklet.addModule('./worklet/meter-processor.js');
+    workletNode = new AudioWorkletNode(audioCtx, 'meter-processor', {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      outputChannelCount: [1],
+      channelCount: 1,
+      channelCountMode: 'explicit',
+      channelInterpretation: 'speakers',
+      processorOptions: {
+        intervalFrames: framesForInterval(currentIntervalSec(), audioCtx.sampleRate)
+      }
+    });
+    workletNode.port.onmessage = (event) => {
+      const msg = event.data;
+      if (msg && msg.type === 'interval') handleIntervalMessage(msg);
+    };
+
+    // 出力は無音だが、destination まで繋いでおかないと
+    // レンダリンググラフから外れて process() が呼ばれなくなる
+    silentGain = audioCtx.createGain();
+    silentGain.gain.value = 0;
+    sourceNode.connect(workletNode);
+    workletNode.connect(silentGain);
+    silentGain.connect(audioCtx.destination);
+    return true;
+  }
+
   async function start() {
     if (running) return;
     
@@ -205,6 +318,18 @@
 
       sourceNode = audioCtx.createMediaStreamSource(mediaStream);
       sourceNode.connect(analyser);
+
+      // 記録はオーディオスレッドへ。使えない環境は簡易モードへ落とす
+      lastIntervalSec = currentIntervalSec();
+      engineMode = ENGINE_FALLBACK;
+      try {
+        if (await setupWorklet()) engineMode = ENGINE_WORKLET;
+      } catch (workletErr) {
+        console.warn('AudioWorklet を読み込めないため簡易モードで動かします', workletErr);
+        workletNode = null;
+      }
+      clockAnchor = { audioTime: audioCtx.currentTime, wallMs: Date.now() };
+      renderEngineMode();
 
       startedAt = performance.now() / 1000;
       running = true;
@@ -261,6 +386,19 @@
       mediaStream = null;
     }
     
+    // 計測エンジンの切断（ワークレット→無音ゲイン）
+    if (workletNode) {
+      try { workletNode.port.postMessage({ type: 'stop' }); } catch {}
+      try { workletNode.port.onmessage = null; } catch {}
+      try { workletNode.disconnect(); } catch {}
+      workletNode = null;
+    }
+    if (silentGain) {
+      try { silentGain.disconnect(); } catch {}
+      silentGain = null;
+    }
+    clockAnchor = null;
+
     // Audio Nodeの切断
     if (sourceNode) { 
       try { sourceNode.disconnect(); } catch {} 
@@ -284,10 +422,13 @@
     }
   }
 
+  // rAF は描画専用。記録はワークレットのオーディオクロックが担う
   function animate() {
     if (!running) return;
 
     // スムージング更新（動的反映）
+    // ⚠ smoothingTimeConstant は周波数領域にしか作用せず、時間領域のRMSには効かない。
+    //    廃止するか時間重みへ置き換えるかは段階2以降の判断なので、ここでは触らない
     if (analyser) {
       const s = parseFloat(smoothingInput.value);
       if (!Number.isNaN(s)) analyser.smoothingTimeConstant = s;
@@ -316,29 +457,20 @@
     series.push(clamp(pct/100, 0, 1));
     drawSeries();
 
-    // 統計
+    // 統計（母集団を区間へそろえるのは段階3）
     updateStats(db);
 
     // 稼働時間
     const nowSec = performance.now() / 1000;
     uptimeEl.textContent = formatHMS(nowSec - startedAt);
 
-    // ログ（間隔ごとに）
-    const intervalSec = parseIntervalSec(logIntervalInput.value);
-    if (nowSec - lastLogTime >= intervalSec) {
-      if (Number.isFinite(db)) {
-        const wasEmpty = logs.length === 0; // 最初のログかどうかを記録
-        logs.push({
-          ts: new Date(),
-          db: Math.max(db, floorDb)
-        });
-        
-        // 最初のログが追加された時にボタン状態を更新
-        if (wasEmpty) {
-          updateButtonStates();
-        }
-      }
-      lastLogTime = nowSec;
+    // ログ間隔の変更を計測エンジンへ伝える
+    syncInterval();
+
+    // 記録は高精度モードではワークレット側で確定する。
+    // 簡易モードのときだけ、これまでどおり rAF で記録する
+    if (engineMode === ENGINE_FALLBACK) {
+      recordFallbackInterval(db, floorDb, nowSec);
     }
 
     rafId = requestAnimationFrame(animate);
@@ -349,7 +481,10 @@
       setStatus('書き出すログがありません', 'warn');
       return;
     }
-    const csv = buildCsv(logs);
+    // 列は増やさない（timestamp,dbfs のまま）。どちらのモードで取った記録かだけ残す
+    const engines = Array.from(new Set(logs.map(r => r.engine).filter(Boolean)));
+    const engine = engines.length === 1 ? engines[0] : (engines.length ? 'mixed' : engineMode);
+    const csv = buildCsv(logs, { engine });
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -367,6 +502,7 @@
   function resetAllStats() {
     resetStats();
     logs.length = 0;
+    seqCounter = 0;
     updateButtonStates(); // ボタン状態を更新
     setStatus('統計とログをリセットしました', 'ok');
   }
@@ -565,6 +701,7 @@
   });
 
   // 初期
+  renderEngineMode();
   applyTheme();
   resizeCanvas();
   drawSeries();

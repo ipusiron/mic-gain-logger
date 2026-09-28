@@ -91,6 +91,7 @@
         </div>
 
         <div id="status" class="status ok" aria-live="polite">待機中</div>
+        <div id="engineMode" class="engine-mode" aria-live="polite"></div>
       </div>
 
       <div class="grid-item">
@@ -208,7 +209,7 @@
           <ul>
             <li><strong>マイクダイアログが表示されない：</strong>ブラウザーのURL付近のマイクアイコンを押すか、ページをリロード</li>
             <li><strong>音量が「--.- dBFS」のまま：</strong>マイクが正しく接続・選択されているか確認</li>
-            <li><strong>記録が自動停止する：</strong>ブラウザーのタブを切り替えると一時停止する場合があります</li>
+            <li><strong>計測エンジンの表示：</strong>「高精度モード」はオーディオスレッドで区間ごとに集計するため、タブが背面になっても記録が途切れません。「簡易モード」はブラウザーがAudioWorkletに対応していないときの代替で、描画が止まると記録も欠けます</li>
             <li><strong>グラフが表示されない：</strong>ページをリロードして再試行</li>
             <li><strong>スマートフォンで操作しにくい：</strong>画面を縦向きにして使用してください</li>
           </ul>

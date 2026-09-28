@@ -88,11 +88,96 @@ const MicGainLogic = (() => {
     };
   }
 
+  // ---- 区間（1行＝1区間）----
+  //
+  // 計測の単位は「瞬間」ではなく「区間」である。1区間は次を持つ。
+  //   開始・終了時刻（オーディオクロックと、それに対応する壁時計の両方）
+  //   代表値 db（区間内のエネルギー平均＝Leq と同じ定義）
+  //   真のピーク peak / peakDb（区間内の最大絶対値。RMS とは別物）
+  //   クリップ数 clipCount（|sample| >= 1.0 のサンプル数）
+  //   有効サンプル率 validRatio（実際に届いたサンプル数 ÷ 期待サンプル数）
+  // CSV の列は段階1では増やさないが、内部の構造だけ先に確定させておく。
+
+  const ENGINE_WORKLET = 'worklet';
+  const ENGINE_FALLBACK = 'fallback';
+
+  // ログ間隔（秒）→ フレーム数
+  function framesForInterval(intervalSec, sampleRate) {
+    const frames = Math.round(intervalSec * sampleRate);
+    return Math.max(128, Number.isFinite(frames) ? frames : Math.round(sampleRate));
+  }
+
+  function validRatioOf(count, expected) {
+    if (!(expected > 0)) return 0;
+    return count / expected;
+  }
+
+  // オーディオクロックの秒 → 壁時計のミリ秒
+  // anchor = { audioTime, wallMs }（記録開始時に1回だけ取る）
+  function audioTimeToWallMs(audioTime, anchor) {
+    return anchor.wallMs + (audioTime - anchor.audioTime) * 1000;
+  }
+
+  // ワークレットからの1メッセージを1行分の区間レコードへ
+  function buildIntervalRecord(msg, anchor, floorDb) {
+    const sr = msg.sampleRate;
+    const startTime = msg.startFrame / sr;
+    const endTime = msg.endFrame / sr;
+    const rms = msg.count > 0 ? Math.sqrt(msg.sumSq / msg.count) : 0;
+    const rawDb = rmsToDbfs(rms);
+    const startWall = new Date(audioTimeToWallMs(startTime, anchor));
+    const endWall = new Date(audioTimeToWallMs(endTime, anchor));
+    return {
+      seq: msg.seq,
+      engine: ENGINE_WORKLET,
+      startTime,
+      endTime,
+      startWall,
+      endWall,
+      ts: endWall,                       // CSV の timestamp 列（区間の終わり）
+      rawDb,                             // 区間のエネルギー平均（生値）
+      db: Math.max(rawDb, floorDb),      // 表示下限でのクリップ（段階2で表示専用へ移す）
+      peak: msg.peak,
+      peakDb: rmsToDbfs(msg.peak),
+      clipCount: msg.clip,
+      sampleCount: msg.count,
+      expectedSamples: msg.expected,
+      validRatio: validRatioOf(msg.count, msg.expected)
+    };
+  }
+
+  // AudioWorklet が使えない環境（簡易モード）での1行。
+  // 瞬時値しか手元にないので、ピーク・クリップ数・有効サンプル率は「不明」を入れる。
+  function buildFallbackRecord(opts) {
+    const rawDb = opts.db;
+    const endWall = new Date(opts.endWallMs);
+    return {
+      seq: opts.seq,
+      engine: ENGINE_FALLBACK,
+      startTime: opts.startTime,
+      endTime: opts.endTime,
+      startWall: new Date(opts.startWallMs),
+      endWall,
+      ts: endWall,
+      rawDb,
+      db: Math.max(rawDb, opts.floorDb),
+      peak: null,
+      peakDb: null,
+      clipCount: null,
+      sampleCount: null,
+      expectedSamples: opts.expectedSamples,
+      validRatio: null
+    };
+  }
+
   // ---- CSV ----
-  function buildCsv(logs) {
+  // 列は段階1では増やさない（timestamp,dbfs のまま）。
+  // どちらの計測モードで取った記録かだけを、先頭の1行のコメントで残す。
+  function buildCsv(logs, opts) {
     const header = 'timestamp,dbfs\n';
     const lines = logs.map(r => `${r.ts.toISOString()},${r.db.toFixed(2)}`).join('\n');
-    return header + lines;
+    const prefix = (opts && opts.engine) ? `# engine=${opts.engine}\n` : '';
+    return prefix + header + lines;
   }
 
   function csvFileName(date) {
@@ -112,6 +197,13 @@ const MicGainLogic = (() => {
     addStatsSample,
     formatStats,
     emptyStatsText,
+    ENGINE_WORKLET,
+    ENGINE_FALLBACK,
+    framesForInterval,
+    validRatioOf,
+    audioTimeToWallMs,
+    buildIntervalRecord,
+    buildFallbackRecord,
     buildCsv,
     csvFileName
   };
