@@ -5,7 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Mic Gain Logger - Day041</title>
   <meta name="description" content="Web Audio API を使ったマイク音量ロガー（録音なし／リアルタイム表示／CSV出力）" />
-  <link rel="stylesheet" href="./style.css?v=2.0" />
+  <!-- GitHub Pages はレスポンスヘッダーを設定できないので、CSP は meta で入れる。
+       connect-src 'none' は「音も測定値も外部へ送らない」という説明を、
+       文章ではなくブラウザーの機能で担保するためのものである。
+       これで fetch・XHR・WebSocket・sendBeacon がすべて止まる。
+       （X-Frame-Options と X-Content-Type-Options は meta では効かないので書かない） -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <!-- favicon を参照していないと、ブラウザーが /favicon.ico を取りにいって
+       コンソールに404が残る。SVG 1枚で済ませる（外部への取得は発生しない） -->
+  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="./style.css?v=3.2" />
 </head>
 <body>
   <header class="app-header">
@@ -80,22 +90,20 @@
               </div>
             </div>
             <div class="control">
-              <label for="smoothing" title="音量の変化を滑らかにする度合い">スムージング</label>
-              <input type="range" id="smoothing" min="0" max="0.95" step="0.05" value="0.5" title="音量変化の平滑化レベル（0=リアルタイム、0.95=非常に滑らか）">
-            </div>
-            <div class="control">
               <label for="floorDb" title="表示する最小音量レベル">表示下限（dBFS）</label>
-              <input type="number" id="floorDb" step="1" value="-60" title="この値未満の音量は表示されません（通常-60〜-40dBFS）">
+              <input type="number" id="floorDb" min="-120" max="-1" step="1" value="-60" title="この値未満の音量は表示されません（通常-60〜-40dBFS）。表示だけに効き、記録される値は変わりません">
             </div>
           </div>
         </div>
 
         <div id="status" class="status ok" aria-live="polite">待機中</div>
+        <div id="engineMode" class="engine-mode" aria-live="polite"></div>
+        <div id="recordNotice" class="record-notice" role="status" aria-live="polite"></div>
       </div>
 
       <div class="grid-item">
         <h2 class="section-title">リアルタイムグラフ</h2>
-        <canvas id="levelCanvas" width="800" height="220" aria-label="音量推移グラフ" title="時系列での音量変化を表示（横軸=時間、縦軸=音量レベル）"></canvas>
+        <canvas id="levelCanvas" width="800" height="220" aria-label="音量推移グラフ" title="音量推移グラフ（横軸=-60s〜0s＝いまから何秒前、縦軸=音量レベル dBFS）"></canvas>
       </div>
 
       <div class="grid-item stats">
@@ -109,23 +117,28 @@
             <div class="stat-label">ログ件数</div>
             <div id="count" class="stat-value">0</div>
           </div>
-          <div class="stat" title="記録期間中の平均音量レベル">
-            <div class="stat-label">平均</div>
+          <div class="stat" title="記録された行のエネルギー平均（Leq）。重みは行数ではなく区間長（秒）である。無音の行は電力0として数える">
+            <div class="stat-label">平均（Leq）</div>
             <div id="avgDb" class="stat-value">--.- dBFS</div>
           </div>
-          <div class="stat" title="記録期間中の最大音量レベル">
+          <div class="stat" title="記録された行のうち、有限値の行での最大音量レベル">
             <div class="stat-label">最大</div>
             <div id="maxDb" class="stat-value">--.- dBFS</div>
           </div>
-          <div class="stat" title="記録期間中の最小音量レベル">
+          <div class="stat" title="記録された行のうち、有限値の行での最小音量レベル">
             <div class="stat-label">最小</div>
             <div id="minDb" class="stat-value">--.- dBFS</div>
           </div>
-          <div class="stat" title="最大値と最小値の差（音量の変動幅）">
+          <div class="stat" title="最大値と最小値の差（有限値の行での変動幅）">
             <div class="stat-label">変動幅</div>
             <div id="rangeDb" class="stat-value">--.- dB</div>
           </div>
+          <div class="stat" title="区間内の最大絶対振幅（真のピーク）のうち、最も大きかったもの。上の「最大」はRMSなので別の値になる。0 dBFSを超えることがある（浮動小数点の音声なので、リサンプリングの跳ね返りで振幅が1.0を超える）。超えていたら確実にクリップしている。簡易モードでは測れないため「--.-」のまま">
+            <div class="stat-label">真のピーク</div>
+            <div id="peakDb" class="stat-value">--.- dBFS</div>
+          </div>
         </div>
+        <div id="integrityNote" class="integrity-note" role="status" aria-live="polite" title="クリップした区間と、有効サンプル率が1.000未満だった区間の数。どちらも0なら「穴なし」と出る"></div>
       </div>
     </section>
 
@@ -135,8 +148,7 @@
         <ul class="notes">
           <li>本ツールは<strong>録音しません</strong>。音量（dBFS）を可視化・記録します。</li>
           <li>表示は機器・環境に依存します。絶対値ではなく<strong>相対変化</strong>の把握を主目的としてください。</li>
-          <li>CSVにはタイムスタンプと音量（dBFS）が出力されます。</li>
-          <li>スムージング値を上げると短期的な揺れが抑えられますが、応答性は下がります。</li>
+          <li>CSVには7列（時刻・音量・区間の通し番号・ピーク・クリップ数・有効サンプル率・ハッシュ）が出力されます。データ行の上には測定条件のヘッダー行、下には行数や無音の有無を残すトレーラー行が、どちらも「#」から始まる形で付きます。</li>
           <li><strong>停止直後の再開について：</strong>ブラウザーの仕様により、停止直後に「記録開始」を押してもマイクダイアログが表示されない場合があります。その場合は、URL付近のマイクアイコンを押してマイクダイアログを再表示するか、ページをリロードしてください。</li>
         </ul>
       </details>
@@ -152,7 +164,7 @@
   <!-- ヘルプモーダル -->
   <div id="helpModal" class="modal" aria-hidden="true">
     <div class="modal-backdrop"></div>
-    <div class="modal-content" role="dialog" aria-labelledby="helpModalTitle">
+    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle">
       <div class="modal-header">
         <h2 id="helpModalTitle">ヘルプ - Mic Gain Logger</h2>
         <button class="modal-close" aria-label="閉じる">&times;</button>
@@ -173,8 +185,7 @@
           <h3>⚙️ 設定項目</h3>
           <ul>
             <li><strong>ログ間隔：</strong>記録する間隔（秒単位）。プリセットボタン（1s/3s/5s/10s/1m）で素早く設定可能</li>
-            <li><strong>スムージング：</strong>音量変化の平滑化（0=リアルタイム、0.95=非常に滑らか）</li>
-            <li><strong>表示下限：</strong>表示する最小音量レベル（通常-60〜-40dBFS）</li>
+            <li><strong>表示下限：</strong>表示する最小音量レベル（通常-60〜-40dBFS）。表示だけに効き、CSVに記録される値は動きません</li>
           </ul>
           <p><em>※ すべての設定は記録中でも変更可能で即座に反映されます</em></p>
           <p><em>※ スマートフォンでは「設定を表示」ボタンで設定項目を開閉できます</em></p>
@@ -185,11 +196,15 @@
           <ul>
             <li><strong>稼働時間：</strong>記録開始からの経過時間</li>
             <li><strong>ログ件数：</strong>CSVに記録されたデータポイント総数</li>
-            <li><strong>平均/最大/最小：</strong>記録期間中の音量レベル</li>
-            <li><strong>変動幅：</strong>最大値と最小値の差（音環境の変化度合い）</li>
+            <li><strong>平均（Leq）：</strong>記録された行のエネルギー平均。⚠<strong>重みは行数ではなく区間長（秒）です。</strong>ログ間隔は記録中に変えられるので、1秒の区間と3秒の区間を同じ重みで平均すると実時間に比例しない値になります（手元の検算では最大9.3dBずれました）。dBは対数なので算術平均にも物理的な意味がなく、無音の行を-999などへ置き換えて平均すると数百dB外れます。無音の行は電力0として数えます</li>
+            <li><strong>最大/最小/変動幅：</strong>記録された行のうち、有限値の行での最大・最小とその差。無音（-∞ dBFS）の区間は外します</li>
+            <li><strong>真のピーク：</strong>区間内の最大絶対振幅のうち、最も大きかったもの。上の「最大」はRMSなので別の値になります。0 dBFSを超えることがあり、超えていたら確実にクリップしています。簡易モードでは測れないため「--.-」のままです</li>
+            <li><strong>記録の穴：</strong>統計の下に1行で出ます。<strong>クリップした区間</strong>（|振幅|が1.0以上のサンプルを含む区間。波形が頭打ちになって高調波が広い帯域へ散るため、その区間の値は読めません）と、<strong>有効サンプル率</strong>（届いたサンプル数÷期待サンプル数。1.000未満＝その区間の音の一部が届いていない）の区間数を示します。どちらも0なら「記録の穴なし」と出ます</li>
             <li><strong>リアルタイムグラフ：</strong>時系列での音量推移を可視化</li>
             <li><strong>音量メーター：</strong>現在の音量を色分けで表示（緑→黄→赤）</li>
           </ul>
+          <p><em>※ 統計はCSVに書き出される行（区間）だけから計算します</em></p>
+          <p><em>※ CSVから同じ値を出せますが、条件があります。区間長はtimestamp（区間の終わり）の差で作れる一方、トレーラーの<code>#&nbsp;sessionStartAt=</code>と<code>#&nbsp;clockBreakAt=</code>に並ぶseqの行だけは差を使えません。記録を止めて再開した境界では差に休止時間がまるごと入り、時刻のアンカーを取り直した行では跳んだぶんが入るためです。その行は<code>#&nbsp;intervalSec=</code>のログ間隔を重みにしてください（<code>1@0+3@12</code>＝seq&nbsp;0から1秒、seq&nbsp;12から3秒）。手元の実測では、この置き換えをしないと17行の記録で6.49dB外れ、置き換えると小数10桁まで一致しました。手順はREADMEにあります</em></p>
           <p><em>※ 複数回の記録セッション（記録開始→停止→記録開始）でデータは累積されます</em></p>
         </section>
 
@@ -197,7 +212,8 @@
           <h3>💾 データの取り扱い</h3>
           <ul>
             <li><strong>録音なし：</strong>音声は一切記録されず、音量データのみを扱います</li>
-            <li><strong>CSV形式：</strong>タイムスタンプと音量（dBFS）のペアで出力</li>
+            <li><strong>CSV形式：</strong>7列（timestamp・dbfs・seq・peak_dbfs・clip・valid_ratio・hash）を、測定条件のヘッダー行と、行数・ログ間隔・セッションの境界・無音の有無を残すトレーラー行（どちらも「#」から始まる）で挟んで出力</li>
+            <li><strong>ハッシュチェーン：</strong>各行のハッシュに前の行のハッシュを混ぜています。CSVがそのまま渡ってきたときに、うっかりの破損・部分的な欠落・順序の入れ替わりを見つけられます。⚠<strong>意図的な改変には、相手が誰であっても耐えません。</strong>鎖の作り方をREADMEで公開しているので、値を書き換えたあとにハッシュを計算し直せば検証は通ります。記録が正しいことの証明には使えません</li>
             <li><strong>累積記録：</strong>停止→再開しても前回データは保持されます</li>
             <li><strong>プライバシー配慮：</strong>すべての処理はブラウザー内で完結</li>
           </ul>
@@ -208,7 +224,7 @@
           <ul>
             <li><strong>マイクダイアログが表示されない：</strong>ブラウザーのURL付近のマイクアイコンを押すか、ページをリロード</li>
             <li><strong>音量が「--.- dBFS」のまま：</strong>マイクが正しく接続・選択されているか確認</li>
-            <li><strong>記録が自動停止する：</strong>ブラウザーのタブを切り替えると一時停止する場合があります</li>
+            <li><strong>計測エンジンの表示：</strong>「高精度モード」はオーディオスレッドで区間ごとに集計するため、タブが背面になっても記録が途切れません。「簡易モード」はAudioWorkletのモジュールを読み込めないときの代替で、描画が止まると記録も欠けます。ブラウザーが未対応のときより、file:// で直接開いたときのほうが遭遇しやすいので、https または localhost 経由で開き直してください。なお file:// で落ちるのはモジュールの読み込みだけで、ハッシュのほうは file:// でも計算されます</li>
             <li><strong>グラフが表示されない：</strong>ページをリロードして再試行</li>
             <li><strong>スマートフォンで操作しにくい：</strong>画面を縦向きにして使用してください</li>
           </ul>
@@ -218,7 +234,7 @@
           <h3>📱 モバイル利用について</h3>
           <ul>
             <li><strong>レスポンシブ対応：</strong>スマートフォンとタブレットに最適化</li>
-            <li><strong>タッチ操作：</strong>すべてのボタンは44px以上のタッチターゲット</li>
+            <li><strong>タッチ操作：</strong>主要な操作ボタンは44px以上、プリセットなど補助的なボタンは24px以上（WCAG 2.2 の 2.5.8 に準拠）</li>
             <li><strong>設定の折りたたみ：</strong>「設定を表示/隠す」で画面を有効活用</li>
             <li><strong>バッテリー考慮：</strong>不要時は停止してバッテリー消費を抑制</li>
           </ul>
@@ -230,13 +246,15 @@
             <li><strong>録音機能なし：</strong>音声そのものは保存されません（音量レベルのみ）</li>
             <li><strong>環境依存：</strong>表示値は機器・環境により変動するため、絶対値でなく相対変化を参考に</li>
             <li><strong>用途制限：</strong>本ツールは物理セキュリティ・音響監視の補助用途を想定</li>
-            <li><strong>法的配慮：</strong>使用時は適用される法律・規制を遵守してください</li>
+            <li><strong>証明には使えません：</strong>CSVのハッシュチェーンは、うっかりの破損や欠落に気づくためのものです。意図的な改変には耐えないため、記録が正しいことの証明には使えません</li>
+            <li><strong>法的配慮：</strong>使用時は適用される法律・規制を遵守してください。音量のみの記録でも、記録する場所と目的によっては制約がかかります</li>
           </ul>
         </section>
       </div>
     </div>
   </div>
 
-  <script src="./script.js?v=2.0"></script>
+  <script src="./logic.js?v=3.2"></script>
+  <script src="./script.js?v=3.2"></script>
 </body>
 </html>

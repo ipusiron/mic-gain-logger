@@ -10,6 +10,15 @@
   --shadow:0 8px 30px rgba(0,0,0,.4);
   --radius:18px;
   --border:rgba(255,255,255,.15);
+  /* 見出しの色。ベタ書きするとテーマの片方で読めなくなる
+     （改修前は #cfe6ff 固定で、ライトの白いカード上で 1.28:1 だった） */
+  --title:#cfe6ff;
+  /* --accent を面に使うときの文字色。白固定だとダークで 2.24:1 になる */
+  --on-accent:#0b0d10;
+  /* キャンバスの描画色。JS がベタ書きするとテーマの片方で見えなくなる
+     （改修前はグリッドが rgba(255,255,255,.06) 固定で、ライトでは白地に白だった） */
+  --grid:rgba(255,255,255,.18);
+  --plot:#7cc0ff;
 }
 
 *{box-sizing:border-box}
@@ -98,6 +107,20 @@ body.light .theme-toggle .icon-moon{display:block;}
   margin-bottom:20px;
 }
 
+/* グラフのキャンバス。表示上の大きさは CSS だけが決め、JS は内部解像度
+   （canvas.width / canvas.height）しか触らない。
+   ⚠ JS が canvas.style.width/height に px を焼き込むと、インラインスタイルが
+   ここより強くなってレスポンシブ規則が死ぬ。改修前は 1280px で開いてから
+   320px へ狭め、また 1280px へ戻しても 270px のまま広がらなかった。
+   ⚠ この規則は 480px 以下の上書きより前に置く（メディアクエリーは詳細度を
+   上げないので、後ろに置くと上書きを打ち消す）。 */
+#levelCanvas{
+  width:100%;
+  max-width:100%;
+  height:220px;
+  display:block;
+}
+
 .grid{
   display:grid;
   gap:16px;
@@ -175,11 +198,6 @@ body.light .theme-toggle .icon-moon{display:block;}
     gap: 12px;
     padding: 8px 0 16px;
     margin: 0 12px;
-  }
-  
-  /* モバイルでの actions エリアのボタン配置調整 */
-  .actions {
-    justify-content: flex-start;
   }
   
   /* ヘルプとテーマボタンをモバイル用エリアに配置 */
@@ -284,7 +302,8 @@ body.light .theme-toggle .icon-moon{display:block;}
   
   .control input[type="number"] {
     padding: 8px;
-    font-size: 14px;
+    /* 16px を下回ると iOS Safari がフォーカス時に自動ズームして版面がずれる */
+    font-size: 16px;
     border-radius: 6px;
     min-height: 36px;
   }
@@ -371,7 +390,7 @@ body.light .theme-toggle .icon-moon{display:block;}
 .section-title{
   margin:0 0 10px;
   font-size:18px;
-  color:#cfe6ff;
+  color:var(--title);
 }
 
 .big-value{
@@ -409,10 +428,18 @@ body.light .theme-toggle .icon-moon{display:block;}
 .control label{display:block; font-size:12px; color:var(--muted); margin-bottom:6px}
 .control input[type="number"],
 .control input[type="range"]{width:100%}
+/* 指定しないとブラウザー既定（約13.3px）になり、iOS Safari の自動ズームを招く */
+.control input[type="number"]{font-size:16px}
 
-/* PC版では折りたたみボタンを非表示 */
-.controls-toggle {
-  display: none;
+/* PC版では折りたたみボタンを非表示。
+   ⚠ メディアクエリーは詳細度を上げない。`.controls-toggle{display:flex}`（480px以下）
+   と同じ詳細度のまま後ろへ置くと、幅によらずこちらが勝って折りたたみボタンが
+   常に消え、スマートフォンで設定を1つも開けなくなる。481px以上へ閉じ込めて、
+   480px以下の規則と範囲が重ならないようにする。 */
+@media (min-width: 481px) {
+  .controls-toggle {
+    display: none;
+  }
 }
 
 .interval-controls{
@@ -430,6 +457,8 @@ body.light .theme-toggle .icon-moon{display:block;}
   border:1px solid var(--border);
   border-radius:6px;
   padding:4px 8px;
+  /* WCAG 2.2 の 2.5.8（最小 24x24 CSS px）。実測が 30.1x22.97px で高さが足りなかった */
+  min-height:24px;
   font-size:11px;
   cursor:pointer;
   transition:all 0.2s;
@@ -444,13 +473,38 @@ body.light .theme-toggle .icon-moon{display:block;}
 }
 .preset-btn.active{
   background:var(--accent);
-  color:white;
+  color:var(--on-accent);
   border-color:var(--accent);
 }
 
 .status{
   margin-top:10px; font-size:13px; color:var(--muted);
 }
+.engine-mode{
+  margin-top:6px; font-size:12px; color:var(--muted);
+  min-height:1em;
+}
+.engine-mode.ok{color:var(--ok)}
+.engine-mode.warn{color:var(--warn)}
+.record-notice{
+  margin-top:6px; font-size:12px; color:var(--muted);
+  line-height:1.5;
+}
+.record-notice:empty{display:none}
+.record-notice.warn{color:var(--warn)}
+.record-notice.err{color:var(--err)}
+
+/* 記録の穴の有無。⚠ 片側表示にしない（穴が無いときも出す）ため、
+   既定の色は --muted に置く。ok/warn のときだけ色を付ける。
+   色はコントラスト検査（test/contrast.test.js）を通っているトークンだけを使う */
+.integrity-note{
+  margin-top:10px; font-size:12px; color:var(--muted);
+  line-height:1.5;
+}
+.integrity-note:empty{display:none}
+.integrity-note.ok{color:var(--ok)}
+.integrity-note.warn{color:var(--warn)}
+.integrity-note.unknown{color:var(--muted)}
 .status.ok{color:var(--ok)}
 .status.warn{color:var(--warn)}
 .status.err{color:var(--err)}
@@ -488,11 +542,8 @@ footer .footer{
   cursor: help;
 }
 
-[title]:hover {
-  position: relative;
-}
-
-/* カスタムツールチップのスタイル（ブラウザー標準のものを使用） */
+/* ツールチップはブラウザー標準に任せる（カスタム実装はしていない）。
+   かつて [title]:hover { position: relative } があったが、何の効果も生まない死にコードだった。 */
 button[title]:hover,
 input[title]:hover,
 canvas[title]:hover {
@@ -692,16 +743,23 @@ label[title]:hover {
   font-style: italic;
 }
 
-/* ライトモード */
+/* ライトモード。
+   ⚠ 初回訪問はこちらになる（savedTheme が無いときは light）。
+   いちばん最初に見る画面なので、ここのコントラストがいちばん効く。
+   各値は WCAG 2.2 の相対輝度で計算して選んである（文字は 4.5:1 以上）。 */
 body.light{
   --bg:#f4f7fb;
   --fg:#0b0d10;
   --muted:#576170;
   --card:#ffffff;
-  --accent:#1d6fff;
-  --ok:#0e9f63;
-  --warn:#c98b1c;
-  --err:#d83a3a;
+  --accent:#0b5bd3;   /* 旧 #1d6fff はリンクで 4.10:1 だった → 5.66:1 */
+  --ok:#0a7d4e;       /* 旧 #0e9f63 は 3.41:1 だった → 5.18:1 */
+  --warn:#8a5b00;     /* 旧 #c98b1c は 2.92:1 だった → 5.87:1 */
+  --err:#c32626;      /* 旧 #d83a3a は 4.58:1 → 5.79:1 */
   --shadow:0 8px 28px rgba(16,24,40,.12);
   --border:rgba(0,0,0,.08);
+  --title:#1257b8;    /* 旧 #cfe6ff ベタ書きは 1.28:1 だった → 6.82:1 */
+  --on-accent:#ffffff;
+  --grid:rgba(11,13,16,.22);
+  --plot:#0b5bd3;
 }

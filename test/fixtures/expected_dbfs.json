@@ -1,0 +1,76 @@
+{
+  "_generatedBy": "impl/ref/day041/gen_fixtures.py",
+  "_oracle": "impl/ref/day041/reference_dbfs.py",
+  "_note": "int16 量子化後の実サンプルから計算した値。手で書かない。",
+  "sampleRate": 48000,
+  "freqHz": 1000,
+  "int16Scale": 32768,
+  "cases": [
+    {
+      "name": "sine_m6",
+      "targetDbfs": -6,
+      "freqHz": 1000,
+      "sampleRate": 48000,
+      "numSamples": 48000,
+      "expectedRms": 0.5011897359731144,
+      "expectedDbfs": -5.999956632882677,
+      "expectedPeak": 0.708770751953125,
+      "expectedPeakDbfs": -2.9898842458807713
+    },
+    {
+      "name": "sine_m20",
+      "targetDbfs": -20,
+      "freqHz": 1000,
+      "sampleRate": 48000,
+      "numSamples": 48000,
+      "expectedRms": 0.09999374873644362,
+      "expectedDbfs": -20.000542994825686,
+      "expectedPeak": 0.14141845703125,
+      "expectedPeakDbfs": -16.989878110115225
+    },
+    {
+      "name": "sine_m40",
+      "targetDbfs": -40,
+      "freqHz": 1000,
+      "sampleRate": 48000,
+      "numSamples": 48000,
+      "expectedRms": 0.009999027152100668,
+      "expectedDbfs": -40.00084504605455,
+      "expectedPeak": 0.014129638671875,
+      "expectedPeakDbfs": -36.9973788788353
+    },
+    {
+      "name": "sine_m60",
+      "targetDbfs": -60,
+      "freqHz": 1000,
+      "sampleRate": 48000,
+      "numSamples": 48000,
+      "expectedRms": 0.001001477310100593,
+      "expectedDbfs": -59.987177716419296,
+      "expectedPeak": 0.00140380859375,
+      "expectedPeakDbfs": -57.05384206556288
+    },
+    {
+      "name": "silence",
+      "targetDbfs": null,
+      "freqHz": 0,
+      "sampleRate": 48000,
+      "numSamples": 48000,
+      "expectedRms": 0.0,
+      "expectedDbfs": "-Infinity",
+      "expectedPeak": 0.0,
+      "expectedPeakDbfs": "-Infinity"
+    }
+  ],
+  "step": {
+    "name": "step_m40_m20",
+    "sampleRate": 48000,
+    "numSamples": 48000,
+    "halfSamples": 24000,
+    "firstDbfs": -40.00084504605455,
+    "secondDbfs": -20.000542994825686,
+    "energyAverageDbfs": -22.967632204142333,
+    "arithmeticMeanDbfs": -30.00069402044012,
+    "expectedPeak": 0.14141845703125
+  }
+}
