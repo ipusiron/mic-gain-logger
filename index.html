@@ -63,11 +63,13 @@
         <h2 class="section-title">現在の音量</h2>
         <div id="bigValue" class="big-value" title="現在のマイク入力音量（dBFS: デシベル フルスケール）">--.- dBFS</div>
 
-        <div class="meter" title="音量レベルメーター（-60dBFS〜0dBFS）">
+        <div class="meter" id="meter" title="音量レベルメーター（表示下限〜0dBFS）">
           <div class="meter-bar" id="meterBar"></div>
-          <div class="meter-scale">
-            <span>-60</span><span>-40</span><span>-20</span><span>0</span>
-          </div>
+        </div>
+        <!-- 目盛りは .meter の外に置く（.meter は overflow:hidden で、中に置くと切られて見えない）。
+             数字は表示下限に合わせて script.js が書き換える -->
+        <div class="meter-scale" id="meterScale" aria-hidden="true">
+          <span>-90</span><span>-60</span><span>-30</span><span>0</span>
         </div>
 
         <div class="controls-wrapper">
@@ -91,7 +93,7 @@
             </div>
             <div class="control">
               <label for="floorDb" title="表示する最小音量レベル">表示下限（dBFS）</label>
-              <input type="number" id="floorDb" min="-120" max="-1" step="1" value="-60" title="この値未満の音量は表示されません（通常-60〜-40dBFS）。表示だけに効き、記録される値は変わりません">
+              <input type="number" id="floorDb" min="-120" max="-1" step="1" value="-90" title="この値未満の音量は表示されません（既定-90dBFS。静かな部屋の暗騒音や、弱い高い音も見えるようにしています）。表示だけに効き、記録される値は変わりません">
             </div>
           </div>
         </div>
@@ -185,7 +187,7 @@
           <h3>⚙️ 設定項目</h3>
           <ul>
             <li><strong>ログ間隔：</strong>記録する間隔（秒単位）。プリセットボタン（1s/3s/5s/10s/1m）で素早く設定可能</li>
-            <li><strong>表示下限：</strong>表示する最小音量レベル（通常-60〜-40dBFS）。表示だけに効き、CSVに記録される値は動きません</li>
+            <li><strong>表示下限：</strong>表示する最小音量レベル（既定-90dBFS）。これより静かな値は下端に張り付いて見えます。表示だけに効き、CSVに記録される値は動きません</li>
           </ul>
           <p><em>※ すべての設定は記録中でも変更可能で即座に反映されます</em></p>
           <p><em>※ スマートフォンでは「設定を表示」ボタンで設定項目を開閉できます</em></p>

@@ -169,6 +169,158 @@ body.light .theme-toggle .icon-moon{display:block;}
   }
 }
 
+.section-title{
+  margin:0 0 10px;
+  font-size:18px;
+  color:var(--title);
+}
+
+.big-value{
+  font-variant-numeric: tabular-nums;
+  font-weight:800;
+  font-size: clamp(36px, 6vw, 60px);
+  letter-spacing:0.5px;
+  margin:6px 0 14px;
+}
+
+.meter{
+  position:relative;
+  height:20px;
+  background:var(--bg);
+  border-radius:999px;
+  overflow:hidden;
+  border: 1px solid var(--border);
+}
+.meter-bar{
+  height:100%;
+  width:0%;
+  background: linear-gradient(90deg, #1fbf75, #f2b84b 60%, #ff6666 85%);
+  transition: width .12s linear;
+}
+.meter-scale{
+  display:flex; justify-content:space-between;
+  font-size:12px; color:var(--muted);
+  margin-top:6px;
+}
+
+.controls{
+  display:grid; gap:10px; grid-template-columns: repeat(auto-fit, minmax(180px,1fr));
+  margin-top:14px;
+}
+.control label{display:block; font-size:12px; color:var(--muted); margin-bottom:6px}
+.control input[type="number"],
+.control input[type="range"]{width:100%}
+/* 指定しないとブラウザー既定（約13.3px）になり、iOS Safari の自動ズームを招く */
+.control input[type="number"]{font-size:16px}
+
+/* PC版では折りたたみボタンを非表示。
+   ⚠ メディアクエリーは詳細度を上げない。`.controls-toggle{display:flex}`（480px以下）
+   と同じ詳細度のまま後ろへ置くと、幅によらずこちらが勝って折りたたみボタンが
+   常に消え、スマートフォンで設定を1つも開けなくなる。481px以上へ閉じ込めて、
+   480px以下の規則と範囲が重ならないようにする。 */
+@media (min-width: 481px) {
+  .controls-toggle {
+    display: none;
+  }
+}
+
+.interval-controls{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.interval-presets{
+  display:flex;
+  gap:4px;
+  flex-wrap:wrap;
+}
+.preset-btn{
+  background:var(--bg);
+  border:1px solid var(--border);
+  border-radius:6px;
+  padding:4px 8px;
+  /* WCAG 2.2 の 2.5.8（最小 24x24 CSS px）。実測が 30.1x22.97px で高さが足りなかった */
+  min-height:24px;
+  font-size:11px;
+  cursor:pointer;
+  transition:all 0.2s;
+  color:var(--muted);
+  min-width:28px;
+  text-align:center;
+}
+.preset-btn:hover{
+  background:var(--card);
+  color:var(--fg);
+  transform:translateY(-1px);
+}
+.preset-btn.active{
+  background:var(--accent);
+  color:var(--on-accent);
+  border-color:var(--accent);
+}
+
+.status{
+  margin-top:10px; font-size:13px; color:var(--muted);
+}
+.engine-mode{
+  margin-top:6px; font-size:12px; color:var(--muted);
+  min-height:1em;
+}
+.engine-mode.ok{color:var(--ok)}
+.engine-mode.warn{color:var(--warn)}
+.record-notice{
+  margin-top:6px; font-size:12px; color:var(--muted);
+  line-height:1.5;
+}
+.record-notice:empty{display:none}
+.record-notice.warn{color:var(--warn)}
+.record-notice.err{color:var(--err)}
+
+/* 記録の穴の有無。⚠ 片側表示にしない（穴が無いときも出す）ため、
+   既定の色は --muted に置く。ok/warn のときだけ色を付ける。
+   色はコントラスト検査（test/contrast.test.js）を通っているトークンだけを使う */
+.integrity-note{
+  margin-top:10px; font-size:12px; color:var(--muted);
+  line-height:1.5;
+}
+.integrity-note:empty{display:none}
+.integrity-note.ok{color:var(--ok)}
+.integrity-note.warn{color:var(--warn)}
+.integrity-note.unknown{color:var(--muted)}
+.status.ok{color:var(--ok)}
+.status.warn{color:var(--warn)}
+.status.err{color:var(--err)}
+
+.stats-grid{
+  display:grid; gap:12px;
+  grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));
+}
+.stat{
+  background:var(--bg); border-radius:12px; padding:12px; 
+  border: 1px solid var(--border);
+}
+.stat-label{font-size:12px; color:var(--muted)}
+.stat-value{font-size:18px; font-variant-numeric:tabular-nums; margin-top:4px}
+
+.btn{
+  background:var(--card); color:var(--fg);
+  border:1px solid var(--border);
+  border-radius:12px; padding:10px 14px;
+  cursor:pointer; transition:.15s ease;
+}
+.btn:hover{transform:translateY(-1px); box-shadow:0 6px 16px rgba(0,0,0,.25)}
+.btn:disabled{opacity:.5; cursor:not-allowed; transform:none; box-shadow:none}
+.btn.primary{background: linear-gradient(180deg, #3287ff, #2a6fe0); border-color: rgba(255,255,255,.1)}
+
+footer .footer{
+  text-align:center; color:var(--muted);
+  padding:24px; font-size:14px;
+}
+
+/* ⚠⚠ 幅で切り替える規則は、ここ（打ち消す相手になる基本ルールより後ろ）に置く。
+   メディアクエリーは詳細度を上げないので、同じ詳細度なら後ろに書いたほうが勝つ。
+   改修前はこのブロックがファイルの中ほどにあり、後ろの基本ルールに38件の指定が
+   打ち消されていた（320px 幅で統計が1列7行になった）。test/css-order.test.js が縛る */
 /* スマートフォン向けレイアウト (480px以下) */
 @media (max-width: 480px) {
   /* 全体的な余白を削減 */
@@ -381,161 +533,12 @@ body.light .theme-toggle .icon-moon{display:block;}
   }
   
   /* フッター */
-  .footer {
+  footer .footer {
     padding: 16px;
     font-size: 12px;
   }
 }
 
-.section-title{
-  margin:0 0 10px;
-  font-size:18px;
-  color:var(--title);
-}
-
-.big-value{
-  font-variant-numeric: tabular-nums;
-  font-weight:800;
-  font-size: clamp(36px, 6vw, 60px);
-  letter-spacing:0.5px;
-  margin:6px 0 14px;
-}
-
-.meter{
-  position:relative;
-  height:20px;
-  background:var(--bg);
-  border-radius:999px;
-  overflow:hidden;
-  border: 1px solid var(--border);
-}
-.meter-bar{
-  height:100%;
-  width:0%;
-  background: linear-gradient(90deg, #1fbf75, #f2b84b 60%, #ff6666 85%);
-  transition: width .12s linear;
-}
-.meter-scale{
-  display:flex; justify-content:space-between;
-  font-size:12px; color:var(--muted);
-  margin-top:6px;
-}
-
-.controls{
-  display:grid; gap:10px; grid-template-columns: repeat(auto-fit, minmax(180px,1fr));
-  margin-top:14px;
-}
-.control label{display:block; font-size:12px; color:var(--muted); margin-bottom:6px}
-.control input[type="number"],
-.control input[type="range"]{width:100%}
-/* 指定しないとブラウザー既定（約13.3px）になり、iOS Safari の自動ズームを招く */
-.control input[type="number"]{font-size:16px}
-
-/* PC版では折りたたみボタンを非表示。
-   ⚠ メディアクエリーは詳細度を上げない。`.controls-toggle{display:flex}`（480px以下）
-   と同じ詳細度のまま後ろへ置くと、幅によらずこちらが勝って折りたたみボタンが
-   常に消え、スマートフォンで設定を1つも開けなくなる。481px以上へ閉じ込めて、
-   480px以下の規則と範囲が重ならないようにする。 */
-@media (min-width: 481px) {
-  .controls-toggle {
-    display: none;
-  }
-}
-
-.interval-controls{
-  display:flex;
-  flex-direction:column;
-  gap:8px;
-}
-.interval-presets{
-  display:flex;
-  gap:4px;
-  flex-wrap:wrap;
-}
-.preset-btn{
-  background:var(--bg);
-  border:1px solid var(--border);
-  border-radius:6px;
-  padding:4px 8px;
-  /* WCAG 2.2 の 2.5.8（最小 24x24 CSS px）。実測が 30.1x22.97px で高さが足りなかった */
-  min-height:24px;
-  font-size:11px;
-  cursor:pointer;
-  transition:all 0.2s;
-  color:var(--muted);
-  min-width:28px;
-  text-align:center;
-}
-.preset-btn:hover{
-  background:var(--card);
-  color:var(--fg);
-  transform:translateY(-1px);
-}
-.preset-btn.active{
-  background:var(--accent);
-  color:var(--on-accent);
-  border-color:var(--accent);
-}
-
-.status{
-  margin-top:10px; font-size:13px; color:var(--muted);
-}
-.engine-mode{
-  margin-top:6px; font-size:12px; color:var(--muted);
-  min-height:1em;
-}
-.engine-mode.ok{color:var(--ok)}
-.engine-mode.warn{color:var(--warn)}
-.record-notice{
-  margin-top:6px; font-size:12px; color:var(--muted);
-  line-height:1.5;
-}
-.record-notice:empty{display:none}
-.record-notice.warn{color:var(--warn)}
-.record-notice.err{color:var(--err)}
-
-/* 記録の穴の有無。⚠ 片側表示にしない（穴が無いときも出す）ため、
-   既定の色は --muted に置く。ok/warn のときだけ色を付ける。
-   色はコントラスト検査（test/contrast.test.js）を通っているトークンだけを使う */
-.integrity-note{
-  margin-top:10px; font-size:12px; color:var(--muted);
-  line-height:1.5;
-}
-.integrity-note:empty{display:none}
-.integrity-note.ok{color:var(--ok)}
-.integrity-note.warn{color:var(--warn)}
-.integrity-note.unknown{color:var(--muted)}
-.status.ok{color:var(--ok)}
-.status.warn{color:var(--warn)}
-.status.err{color:var(--err)}
-
-.stats-grid{
-  display:grid; gap:12px;
-  grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));
-}
-.stat{
-  background:var(--bg); border-radius:12px; padding:12px; 
-  border: 1px solid var(--border);
-}
-.stat-label{font-size:12px; color:var(--muted)}
-.stat-value{font-size:18px; font-variant-numeric:tabular-nums; margin-top:4px}
-
-.btn{
-  background:var(--card); color:var(--fg);
-  border:1px solid var(--border);
-  border-radius:12px; padding:10px 14px;
-  cursor:pointer; transition:.15s ease;
-}
-.btn:hover{transform:translateY(-1px); box-shadow:0 6px 16px rgba(0,0,0,.25)}
-.btn:disabled{opacity:.5; cursor:not-allowed; transform:none; box-shadow:none}
-.btn.primary{background: linear-gradient(180deg, #3287ff, #2a6fe0); border-color: rgba(255,255,255,.1)}
-
-footer .footer{
-  text-align:center; color:var(--muted);
-  padding:24px; font-size:14px;
-}
-
-/* モバイル対応（既に上記で詳細に定義済み） */
 
 /* ツールチップ */
 [title] {
@@ -595,6 +598,79 @@ label[title]:hover {
   overflow: hidden;
 }
 
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--fg);
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.modal-close:hover {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-body section {
+  margin-bottom: 24px;
+}
+
+.modal-body section:last-child {
+  margin-bottom: 0;
+}
+
+.modal-body h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  color: var(--accent);
+}
+
+.modal-body ul, .modal-body ol {
+  margin: 0 0 12px;
+  padding-left: 20px;
+}
+
+.modal-body li {
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
+.modal-body p {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* モーダルの幅で切り替える規則も、モーダルの基本ルールより後ろに置く */
 /* モーダルのタブレット対応 */
 @media (max-width: 768px) {
   .modal-content {
@@ -669,78 +745,6 @@ label[title]:hover {
     font-size: 12px;
     margin-top: 8px;
   }
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.modal-header h2 {
-  margin: 0;
-  font-size: 20px;
-  color: var(--fg);
-}
-
-.modal-close {
-  background: none;
-  border: none;
-  font-size: 24px;
-  cursor: pointer;
-  color: var(--muted);
-  padding: 0;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  transition: all 0.2s;
-}
-
-.modal-close:hover {
-  background: var(--bg);
-  color: var(--fg);
-}
-
-.modal-body {
-  padding: 20px;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.modal-body section {
-  margin-bottom: 24px;
-}
-
-.modal-body section:last-child {
-  margin-bottom: 0;
-}
-
-.modal-body h3 {
-  margin: 0 0 12px;
-  font-size: 16px;
-  color: var(--accent);
-}
-
-.modal-body ul, .modal-body ol {
-  margin: 0 0 12px;
-  padding-left: 20px;
-}
-
-.modal-body li {
-  margin-bottom: 6px;
-  line-height: 1.5;
-}
-
-.modal-body p {
-  margin: 12px 0 0;
-  color: var(--muted);
-  font-style: italic;
 }
 
 /* ライトモード。

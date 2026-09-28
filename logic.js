@@ -8,8 +8,8 @@ const MicGainLogic = (() => {
   // 値のクランプ
   const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
-  // dBFS 表示→% 変換（-60dBFS=0%, 0dBFS=100%）
-  function dbToPercent(db, floorDb = -60) {
+  // dBFS 表示→% 変換（表示下限=0%, 0dBFS=100%）
+  function dbToPercent(db, floorDb = FLOOR_DB_DEFAULT) {
     const p = (db - floorDb) / (0 - floorDb);
     return clamp(p * 100, 0, 100);
   }
@@ -43,12 +43,25 @@ const MicGainLogic = (() => {
   // 大型表示も「10.0 dBFS」という物理的にありえない正の dBFS を出していた。
   const FLOOR_DB_MIN = -120;
   const FLOOR_DB_MAX = -1;
+  // 表示下限の既定値。
+  // ⚠ 改修前（c7b6bad）は -60 だった。iPhone の実機テスト（2026-09-29）で、21kHz の
+  //    トーン（-65dBFS）が静寂（-76dBFS）と同じく -60 に張り付いて表示され、
+  //    「反応がない」と読まれた（CSVには正しく残っていた）。-90 にする（本人の判断）
+  const FLOOR_DB_DEFAULT = -90;
 
-  // 表示下限の入力値を数値へ（空欄・非数は既定の -60。範囲外は丸める）
+  // 表示下限の入力値を数値へ（空欄・非数は既定値。範囲外は丸める）
   function parseFloorDb(raw) {
     const v = parseFloat(raw);
-    if (Number.isNaN(v)) return -60;
+    if (Number.isNaN(v)) return FLOOR_DB_DEFAULT;
     return clamp(v, FLOOR_DB_MIN, FLOOR_DB_MAX);
+  }
+
+  // メーターの目盛り（4本）。表示下限から作る。
+  // ⚠ 改修前は -60 / -40 / -20 / 0 を HTML に固定で書いていた。表示下限を変えると
+  //    目盛りだけが嘘になる。メーターの幅と同じく「下限〜0」を等分する
+  function meterScaleLabels(floorDb) {
+    const f = Number.isFinite(floorDb) ? floorDb : FLOOR_DB_DEFAULT;
+    return [f, f * 2 / 3, f / 3, 0].map(v => String(Math.round(v) || 0));
   }
 
   // ログ間隔の入力値を秒へ（下限 0.2 秒）
@@ -1241,6 +1254,8 @@ const MicGainLogic = (() => {
     rmsToDbfs,
     rmsOf,
     parseFloorDb,
+    FLOOR_DB_DEFAULT,
+    meterScaleLabels,
     FLOOR_DB_MIN,
     FLOOR_DB_MAX,
     parseIntervalSec,

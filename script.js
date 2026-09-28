@@ -6,7 +6,7 @@
   // 純粋ロジックは logic.js（DOM非依存）から取る
   const {
     clamp, dbToPercent, formatHMS, rmsToDbfs, rmsOf,
-    parseFloorDb, parseIntervalSec, canvasPixelSize,
+    parseFloorDb, parseIntervalSec, canvasPixelSize, meterScaleLabels,
     GRAPH_WINDOW_SEC, GRAPH_TOP_DB, graphArea, timeToX, dbToY,
     timeTickStepSec, timeTicks, dbTickStep, dbTicks, pruneSeries, seriesPointOf,
     createStats, addStatsRecord, formatStats, statsWarnings, statsIntegrity,
@@ -34,7 +34,9 @@
   const helpModal = document.getElementById('helpModal');
 
   const bigValue = document.getElementById('bigValue');
+  const meterEl = document.getElementById('meter');
   const meterBar = document.getElementById('meterBar');
+  const meterScaleEl = document.getElementById('meterScale');
   const statusEl = document.getElementById('status');
 
   const avgEl = document.getElementById('avgDb');
@@ -198,6 +200,19 @@
   // 設定
   function getFloorDb() {
     return parseFloorDb(floorDbInput.value);
+  }
+
+  // メーターの目盛りと説明を、表示下限に合わせる。
+  // ⚠ 改修前は -60 / -40 / -20 / 0 を固定で書いていた（しかも .meter の中にあって切られ、
+  //    一度も見えていなかった）。表示下限を変えると目盛りだけが嘘になる
+  function renderMeterScale() {
+    const floorDb = getFloorDb();
+    const labels = meterScaleLabels(floorDb);
+    if (meterScaleEl) {
+      const spans = meterScaleEl.querySelectorAll('span');
+      labels.forEach((t, i) => { if (spans[i]) spans[i].textContent = t; });
+    }
+    if (meterEl) meterEl.title = `音量レベルメーター（${labels[0]}dBFS〜0dBFS）`;
   }
 
   // 音量計算
@@ -1204,6 +1219,9 @@
   exportBtn.addEventListener('click', exportCSV);
   resetBtn.addEventListener('click', resetAllStats);
   themeToggle.addEventListener('click', toggleTheme);
+  // 表示下限を変えたら、目盛りと（停止中でも）グラフを描き直す
+  floorDbInput.addEventListener('input', renderMeterScale);
+  floorDbInput.addEventListener('input', () => drawSeries());
   window.addEventListener('beforeunload', stop);
 
   // 画面が戻ったら、次の監視タイマーを待たずに時刻を点検する
@@ -1338,6 +1356,7 @@
 
   // 初期
   renderEngineMode();
+  renderMeterScale();
   applyTheme();
   resizeCanvas();
   observeCanvasSize();
