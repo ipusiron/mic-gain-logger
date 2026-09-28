@@ -330,7 +330,17 @@ const MUTATIONS = {
     trailer: p.trailer.filter(l => !l.startsWith('# silence='))
   }),
   'トレーラーを丸ごと落とす': p => ({ ...p, trailer: [] }),
+  // ⚠ 「鎖のないCSV」は、ヘッダーからも `# hash=` / `# trailerHash=` が消えたものである。
+  // データ行の hash 列を空にしただけでは、それは「鎖つきCSVから列を削ったもの」であって
+  // 別物になる。検証器の出力は同じでも、ヘッダーを見れば見分けられる（README に書いた）。
+  // 両方を別々に置いて、取り違えないようにする。
   'hash列が全行で空（鎖のないCSV）': p => ({
+    ...p,
+    head: p.head.filter(l => !l.startsWith('# hash=')),
+    data: p.data.map(l => setCell(l, 6, '')),
+    trailer: p.trailer.filter(l => !l.startsWith('# trailerHash='))
+  }),
+  '鎖つきCSVから hash 列だけを消す': p => ({
     ...p,
     data: p.data.map(l => setCell(l, 6, ''))
   })
