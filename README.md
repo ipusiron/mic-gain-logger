@@ -227,7 +227,6 @@ mic-gain-logger/
 ├── style.css              # スタイルシート（ダーク/ライトモード、モバイル最適化）
 ├── script.js              # アプリケーションロジック（音量取得・可視化・CSV出力・ヘルプ機能）
 ├── CLAUDE.md              # AI開発支援用ドキュメント（プロジェクト概要・開発ガイド）
-├── TECHNICAL.md           # 技術実装解説（Web Audio API・Canvas・レスポンシブ設計）
 ├── assets/                # README.md用画像リソース
 │   └── iphone_chrome.png  # メインスクリーンショット（iPhone Chromeでの表示例）
 ├── README.md              # プロジェクト説明書（機能・使用法・法的注意・トラブルシューティング）
@@ -502,17 +501,31 @@ timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash
 - **Content Security Policy** - `connect-src 'none'`で外部への送信を遮断
 - **node:test** - 依存パッケージなしのテスト（`npm test`）
 
-### 📖 技術実装の詳細解説
-本ツールの技術的な実装について詳しく知りたい方は、以下のドキュメントをご覧ください：
+### 📖 実装の詳細を読むには
 
-**👉 [TECHNICAL.md - 技術実装解説](./TECHNICAL.md)**
+技術解説の別ドキュメントは置いていません。「なぜそう書いたか」は、コードのコメントとテストに書いてあります。
 
-このドキュメントでは以下の内容を詳しく解説しています：
-- Web Audio APIの具体的な実装方法
-- リアルタイムグラフ描画のアルゴリズム  
-- レスポンシブデザインの実装戦略
-- パフォーマンス最適化の手法
-- エラーハンドリングとブラウザー互換性対策
+| 知りたいこと | 読む場所 |
+|---|---|
+| 区間の切り方（1行＝1区間） | `worklet/meter-processor.js`、`logic.js`の「区間」の節、`test/interval.test.js` |
+| dBFSの求め方と統計（Leq） | `logic.js`の「統計」の節、`test/dbfs-fixture.test.js`・`test/stats-csv.test.js` |
+| 時刻のアンカーと取り直し | `logic.js`の「時刻のアンカー」の節、`test/clock.test.js` |
+| デジタル無音・デバイス喪失 | `logic.js`の「デジタル無音の扱い」「マイクのデバイス喪失」の節、`test/silence.test.js`・`test/device.test.js` |
+| 測定条件のメタデータ | `logic.js`の「測定条件」の節、`test/meta.test.js` |
+| CSV v2 とハッシュチェーン | `logic.js`の「CSV」の節、`test/hashchain.test.js` |
+| グラフの座標・目盛り・キャンバス | `logic.js`の「グラフ」「キャンバスの大きさ」の節、`test/graph.test.js`・`test/canvas.test.js` |
+| 開発時の約束ごと（どのファイルに何を書くか） | [CLAUDE.md](./CLAUDE.md) |
+
+テストは`npm test`で走ります（依存パッケージなし・Node.js 22以上）。
+
+### 参考資料
+
+- [MDN Web Audio API](https://developer.mozilla.org/ja/docs/Web/API/Web_Audio_API)
+- [MDN AudioWorklet](https://developer.mozilla.org/ja/docs/Web/API/AudioWorklet)
+- [W3C Web Audio API Specification](https://www.w3.org/TR/webaudio/)
+- [MDN Canvas API](https://developer.mozilla.org/ja/docs/Web/API/Canvas_API)
+- [MDN SubtleCrypto](https://developer.mozilla.org/ja/docs/Web/API/SubtleCrypto)
+- [dBFS - Wikipedia](https://en.wikipedia.org/wiki/DBFS)
 
 ---
 
