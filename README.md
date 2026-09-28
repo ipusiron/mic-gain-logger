@@ -61,11 +61,25 @@ hub: true
 
 ## 📸 スクリーンショット
 
-<a href="assets/iphone_chrome.png">
-  <img src="assets/iphone_chrome.png" alt="iPhoneのChromeでの利用例" width="300">
+<a href="assets/screenshot.png">
+  <img src="assets/screenshot.png" alt="記録中の画面。計測エンジンの表示と実時間の横軸のグラフ" width="760">
 </a>
 
-<sub>iPhoneのChromeでの利用例</sub>
+<sub>記録中の画面。計測エンジン・実時間の横軸・統計が1枚に入る</sub>
+
+<a href="assets/screenshot2.png">
+  <img src="assets/screenshot2.png" alt="スマートフォン幅で設定を開いた画面" width="300">
+</a>
+
+<sub>スマートフォン幅（390px）で設定を開いたところ</sub>
+
+<a href="assets/screenshot3.png">
+  <img src="assets/screenshot3.png" alt="ダークテーマで記録中の画面" width="760">
+</a>
+
+<sub>ダークテーマでの表示</sub>
+
+<sub>いずれも疑似マイクにテスト信号を流して撮ったものです。実際のマイクでは値が変わります。スマートフォン幅の画面はブラウザーの画面幅を390pxにしたもので、実機ではありません。</sub>
 
 ---
 
@@ -250,7 +264,9 @@ mic-gain-logger/
 │   └── fixtures/                  # テストの期待値
 │       └── expected_dbfs.json     # 既知振幅の正弦波から作った期待dBFS
 ├── assets/                        # README.md用の画像
-│   └── iphone_chrome.png          # スクリーンショット（iPhone Chromeでの表示例）
+│   ├── screenshot.png             # 記録中の画面（ライトテーマ）
+│   ├── screenshot2.png            # スマートフォン幅で設定を開いた画面
+│   └── screenshot3.png            # 記録中の画面（ダークテーマ）
 ├── .github/                       # GitHubの設定
 │   └── workflows/                 # GitHub Actionsのワークフロー
 │       └── test.yml               # CI（pushとpull requestで npm test を走らせる）
