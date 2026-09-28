@@ -81,6 +81,10 @@ class MeterProcessor extends AudioWorkletProcessor {
     this.count = 0;
     this.peak = 0;
     this.clip = 0;
+    // クリップが続いた最長のサンプル数（単発と連続を言い分けるため）。
+    // ブロックの境目をまたいで数え、入力が途切れたら切る
+    this.clipRunMax = 0;
+    this.clipRunCur = 0;
   }
 
   emitInterval(endFrame) {
@@ -95,6 +99,7 @@ class MeterProcessor extends AudioWorkletProcessor {
       sumSq: this.sumSq,
       peak: this.peak,
       clip: this.clip,
+      clipRun: this.clipRunMax,
       emittedAt: currentTime
     });
     this.startFrame = endFrame;
@@ -145,9 +150,18 @@ class MeterProcessor extends AudioWorkletProcessor {
           this.sumSq += x * x;
           const a = x < 0 ? -x : x;
           if (a > this.peak) this.peak = a;
-          if (a >= 1) this.clip++;
+          if (a >= 1) {
+            this.clip++;
+            this.clipRunCur++;
+            if (this.clipRunCur > this.clipRunMax) this.clipRunMax = this.clipRunCur;
+          } else {
+            this.clipRunCur = 0;
+          }
         }
         this.count += take;
+      } else {
+        // 入力が途切れたら、クリップの連続も切る
+        this.clipRunCur = 0;
       }
       offset += take;
     }

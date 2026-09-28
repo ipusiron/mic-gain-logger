@@ -128,7 +128,7 @@ test('入力が切れているあいだも区間は進み、届いたサンプ�
   assert.equal(iv[1].endFrame, 5120);
 });
 
-test('真のピークとクリップ数を数える', () => {
+test('サンプルピークとクリップ数を数える', () => {
   const h = createHarness(1280);   // 10 クォンタム。区間が閉じるのは 11 回目の呼び出し
   let n = 0;
   for (let q = 0; q < 11; q++) {
@@ -307,4 +307,65 @@ test('猶予の途中で音が届けば、その時点を起点にする', () =>
   const iv = h.intervals();
   assert.equal(iv[0].startFrame, 200 * QUANTUM);
   assert.equal(iv[0].count / iv[0].expected, 1);
+});
+
+
+
+// ---- クリップが何サンプル続いたか（第2弾a5）----
+//
+// 1サンプルだけ振幅1.0に届いた「単発」と、波形が頭打ちになって続く「連続」を
+// 区別できないと、警告文が1サンプルでも「その区間の値は読めません」と言い過ぎる。
+// 区間ごとに、クリップが続いた最長のサンプル数（clipRun）を数える。
+
+test('クリップが続いた最長のサンプル数を数える', () => {
+  const h = createHarness(1280);
+  let n = 0;
+  for (let q = 0; q < 11; q++) {
+    h.tick(() => {
+      n++;
+      if (n >= 10 && n <= 12) return 1.0;   // 3サンプル続く
+      if (n === 20) return -1.2;            // 単発
+      return 0.01;
+    });
+  }
+  const iv = h.intervals()[0];
+  assert.equal(iv.clip, 4);
+  assert.equal(iv.clipRun, 3);
+});
+
+test('ブロックの境目をまたいで続くクリップも、1つの連続として数える', () => {
+  const h = createHarness(1280);
+  let n = 0;
+  for (let q = 0; q < 11; q++) {
+    h.tick(() => {
+      n++;
+      // 1ブロック目の最後の2サンプルと、2ブロック目の最初の2サンプル
+      if (n >= QUANTUM - 1 && n <= QUANTUM + 2) return 1.0;
+      return 0.01;
+    });
+  }
+  assert.equal(h.intervals()[0].clipRun, 4);
+});
+
+test('入力が途切れたブロックは、連続を切る', () => {
+  const h = createHarness(1280);
+  // 1ブロック目の最後の1サンプルがクリップ
+  let n = 0;
+  h.tick(() => { n++; return n === QUANTUM ? 1.0 : 0.01; });
+  // 途切れる
+  h.proc.process([[]]);
+  h.state.frame += QUANTUM;
+  // 途切れのあと、最初の1サンプルがクリップ
+  let m = 0;
+  h.tick(() => { m++; return m === 1 ? 1.0 : 0.01; });
+  for (let q = 0; q < 8; q++) h.tick(() => 0.01);
+  const iv = h.intervals()[0];
+  assert.equal(iv.clip, 2);
+  assert.equal(iv.clipRun, 1, '途切れをはさんだ2サンプルを連続として数えている');
+});
+
+test('クリップが無ければ clipRun は 0', () => {
+  const h = createHarness(1280);
+  for (let q = 0; q < 11; q++) h.tick(sine(0.1));
+  assert.equal(h.intervals()[0].clipRun, 0);
 });
