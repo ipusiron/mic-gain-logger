@@ -49,7 +49,7 @@ function msgForDb(seq, db) {
 function recomputeFromCsv(csvText) {
   const lines = csvText.split('\n')
     .filter(l => l.length && !l.startsWith('#'));
-  assert.equal(lines[0], 'timestamp,dbfs', 'ヘッダーが違う');
+  assert.equal(lines[0], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash', 'ヘッダーが違う');
   const values = lines.slice(1).map(l => {
     const cell = l.split(',')[1];
     return cell === '-Infinity' ? -Infinity : Number(cell);

@@ -585,15 +585,119 @@ const MicGainLogic = (() => {
     return String(db);   // -Infinity（無音）。想定外の値も隠さずそのまま出す
   }
 
+  // 鎖の起点。
+  // ⚠ 「出力されるメタ行そのもの」でなければならない。
+  // hashAlgo や silence の印は buildCsv の中で足されるので、呼ぶ側が組んだ
+  // メタ行で seed を作ると、受け取った側の再計算と一致しない（実際にずれた）。
+  // 実装もテストもこの関数を通すことで、その食い違いを起こさないようにする。
+  function csvSeed(logs, opts) {
+    const probe = buildCsv(logs, Object.assign({}, opts || {}, { hashes: logs.map(() => '') }));
+    return probe.split('\n').filter(l => l.charAt(0) === '#').join('\n');
+  }
+
   // ⚠ 書き出すのは rawDb（生値）である。
   // 改修前は表示下限でクリップした値を記録していたため、記録中に表示の設定を
   // 変えるとログデータ自体が変質していた。表示下限は表示のための設定なので、
   // 記録には触らせない（db は表示用、rawDb は記録用と役割を分ける）。
+  // CSV v2。
+  //
+  // A列 timestamp・B列 dbfs は動かさない。README が案内している Excel の手順
+  // （=AVERAGE(B:B) など）が A列=時刻・B列=音量を前提にしているためで、
+  // 新しい値は右へ足す。今後 列を足すときも同じ約束にする。
+  //
+  // seq は区間の通し番号である。欠番があれば行が抜けたと分かるので、
+  // ハッシュチェーンとは別の手がかりになる。
+  const CSV_COLUMNS = ['timestamp', 'dbfs', 'seq', 'peak_dbfs', 'clip', 'valid_ratio', 'hash'];
+
+  // ハッシュチェーン。
+  //
+  // ⚠⚠ これは「改ざんを防ぐ」ものではない。
+  // ログを作った本人はチェーンごと作り直せるので、提出者自身が疑われる場面
+  // （探偵が自分で採ったログを裁判資料に出す、など）では主張が立たない。
+  // 守れるのは「配布されたあとに、第三者が一部を消す／並べ替える」ことの検出だけである。
+  // 外部のタイムスタンプ機関に預ければ作成時刻まで示せるが、
+  // それには外部通信が要り、このツールの「端末内で完結する」という作りを壊す。
+  //
+  // 先頭16文字（64ビット）だけ載せる。1行あたりの長さを抑えるためで、
+  // 偶然の衝突は実用上起きないが、衝突を意図的に作る攻撃には耐えない。
+  const HASH_ALGO_LABEL = 'sha-256-chain-16';
+  const HASH_HEX_LEN = 16;
+
+  // i番目の行のハッシュの材料。前の行のハッシュを混ぜることで鎖にする。
+  function hashInput(prevHex, fields) {
+    return String(prevHex || '') + '|' + fields.join(',');
+  }
+
+  function formatRatio(v) {
+    return Number.isFinite(v) ? v.toFixed(3) : '';
+  }
+
+  // 値そのものが無い（記録していない）ときは空欄にする。
+  // formatCsvDb をそのまま通すと 'undefined' という文字列がCSVに出る。
+  // -Infinity は「無音を測った」という測定結果なので、こちらは残す。
+  function formatOptionalDb(db) {
+    if (db === undefined || db === null || Number.isNaN(db)) return '';
+    return formatCsvDb(db);
+  }
+
+  // 1行ぶんのフィールド（ハッシュ列は除く）。ハッシュはこの並びから計算する。
+  function csvDataFields(r) {
+    return [
+      r.ts.toISOString(),
+      formatOptionalDb(r.rawDb),
+      Number.isFinite(r.seq) ? String(r.seq) : '',
+      formatOptionalDb(r.peakDb),
+      Number.isFinite(r.clipCount) ? String(r.clipCount) : '',
+      formatRatio(r.validRatio)
+    ];
+  }
+
+  // メタ行。記録の条件をあとから読み直せるようにする。
+  // これが無いと、そのCSVがどの端末のどの設定で採られたのか分からない。
+  function csvMetaLines(meta) {
+    const m = meta || {};
+    const out = [];
+    const put = (k, v) => {
+      if (v === null || v === undefined || v === '') return;
+      // 改行は値に入れない（1行1項目を壊さないため）
+      out.push(`# ${k}=${String(v).replace(/[\r\n]+/g, ' ')}`);
+    };
+    put('format', 'mic-gain-logger/2');
+    put('engine', m.engine);
+    put('started', m.started);
+    put('sampleRate', m.sampleRate);
+    put('intervalSec', m.intervalSec);
+    put('device', m.device);
+    put('processing', m.processing);
+    put('weighting', 'Z');   // 周波数重み付けは入れていない（A特性は次の弾）
+    if (m.hashAlgo) put('hash', m.hashAlgo);
+    return out;
+  }
+
+  // ⚠ 書き出すのは rawDb（生値）である。
+  // 改修前は表示下限でクリップした値を記録していたため、記録中に表示の設定を
+  // 変えるとログデータ自体が変質していた。表示下限は表示のための設定なので、
+  // 記録には触らせない（db は表示用、rawDb は記録用と役割を分ける）。
+  //
+  // opts.hashes は csvDataFields と同じ並びの配列（省略可）。
   function buildCsv(logs, opts) {
-    const header = 'timestamp,dbfs\n';
-    const lines = logs.map(r => `${r.ts.toISOString()},${formatCsvDb(r.rawDb)}`).join('\n');
-    let prefix = (opts && opts.engine) ? `# engine=${opts.engine}\n` : '';
-    if (logs.some(r => r.rawDb === -Infinity)) prefix += '# silence=-Infinity\n';
+    const o = opts || {};
+    const meta = Object.assign({}, o.meta);
+    if (o.engine && !meta.engine) meta.engine = o.engine;
+    if (o.hashes) meta.hashAlgo = o.hashAlgo || HASH_ALGO_LABEL;
+
+    const metaLines = csvMetaLines(meta);
+    if (logs.some(r => r.rawDb === -Infinity)) {
+      // 無音は -Infinity で残す。行を落とすと「活動がなかった」証拠にならない
+      metaLines.push('# silence=-Infinity');
+    }
+    const prefix = metaLines.length ? metaLines.join('\n') + '\n' : '';
+    const header = CSV_COLUMNS.join(',') + '\n';
+    const lines = logs.map((r, i) => {
+      const fields = csvDataFields(r);
+      fields.push(o.hashes ? (o.hashes[i] || '') : '');
+      return fields.join(',');
+    }).join('\n');
     return prefix + header + lines;
   }
 
@@ -668,6 +772,14 @@ const MicGainLogic = (() => {
     buildFallbackRecord,
     formatCsvDb,
     buildCsv,
+    CSV_COLUMNS,
+    formatOptionalDb,
+    csvDataFields,
+    csvMetaLines,
+    csvSeed,
+    hashInput,
+    HASH_ALGO_LABEL,
+    HASH_HEX_LEN,
     csvFileName
   };
 })();

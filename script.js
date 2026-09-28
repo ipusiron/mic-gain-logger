@@ -18,7 +18,8 @@
     DEVICE_LOST_ENDED, DEVICE_LOST_GONE,
     readTrackState, isTrackLost, markDeviceLoss,
     buildIntervalRecord, buildFallbackRecord,
-    buildCsv, csvFileName
+    buildCsv, csvFileName,
+    csvDataFields, csvMetaLines, csvSeed, hashInput, HASH_HEX_LEN
   } = MicGainLogic; // logic.js（classic script のグローバル束縛）
 
   // UI要素取得
@@ -902,15 +903,70 @@
     rafId = requestAnimationFrame(animate);
   }
 
-  function exportCSV() {
+  // SHA-256 を16進文字列で。crypto.subtle は安全なコンテキストでしか使えないので、
+  // file:// で開いたときは null を返す（ハッシュ列は空になる）。
+  async function sha256Hex(text) {
+    if (!(window.crypto && window.crypto.subtle)) return null;
+    const buf = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  // 行を鎖でつなぐ。前の行のハッシュを次の材料に混ぜるので、
+  // 途中の行を消す・入れ替えると、それ以降の値が合わなくなる。
+  // ⚠ 作った本人はチェーンごと作り直せる。防げるのは第三者による後からの改変だけ。
+  async function computeHashChain(rows, seedText) {
+    const first = await sha256Hex(seedText);
+    if (first === null) return null;
+    let prev = first.slice(0, HASH_HEX_LEN);
+    const out = [];
+    for (const r of rows) {
+      const full = await sha256Hex(hashInput(prev, csvDataFields(r)));
+      prev = full.slice(0, HASH_HEX_LEN);
+      out.push(prev);
+    }
+    return out;
+  }
+
+  // 記録の条件。あとから「どの端末のどの設定で採ったCSVか」を読み直せるようにする
+  function csvMetaOf(engine) {
+    const m = sessionMeta || {};
+    const proc = Array.isArray(m.processingActive) && m.processingActive.length
+      ? m.processingActive.join('+')
+      : 'off';
+    return {
+      engine,
+      // アンカーは中断のたびに取り直すので、記録開始の時刻には使えない。
+      // 最初の区間の時刻をそのまま載せる
+      started: logs.length ? logs[0].ts.toISOString() : null,
+      sampleRate: m.contextSampleRate || null,
+      intervalSec: currentIntervalSec(),
+      device: m.deviceLabel || null,
+      processing: proc
+    };
+  }
+
+  async function exportCSV() {
     if (!logs.length) {
       setStatus('書き出すログがありません', 'warn');
       return;
     }
-    // 列は増やさない（timestamp,dbfs のまま）。どちらのモードで取った記録かだけ残す
+    // A列 timestamp・B列 dbfs は動かさない（READMEのExcel手順がこれを前提にしている）
     const engines = Array.from(new Set(logs.map(r => r.engine).filter(Boolean)));
     const engine = engines.length === 1 ? engines[0] : (engines.length ? 'mixed' : engineMode);
-    const csv = buildCsv(logs, { engine });
+    const meta = csvMetaOf(engine);
+
+    // 鎖の起点は記録の条件そのもの。条件が違えば別の鎖になる
+    // 鎖の起点は「出力されるメタ行そのもの」である。
+    // 自分で組み立てると hashAlgo や silence の印が抜けて、受け取った側の
+    // 再計算と一致しなくなる（実測でそうなった）。実装もテストも csvSeed を通す
+    const seed = csvSeed(logs, { engine, meta });
+    let hashes = null;
+    try {
+      hashes = await computeHashChain(logs, seed);
+    } catch (e) {
+      console.warn('ハッシュチェーンを作れませんでした', e);
+    }
+    const csv = buildCsv(logs, { engine, meta, hashes });
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);

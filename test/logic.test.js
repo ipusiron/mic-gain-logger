@@ -215,16 +215,14 @@ test('CSV: ヘッダーは timestamp,dbfs、値は小数2桁', () => {
     { ts: new Date('2026-09-28T02:55:02.192Z'), rawDb: -20, db: -20 },
     { ts: new Date('2026-09-28T02:55:03.192Z'), rawDb: -19.999, db: -19.999 }
   ];
-  assert.equal(
-    buildCsv(logs),
-    'timestamp,dbfs\n'
-    + '2026-09-28T02:55:02.192Z,-20.00\n'
-    + '2026-09-28T02:55:03.192Z,-20.00'
-  );
+  const lines = buildCsv(logs).split('\n');
+  assert.equal(lines[lines.length - 3], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash');
+  assert.equal(lines[lines.length - 2], '2026-09-28T02:55:02.192Z,-20.00,,,,,');
+  assert.equal(lines[lines.length - 1], '2026-09-28T02:55:03.192Z,-20.00,,,,,');
 });
 
-test('CSV: 0件のときはヘッダーだけ（末尾に改行が付く）', () => {
-  assert.equal(buildCsv([]), 'timestamp,dbfs\n');
+test('CSV: 0件のときはメタ行とヘッダーだけ（末尾に改行が付く）', () => {
+  assert.equal(buildCsv([]), '# format=mic-gain-logger/2\n# weighting=Z\ntimestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash\n');
 });
 
 test('CSV: ファイル名はコロンとピリオドをハイフンへ置き換える', () => {

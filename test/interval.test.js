@@ -143,18 +143,25 @@ test('簡易モードのレコード: ピーク・クリップ・有効サンプ
 test('CSV: 列は増えない。モードだけ先頭の1行に残る', () => {
   // 書き出すのは rawDb（生値）。db は表示用なので CSV には出ない
   const logs = [{ ts: new Date('2026-09-28T02:55:02.000Z'), rawDb: -20, db: -20 }];
-  assert.equal(buildCsv(logs), 'timestamp,dbfs\n2026-09-28T02:55:02.000Z,-20.00');
-  assert.equal(
-    buildCsv(logs, { engine: ENGINE_WORKLET }),
-    '# engine=worklet\ntimestamp,dbfs\n2026-09-28T02:55:02.000Z,-20.00'
-  );
-  assert.equal(
-    buildCsv(logs, { engine: ENGINE_FALLBACK }),
-    '# engine=fallback\ntimestamp,dbfs\n2026-09-28T02:55:02.000Z,-20.00'
-  );
-  // データ行の形は段階0から変わっていない
-  const body = buildCsv(logs, { engine: ENGINE_WORKLET }).split('\n').slice(1).join('\n');
-  assert.equal(body, buildCsv(logs));
+  // 段階4で列を足した。A列 timestamp・B列 dbfs は動かさない
+  // （READMEが案内している Excel の手順が A列=時刻・B列=音量を前提にしている）
+  const plain = buildCsv(logs).split('\n');
+  assert.equal(plain[plain.length - 2], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash');
+  assert.equal(plain[plain.length - 1], '2026-09-28T02:55:02.000Z,-20.00,,,,,');
+
+  const worklet = buildCsv(logs, { engine: ENGINE_WORKLET });
+  assert.ok(worklet.includes('# engine=worklet'), worklet);
+  const fallback = buildCsv(logs, { engine: ENGINE_FALLBACK });
+  assert.ok(fallback.includes('# engine=fallback'), fallback);
+
+  // データ行はモードによらず同じ（モードはメタ行にだけ出る）
+  const bodyOf = csv => csv.split('\n').filter(l => !l.startsWith('#')).join('\n');
+  assert.equal(bodyOf(worklet), bodyOf(fallback));
+
+  // 先頭2列は段階0のときと同じ並び
+  const first = plain[plain.length - 1].split(',');
+  assert.equal(first[0], '2026-09-28T02:55:02.000Z');
+  assert.equal(first[1], '-20.00');
 });
 
 test('CSV: 表示下限を変えても記録される値は動かない（表示専用である）', () => {
@@ -168,5 +175,7 @@ test('CSV: 表示下限を変えても記録される値は動かない（表示
   assert.equal(clipped.db, -10);
   // CSV は両方とも同じ行になる
   assert.equal(buildCsv([loud]), buildCsv([clipped]));
-  assert.ok(buildCsv([clipped]).endsWith(',-20.00'), buildCsv([clipped]));
+  // 末尾一致は列が増えると壊れる。B列（dbfs）を明示的に見る
+  const row = buildCsv([clipped]).split('\n').filter(l => l && !l.startsWith('#')).pop();
+  assert.equal(row.split(',')[1], '-20.00', row);
 });

@@ -98,21 +98,28 @@ test('CSV: 無音の行が出て、印の行が先頭に付く', () => {
   ];
   const csv = buildCsv(logs, { engine: 'worklet' });
   const lines = csv.split('\n');
-  assert.deepEqual(lines.slice(0, 3), [
-    '# engine=worklet',
-    '# silence=-Infinity',
-    'timestamp,dbfs'
-  ]);
-  assert.equal(lines[4], '2026-09-28T05:00:02.000Z,-Infinity');
-  assert.equal(lines.length, 6);
+  const metaLines = lines.filter(l => l.startsWith('#'));
+  const dataLines = lines.filter(l => l && !l.startsWith('#'));
+
+  // メタ行の本数には依存しない（段階4で項目が増えた）。印が出ていることだけ見る
+  assert.ok(metaLines.includes('# engine=worklet'));
+  assert.ok(metaLines.includes('# silence=-Infinity'));
+  assert.equal(dataLines[0], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash');
+  assert.equal(dataLines.length, 4);   // ヘッダー＋3行
+
+  // B列（dbfs）が -Infinity であること。列の増減に強い見方をする
+  assert.equal(dataLines[2].split(',')[1], '-Infinity');
+  assert.equal(dataLines[2].split(',')[0], '2026-09-28T05:00:02.000Z');
 });
 
 test('CSV: 無音が1行もなければ印の行は出ない（既存の出力を変えない）', () => {
   const logs = [{ ts: new Date('2026-09-28T05:00:01.000Z'), rawDb: -20, db: -20 }];
-  assert.equal(
-    buildCsv(logs, { engine: 'worklet' }),
-    '# engine=worklet\ntimestamp,dbfs\n2026-09-28T05:00:01.000Z,-20.00'
-  );
+  const csv = buildCsv(logs, { engine: 'worklet' });
+  const metaLines = csv.split('\n').filter(l => l.startsWith('#'));
+  // 印が出ないことだけを見る（メタ行の項目そのものは段階4で増えた）
+  assert.equal(metaLines.filter(l => l.includes('silence')).length, 0, metaLines.join(' / '));
+  const row = csv.split('\n').filter(l => l && !l.startsWith('#')).pop();
+  assert.equal(row.split(',')[1], '-20.00');
 });
 
 test('音→無音→音: 行が1つも欠けず、無音の区間が読み取れる', () => {
@@ -138,10 +145,15 @@ test('音→無音→音: 行が1つも欠けず、無音の区間が読み取�
   assert.equal(recs.filter(r => r.silent).length, 10);
 
   // CSV でも無音の区間が10行ぶん読み取れる
-  const body = buildCsv(recs, { engine: 'worklet' }).split('\n').slice(3);
+  const all = buildCsv(recs, { engine: 'worklet' }).split('\n');
+  const body = all.filter(l => l && !l.startsWith('#')).slice(1);   // ヘッダーを除く
+  const col = (line, i) => line.split(',')[i];
   assert.equal(body.length, 30);
-  assert.equal(body.filter(l => l.endsWith(',-Infinity')).length, 10);
-  assert.equal(body[10], '2026-09-28T05:00:11.000Z,-Infinity');
-  assert.equal(body[19], '2026-09-28T05:00:20.000Z,-Infinity');
-  assert.equal(body[20], '2026-09-28T05:00:21.000Z,-20.00');
+  // 末尾一致は列が増えると壊れるので、B列を明示的に見る
+  assert.equal(body.filter(l => col(l, 1) === '-Infinity').length, 10);
+  assert.equal(col(body[10], 0), '2026-09-28T05:00:11.000Z');
+  assert.equal(col(body[10], 1), '-Infinity');
+  assert.equal(col(body[19], 1), '-Infinity');
+  assert.equal(col(body[20], 0), '2026-09-28T05:00:21.000Z');
+  assert.equal(col(body[20], 1), '-20.00');
 });

@@ -182,17 +182,36 @@ test('メタが無くても落ちない', () => {
   assert.equal(rec.meta, null);
 });
 
-test('CSV の列は増えない（メタは CSV に出さない）', () => {
+test('CSV: 測定条件はメタ行に出る（段階4で確定）', () => {
+  // 段階2では「列の確定は段階4」として出していなかった。ここで出す。
+  // これが無いと、そのCSVがどの端末のどの設定で採られたのか後から読めない。
   const m = meta(REAL_SETTINGS);
   const recs = [0, 1].map(i => buildIntervalRecord(message(i), ANCHOR, -60, { meta: m }));
-  const csv = buildCsv(recs, { engine: 'worklet' });
+  const csv = buildCsv(recs, {
+    engine: 'worklet',
+    meta: { sampleRate: 48000, intervalSec: 1, device: 'Fake Default Audio Input', processing: 'off' }
+  });
   const lines = csv.split('\n');
-  assert.equal(lines[0], '# engine=worklet');
-  assert.equal(lines[1], 'timestamp,dbfs');
-  assert.equal(lines.length, 4);
-  for (const line of lines.slice(2)) {
-    assert.equal(line.split(',').length, 2);
+  const metaLines = lines.filter(l => l.startsWith('#'));
+  const dataLines = lines.filter(l => l && !l.startsWith('#'));
+
+  assert.ok(metaLines.includes('# engine=worklet'));
+  assert.ok(metaLines.includes('# sampleRate=48000'));
+  assert.ok(metaLines.includes('# device=Fake Default Audio Input'));
+  assert.ok(metaLines.includes('# processing=off'));
+  // 重み付けは未実装なので Z（平坦）と明記する。A特性は次の弾
+  assert.ok(metaLines.includes('# weighting=Z'));
+
+  // ヘッダー＋2行
+  assert.equal(dataLines.length, 3);
+  assert.equal(dataLines[0], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash');
+  for (const line of dataLines.slice(1)) {
+    assert.equal(line.split(',').length, 7);
   }
-  assert.equal(csv.includes('Fake Default Audio Input'), false);
-  assert.equal(csv.includes('autoGainControl'), false);
+});
+
+test('CSV: メタ行の値に改行を混ぜても1行1項目が崩れない', () => {
+  const csv = buildCsv([], { meta: { device: 'My\nMic\r\n2' } });
+  const metaLines = csv.split('\n').filter(l => l.startsWith('#'));
+  assert.ok(metaLines.includes('# device=My Mic 2'), metaLines.join(' / '));
 });
