@@ -54,10 +54,15 @@ function recomputeFromCsv(csvText) {
   const lines = csvText.split('\n')
     .filter(l => l.length && !l.startsWith('#'));
   assert.equal(lines[0], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash', 'ヘッダーが違う');
-  const values = lines.slice(1).map(l => {
-    const cell = l.split(',')[1];
+  const cellDb = (cell) => {
+    if (cell === '' || cell === undefined) return null;
     return cell === '-Infinity' ? -Infinity : Number(cell);
+  };
+  const rows = lines.slice(1).map(l => {
+    const c = l.split(',');
+    return { db: cellDb(c[1]), peakDb: cellDb(c[3]) };
   });
+  const values = rows.map(r => r.db);
 
   let powerSum = 0;
   const finite = [];
@@ -67,6 +72,8 @@ function recomputeFromCsv(csvText) {
   }
   const leq = powerSum > 0 ? 10 * Math.log10(powerSum / values.length) : -Infinity;
   const fmt = (db) => (db === -Infinity ? '-∞ dBFS' : `${db.toFixed(1)} dBFS`);
+  // 真のピークは peak_dbfs 列（D列）の最大。無音の行も -Infinity として数える
+  const peaks = rows.map(r => r.peakDb).filter(v => v !== null);
   return {
     avg: values.length ? fmt(leq) : '--.- dBFS',
     max: finite.length ? fmt(Math.max(...finite)) : '--.- dBFS',
@@ -74,6 +81,7 @@ function recomputeFromCsv(csvText) {
     range: finite.length
       ? `${(Math.max(...finite) - Math.min(...finite)).toFixed(1)} dB`
       : '--.- dB',
+    peak: peaks.length ? fmt(Math.max(...peaks)) : '--.- dBFS',
     count: String(values.length),
     rows: values.length
   };
@@ -97,18 +105,19 @@ test('統計: CSV から計算し直した値が画面の値と一致する（�
   assert.equal(r.fromCsv.rows, 5);
   assert.deepEqual(r.screen, {
     avg: '-20.0 dBFS', max: '-20.0 dBFS', min: '-20.0 dBFS',
-    range: '0.0 dB', count: '5'
+    range: '0.0 dB', peak: '-17.0 dBFS', count: '5'
   });
   assert.equal(r.screen.avg, r.fromCsv.avg);
   assert.equal(r.screen.max, r.fromCsv.max);
   assert.equal(r.screen.min, r.fromCsv.min);
   assert.equal(r.screen.range, r.fromCsv.range);
+  assert.equal(r.screen.peak, r.fromCsv.peak);
   assert.equal(r.screen.count, r.fromCsv.count);
 });
 
 test('統計: CSV から計算し直した値が画面の値と一致する（幅のある音）', () => {
   const r = roundTrip([-6, -12, -20, -35, -48, -59], -60);
-  for (const key of ['avg', 'max', 'min', 'range', 'count']) {
+  for (const key of ['avg', 'max', 'min', 'range', 'peak', 'count']) {
     assert.equal(r.screen[key], r.fromCsv[key], `${key} が一致しない`);
   }
   assert.equal(r.screen.max, '-6.0 dBFS');
@@ -119,7 +128,7 @@ test('統計: CSV から計算し直した値が画面の値と一致する（�
 test('統計: 無音をまたいでも CSV と画面が一致する', () => {
   const r = roundTrip([-20, -Infinity, -Infinity, -20], -60);
   assert.equal(r.fromCsv.rows, 4, '無音の行が CSV に出ていない');
-  for (const key of ['avg', 'max', 'min', 'range', 'count']) {
+  for (const key of ['avg', 'max', 'min', 'range', 'peak', 'count']) {
     assert.equal(r.screen[key], r.fromCsv[key], `${key} が一致しない`);
   }
   // 4行のうち2行が無音（電力0）なので Leq は -20 より 3dB 低い
@@ -137,7 +146,7 @@ test('統計: 表示下限を変えても CSV と画面の統計は動かない�
   // 記録と統計はどちらも動かない
   assert.equal(loose.csv, tight.csv, 'CSV が表示下限で変わっている');
   assert.deepEqual(loose.screen, tight.screen, '統計が表示下限で変わっている');
-  for (const key of ['avg', 'max', 'min', 'range']) {
+  for (const key of ['avg', 'max', 'min', 'range', 'peak']) {
     assert.equal(tight.screen[key], tight.fromCsv[key], `${key} が一致しない`);
   }
 });
@@ -145,7 +154,7 @@ test('統計: 表示下限を変えても CSV と画面の統計は動かない�
 test('統計: すべて無音でも CSV と画面が一致する', () => {
   const r = roundTrip([-Infinity, -Infinity, -Infinity], -60);
   assert.equal(r.fromCsv.rows, 3);
-  for (const key of ['avg', 'max', 'min', 'range', 'count']) {
+  for (const key of ['avg', 'max', 'min', 'range', 'peak', 'count']) {
     assert.equal(r.screen[key], r.fromCsv[key], `${key} が一致しない`);
   }
   assert.equal(r.screen.avg, '-∞ dBFS');

@@ -9,7 +9,7 @@
     parseFloorDb, parseIntervalSec, canvasPixelSize,
     GRAPH_WINDOW_SEC, GRAPH_TOP_DB, graphArea, timeToX, dbToY,
     timeTickStepSec, timeTicks, dbTickStep, dbTicks, pruneSeries, seriesPointOf,
-    createStats, addStatsRecord, formatStats, emptyStatsText,
+    createStats, addStatsRecord, formatStats, statsWarnings, emptyStatsText,
     ENGINE_WORKLET, ENGINE_FALLBACK, framesForInterval,
     CLOCK_BREAK_SUSPEND, CLOCK_BREAK_STALL,
     createClockAnchor, detectClockJump, reanchorClock,
@@ -39,6 +39,7 @@
   const maxEl = document.getElementById('maxDb');
   const minEl = document.getElementById('minDb');
   const rangeEl = document.getElementById('rangeDb');
+  const peakEl = document.getElementById('peakDb');
   const countEl = document.getElementById('count');
   const uptimeEl = document.getElementById('uptime');
 
@@ -178,6 +179,9 @@
 
   // 統計
   let stats = createStats();
+  // 統計から出ている注意書きの件数。増減したときだけ注意書きを組み直す
+  // （1区間ごとに組み直すと、変わっていない文字列を毎秒作ることになる）
+  let statsNoticeCount = 0;
 
   // ログ（CSV用）
   const logs = []; // { ts: Date, db: number }
@@ -295,22 +299,33 @@
     maxEl.textContent = text.max;
     minEl.textContent = text.min;
     rangeEl.textContent = text.range;
+    peakEl.textContent = text.peak;
     countEl.textContent = text.count;
   }
 
   // ⚠ 統計を進めるのはここだけである（母集団を CSV の行にそろえる）。
-  //   区間レコードをそのまま渡す。重み（区間長）は logic.js 側で拾う
+  //   区間レコードをそのまま渡す。重み（区間長）とピーク・クリップ・
+  //   有効サンプル率は logic.js 側の addStatsRecord が拾う
   function updateStats(rec) {
     addStatsRecord(stats, rec);
     // 件数は、取り込めなかった行があっても logs に合わせる
     renderStats(formatStats(stats, logs.length));
+    // クリップ・欠測が出たら、その区間で注意書きへ反映する
+    const n = statsWarnings(stats).length;
+    if (n !== statsNoticeCount) {
+      statsNoticeCount = n;
+      renderRecordNotice();
+    }
   }
 
   function resetStats() {
     stats = createStats();
+    statsNoticeCount = 0;
     renderStats(emptyStatsText());
     // 稼働時間だけ残ると「何をリセットしたのか」が読めない
     uptimeEl.textContent = '00:00:00';
+    // クリップ・欠測の注意書きも一緒に消す（統計と同じ母集団から出ているため）
+    renderRecordNotice();
   }
 
   function setStatus(text, kind='ok') {
@@ -364,6 +379,8 @@
         + '該当区間はCSVのメタ行（# clockBreaks / # clockBreakAt / # clockDriftMs）に残ります'
       );
     }
+    // クリップと欠測。ボタンを増やさず、記録の信用に関わる事実をここへ集める
+    for (const w of statsWarnings(stats)) parts.push(w);
     const kind = deviceLoss ? ' err' : (parts.length ? ' warn' : '');
     recordNoticeEl.className = 'record-notice' + kind;
     recordNoticeEl.textContent = parts.join(' / ');

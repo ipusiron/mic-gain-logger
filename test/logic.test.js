@@ -113,7 +113,10 @@ test('統計: 平均はエネルギー平均（Leq）。算術平均ではない
   assert.equal(addStatsSample(stats, Infinity), false);
   assert.deepEqual(stats, {
     powerSum: 0, weightSec: 0, n: 0, finiteN: 0, silentN: 0,
-    minDb: Infinity, maxDb: -Infinity
+    minDb: Infinity, maxDb: -Infinity,
+    peakMaxDb: -Infinity, peakKnownN: 0,
+    clipRows: 0, clipSamples: 0,
+    validKnownN: 0, lowValidRows: 0, minValidRatio: Infinity
   });
 
   assert.equal(addStatsSample(stats, -20), true);
@@ -126,6 +129,7 @@ test('統計: 平均はエネルギー平均（Leq）。算術平均ではない
     max: '-20.0 dBFS',
     min: '-40.0 dBFS',
     range: '20.0 dB',
+    peak: '--.- dBFS',
     count: '3'
   });
   assert.ok(Math.abs(statsLeq(stats) + 24.31798275933005) < 1e-9);
@@ -164,6 +168,7 @@ test('統計: 無音（-Infinity）は電力0として平均に入り、最大�
     max: '-20.0 dBFS',
     min: '-20.0 dBFS',
     range: '0.0 dB',
+    peak: '--.- dBFS',
     count: '3'
   });
 });
@@ -177,6 +182,7 @@ test('統計: すべて無音なら平均は -∞、最大・最小は未定義�
     max: '--.- dBFS',
     min: '--.- dBFS',
     range: '--.- dB',
+    peak: '--.- dBFS',
     count: '2'
   });
 });
@@ -198,6 +204,7 @@ test('統計: 1件でも平均が出る。件数は logs 側の数を使う', ()
     max: '-12.3 dBFS',
     min: '-12.3 dBFS',
     range: '0.0 dB',
+    peak: '--.- dBFS',
     count: '0'
   });
 });
@@ -208,6 +215,7 @@ test('統計: リセット直後の表示文字列', () => {
     max: '--.- dBFS',
     min: '--.- dBFS',
     range: '--.- dB',
+    peak: '--.- dBFS',
     count: '0'
   });
 });

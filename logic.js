@@ -84,6 +84,10 @@ const MicGainLogic = (() => {
   //   平均（Leq）＝ 全行。無音は電力 0 として数える（これが定義どおり）
   //   最大・最小・変動幅 ＝ 有限値の行だけ。無音を入れると最小が -∞ になり、
   //                        変動幅が意味を失うため
+  //
+  // 真のピーク・クリップ数・有効サンプル率は、段階1から区間レコードに入って
+  // いたのに CSV にしか出ていなかった。どれも記録の信用に直結するので画面へ出す。
+  // ピークは統計の項目、クリップと欠測は注意書き（statsWarnings）へ回す。
 
   function dbToPower(db) {
     if (db === -Infinity) return 0;
@@ -103,7 +107,14 @@ const MicGainLogic = (() => {
       finiteN: 0,
       silentN: 0,
       minDb: Infinity,
-      maxDb: -Infinity
+      maxDb: -Infinity,
+      peakMaxDb: -Infinity, // 区間の真のピークの最大（RMS とは別物）
+      peakKnownN: 0,        // ピークが分かっている行数（簡易モードでは 0 のまま）
+      clipRows: 0,          // クリップを含む区間の数
+      clipSamples: 0,       // クリップしたサンプルの延べ数
+      validKnownN: 0,       // 有効サンプル率が分かっている行数
+      lowValidRows: 0,      // 有効サンプル率が 1.0 を下回った区間の数
+      minValidRatio: Infinity
     };
   }
 
@@ -139,10 +150,27 @@ const MicGainLogic = (() => {
   }
 
   // 区間レコードを1件取り込む。画面の統計はこの経路だけを通す。
-  // 重み（区間長）をレコードから取るので、呼ぶ側は間隔を知らなくてよい
+  // 重み（区間長）と、CSV にしか出ていなかった3値をまとめてここで拾う
   function addStatsRecord(stats, rec) {
     if (!rec) return false;
-    return addStatsSample(stats, rec.rawDb, recordDurationSec(rec));
+    if (!addStatsSample(stats, rec.rawDb, recordDurationSec(rec))) return false;
+    // 無音の区間もピークは分かっている（振幅0＝-∞ dBFS）。
+    // 簡易モードは瞬時値しか無いので null が来る＝「不明」
+    if (typeof rec.peakDb === 'number' && !Number.isNaN(rec.peakDb)) {
+      stats.peakKnownN += 1;
+      stats.peakMaxDb = Math.max(stats.peakMaxDb, rec.peakDb);
+    }
+    if (Number.isFinite(rec.clipCount) && rec.clipCount > 0) {
+      stats.clipRows += 1;
+      stats.clipSamples += rec.clipCount;
+    }
+    if (Number.isFinite(rec.validRatio)) {
+      stats.validKnownN += 1;
+      stats.minValidRatio = Math.min(stats.minValidRatio, rec.validRatio);
+      // count と expected はどちらも整数なので、欠測が無ければちょうど 1 になる
+      if (rec.validRatio < 1) stats.lowValidRows += 1;
+    }
+    return true;
   }
 
   // 記録された行から Leq を出す。記録が無ければ null
@@ -167,8 +195,36 @@ const MicGainLogic = (() => {
       max: hasFinite ? formatDbCell(stats.maxDb) : '--.- dBFS',
       min: hasFinite ? formatDbCell(stats.minDb) : '--.- dBFS',
       range: rng === null ? '--.- dB' : `${rng.toFixed(1)} dB`,
+      peak: stats.peakKnownN > 0 ? formatDbCell(stats.peakMaxDb) : '--.- dBFS',
       count: String(logCount)
     };
+  }
+
+  // 記録の信用を落とす出来事だけを文にする。無ければ空配列。
+  //
+  // ⚠ クリップした区間の値は読んではいけない。波形が ±1.0 で頭打ちになり、
+  //    そこで生まれた高調波が広い帯域へ散るので、RMS も帯域ごとの値も本来の
+  //    音とは別物になる。第2弾で帯域を見るときの前提になるため区間の数を出す。
+  // 有効サンプル率は欠測の目安である。1.0 を下回った区間は、その区間の音の
+  // 一部が届いていない（オーディオスレッドがレンダークォンタムを落とした）。
+  function statsWarnings(stats) {
+    const out = [];
+    if (!stats) return out;
+    if (stats.clipRows > 0) {
+      out.push(
+        `クリップを${stats.clipRows}区間で検出しました（延べ${stats.clipSamples}サンプル）。`
+        + 'クリップした区間は波形が頭打ちになり高調波が広い帯域へ散るため、'
+        + 'その区間の値は読めません。入力レベルを下げて採り直してください'
+      );
+    }
+    if (stats.lowValidRows > 0) {
+      const pct = (stats.minValidRatio * 100).toFixed(1);
+      out.push(
+        `有効サンプル率が1.0を下回った区間が${stats.lowValidRows}件あります（最小 ${pct}%）。`
+        + 'その区間は音の一部が届いていません（CSVの valid_ratio 列に残ります）'
+      );
+    }
+    return out;
   }
 
   function emptyStatsText() {
@@ -177,6 +233,7 @@ const MicGainLogic = (() => {
       max: '--.- dBFS',
       min: '--.- dBFS',
       range: '--.- dB',
+      peak: '--.- dBFS',
       count: '0'
     };
   }
@@ -991,6 +1048,7 @@ const MicGainLogic = (() => {
     statsLeq,
     formatDbCell,
     formatStats,
+    statsWarnings,
     emptyStatsText,
     canvasPixelSize,
     GRAPH_WINDOW_SEC,
