@@ -535,6 +535,47 @@ timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash
 
 なお、ハッシュは`crypto.subtle`が使える安全なコンテキスト（httpsまたはlocalhost）でしか計算できません。`file://`で直接開いた場合、`hash`列は空になります。
 
+### 受け取ったCSVを検証する
+
+受け取った側は、次の手順で`hash`列を再計算できます。本ツールは不要です。
+
+1. 起点は`#`から始まるメタ行である。ファイルに並んでいる順のまま、改行（`\n`）で連結して1つの文字列にする
+2. その文字列のSHA-256を16進小文字で求め、**先頭16文字**を「前のハッシュ」とする
+3. データ行を上から順に見る。その行のハッシュは`SHA-256(前のハッシュ + "|" + その行の6つのフィールドをコンマで連結)`の**先頭16文字**である。6つのフィールドは`hash`列を除いた`timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio`で、CSVに書かれている文字列をそのまま使う（数値に直さない）
+4. 求めた値を、その行の`hash`列と比べる。一致したら、その値を次の行の「前のハッシュ」にする
+
+最初に合わなくなった行が、削除・並べ替え・書き換えの起きた位置です。
+
+```python
+# verify_mic_gain_log.py — 標準ライブラリーだけで動く（Python 3.6以上）
+# 使い方: python verify_mic_gain_log.py mic-gain-logs-2026-09-28T09-05-00-000Z.csv
+import hashlib
+import sys
+
+lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
+meta = [l for l in lines if l.startswith("#")]
+data = [l for l in lines if l and not l.startswith("#")][1:]   # 先頭はヘッダー行
+
+
+def h(s):
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()[:16]
+
+
+prev = h("\n".join(meta))          # 起点はメタ行そのもの
+for i, line in enumerate(data, 1):
+    cells = line.split(",")
+    want = h(prev + "|" + ",".join(cells[:6]))
+    if cells[6] != want:
+        print("%d行目から合いません（期待 %s／実際 %s）" % (i, want, cells[6]))
+        sys.exit(1)
+    prev = want
+print("%d行すべて通りました" % len(data))
+```
+
+手元の見本CSV（4行・3行目がデジタル無音）で、そのままなら「4行すべて通りました」、2行目を消すと「2行目から合いません」と出ることを確かめてあります。
+
+⚠**メタ行も検証の対象です。**`# device=`を削って渡すと、受け取った側の再計算は通りません。人に渡す前に削る必要があるなら、削ったファイルと元のファイルの両方を用意してください。`hash`列が空のCSVは`file://`で書き出したもので、検証できません。
+
 ### Excel/Google Sheetsでの分析手順
 
 ⚠**そのまま開くと、1行目はヘッダーではなくメタ行になります。**`#`から始まるメタ行が9〜13行、ヘッダー行の上に入るためです。まずこれを外してから集計してください。
