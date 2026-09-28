@@ -72,6 +72,15 @@
   let seqMax = -1;            // ログに入っている最大の seq（次の起点の元）
   let lastIntervalSec = null;
 
+  // 記録に使ったログ間隔。
+  // ⚠ 改修前は書き出し時に currentIntervalSec() を読んでいたので、
+  //    1秒で採った行を 3s へ切り替えてから書き出すと「# intervalSec=3」と嘘が出た。
+  //    メタ行は「その行がどういう条件で採られたか」を残す場所なので、
+  //    画面の現在値ではなく、行を採ったときの値を持ち回る。
+  //    ログ間隔は記録中でも変えられ、ログはセッションをまたいで累積するため、
+  //    1つのCSVに複数の間隔が混ざりうる。processing=agc+ns と同じ書き方で全部並べる。
+  let usedIntervals = [];
+
   // 時刻のアンカーと、中断の検出
   // clockAnchor = { epoch, audioTime, wallMs } オーディオクロック→壁時計の対応づけ
   // clockProbe  = { audioTime, wallMs } 直前に点検した時刻の組（差分でずれを見る）
@@ -518,6 +527,10 @@
     logs.push(rec);
     // 次のセッションの起点。捨てた区間の欠番はそのまま残す
     if (Number.isFinite(rec.seq) && rec.seq > seqMax) seqMax = rec.seq;
+    // 行を採ったときのログ間隔を控える（書き出し時点の設定では嘘になる）
+    if (Number.isFinite(lastIntervalSec) && !usedIntervals.includes(lastIntervalSec)) {
+      usedIntervals.push(lastIntervalSec);
+    }
     if (wasEmpty) updateButtonStates();
     // ⚠ 統計に入れるのは rawDb（記録される生値）である。
     //    表示用の db を使うと、表示下限を変えただけで統計が動いてしまう
@@ -945,7 +958,8 @@
       // 最初の区間の時刻をそのまま載せる
       started: logs.length ? logs[0].ts.toISOString() : null,
       sampleRate: m.contextSampleRate || null,
-      intervalSec: currentIntervalSec(),
+      // 書き出し時点の設定ではなく、行を採ったときの値。混ざっていれば全部並べる
+      intervalSec: usedIntervals.length ? usedIntervals.join('+') : null,
       device: m.deviceLabel || null,
       processing: proc
     };
@@ -993,6 +1007,7 @@
     seqCounter = 0;
     seqBase = 0;
     seqMax = -1;
+    usedIntervals = [];
     updateButtonStates(); // ボタン状態を更新
     setStatus('統計とログをリセットしました', 'ok');
   }

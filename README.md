@@ -501,7 +501,7 @@ timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash
 | `engine` | `worklet`（AudioWorklet）／`fallback`（簡易モード）／`mixed`（1つのCSVに両方が混ざっている） |
 | `started` | 最初の区間の時刻 |
 | `sampleRate` | AudioContextのサンプルレート |
-| `intervalSec` | ログ間隔（秒） |
+| `intervalSec` | 記録に使ったログ間隔（秒）。ログ間隔は記録中でも変えられ、ログはセッションをまたいで累積するので、1つのCSVに複数の間隔が混ざることがある。その場合は`+`でつないで並ぶ（例: `1+3`） |
 | `device` | マイクのデバイス名 |
 | `processing` | マイク側の音の加工（AGC・ノイズ抑制・エコーキャンセル）の適用状態。`off`なら加工なし |
 | `weighting` | 周波数の重み付け。本ツールは重み付けをしないので常に`Z` |

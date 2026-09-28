@@ -10,6 +10,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const {
   PROCESSING_KEYS,
@@ -214,4 +216,37 @@ test('CSV: メタ行の値に改行を混ぜても1行1項目が崩れない', (
   const csv = buildCsv([], { meta: { device: 'My\nMic\r\n2' } });
   const metaLines = csv.split('\n').filter(l => l.startsWith('#'));
   assert.ok(metaLines.includes('# device=My Mic 2'), metaLines.join(' / '));
+});
+
+// ---- # intervalSec= は「記録に使った値」 ----
+//
+// ⚠ 改修前は書き出し時に currentIntervalSec() を読んでいた。
+// 1秒で採った行を 3s へ切り替えてから書き出すと「# intervalSec=3」と出る。
+// メタ行は「その行がどういう条件で採られたか」を残す場所なので、
+// 画面の現在値を書いてはいけない。
+// ログ間隔は記録中でも変えられ、ログはセッションをまたいで累積するため、
+// 1つのCSVに複数の間隔が混ざりうる。processing=agc+ns と同じ書き方で全部並べる。
+
+test('CSV: 混ざったログ間隔はプラスでつないで並ぶ', () => {
+  const csv = buildCsv([], { meta: { intervalSec: '1+3' } });
+  assert.ok(csv.split('\n').includes('# intervalSec=1+3'), csv);
+});
+
+test('CSV: ログ間隔が分からなければ、その行を出さない', () => {
+  const csv = buildCsv([], { meta: { sampleRate: 48000 } });
+  assert.ok(!csv.includes('intervalSec'), csv);
+});
+
+test('script.js: 書き出し時点のログ間隔を読んでいない', () => {
+  const script = fs.readFileSync(path.join(__dirname, '..', 'script.js'), 'utf8');
+  assert.ok(
+    !/intervalSec: currentIntervalSec\(\)/.test(script),
+    'メタ行が書き出し時点の設定を読んでいる'
+  );
+  assert.match(
+    script,
+    /intervalSec: usedIntervals\.length \? usedIntervals\.join\('\+'\) : null/,
+    '記録に使った値を持ち回っていない'
+  );
+  assert.match(script, /usedIntervals\.push\(lastIntervalSec\)/, '行を採ったときの値を控えていない');
 });
