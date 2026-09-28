@@ -457,6 +457,13 @@ body.light .theme-toggle .icon-moon{display:block;}
 }
 .engine-mode.ok{color:var(--ok)}
 .engine-mode.warn{color:var(--warn)}
+.record-notice{
+  margin-top:6px; font-size:12px; color:var(--muted);
+  line-height:1.5;
+}
+.record-notice:empty{display:none}
+.record-notice.warn{color:var(--warn)}
+.record-notice.err{color:var(--err)}
 .status.ok{color:var(--ok)}
 .status.warn{color:var(--warn)}
 .status.err{color:var(--err)}

@@ -9,6 +9,8 @@
     parseFloorDb, parseIntervalSec,
     createStats, addStatsSample, formatStats, emptyStatsText,
     ENGINE_WORKLET, ENGINE_FALLBACK, framesForInterval,
+    CLOCK_BREAK_SUSPEND, CLOCK_BREAK_STALL,
+    createClockAnchor, detectClockJump, reanchorClock,
     buildIntervalRecord, buildFallbackRecord,
     buildCsv, csvFileName
   } = MicGainLogic; // logic.js（classic script のグローバル束縛）
@@ -38,6 +40,7 @@
   const floorDbInput = document.getElementById('floorDb');
 
   const engineModeEl = document.getElementById('engineMode');
+  const recordNoticeEl = document.getElementById('recordNotice');
 
   const canvas = document.getElementById('levelCanvas');
   const ctx = canvas.getContext('2d');
@@ -52,9 +55,19 @@
   let workletNode = null;
   let silentGain = null;
   let engineMode = null;      // null=未開始 / ENGINE_WORKLET / ENGINE_FALLBACK
-  let clockAnchor = null;     // { audioTime, wallMs } オーディオクロック→壁時計の対応づけ
   let seqCounter = 0;
   let lastIntervalSec = null;
+
+  // 時刻のアンカーと、中断の検出
+  // clockAnchor = { epoch, audioTime, wallMs } オーディオクロック→壁時計の対応づけ
+  // clockProbe  = { audioTime, wallMs } 直前に点検した時刻の組（差分でずれを見る）
+  let clockAnchor = null;
+  let clockProbe = null;
+  let pendingClockBreak = null;  // 次に確定する区間へ付ける印
+  let clockBreaks = [];          // このセッションで検出した中断の一覧
+  let clockWatchId = null;       // 壁時計側の監視タイマー
+  let ctxSuspendedSince = 0;     // suspended を観測した時刻（0＝観測していない）
+  const CLOCK_WATCH_MS = 1000;
 
   let rafId = null;
   let running = false;
@@ -186,6 +199,102 @@
     }
   }
 
+  // 記録に関わる注意書き（時刻の跳びなど）を画面へ出す
+  function renderRecordNotice() {
+    if (!recordNoticeEl) return;
+    if (!clockBreaks.length) {
+      recordNoticeEl.className = 'record-notice';
+      recordNoticeEl.textContent = '';
+      return;
+    }
+    const totalSec = clockBreaks.reduce((a, b) => a + b.jumpMs, 0) / 1000;
+    recordNoticeEl.className = 'record-notice warn';
+    recordNoticeEl.textContent =
+      `時刻の跳びを${clockBreaks.length}回検出（累計 ${totalSec.toFixed(2)} 秒）。`
+      + '該当区間に印を付け、以降の時刻は取り直したアンカーで出しています';
+  }
+
+  // ---- 時刻の中断の検出 ----
+  //
+  // 壁時計とオーディオクロックのずれを点検し、閾値を超えていたらアンカーを取り直す。
+  // 取り直したことは次に確定する区間へ印として渡り、画面にも出す。
+  // kind は、AudioContext の状態変化として観測できた中断か（suspend）、
+  // 状態変化なしにオーディオクロックが遅れたか（stall）の区別である。
+  function probeClock(kind) {
+    if (!audioCtx || !clockAnchor || !clockProbe) return null;
+    const audioTime = audioCtx.currentTime;
+    const wallMs = Date.now();
+    const jump = detectClockJump(clockProbe, audioTime, wallMs);
+    clockProbe = { audioTime, wallMs };
+    if (!jump) return null;
+
+    clockAnchor = reanchorClock(clockAnchor, audioTime, wallMs);
+    const brk = {
+      kind: kind || CLOCK_BREAK_STALL,
+      jumpMs: jump.jumpMs,
+      atWallMs: wallMs,
+      epoch: clockAnchor.epoch
+    };
+    clockBreaks.push(brk);
+    // 印は次の1区間が受け取る。確定前に2回検出したら足し合わせる
+    pendingClockBreak = pendingClockBreak
+      ? { kind: pendingClockBreak.kind, jumpMs: pendingClockBreak.jumpMs + brk.jumpMs }
+      : { kind: brk.kind, jumpMs: brk.jumpMs };
+    renderRecordNotice();
+    return brk;
+  }
+
+  function takeClockBreak() {
+    const brk = pendingClockBreak;
+    pendingClockBreak = null;
+    return brk;
+  }
+
+  // AudioContext の状態変化。画面のロック・タブの休止でここを通る
+  function handleContextStateChange() {
+    if (!audioCtx) return;
+    if (audioCtx.state === 'suspended') {
+      if (!ctxSuspendedSince) ctxSuspendedSince = Date.now();
+      if (running) setStatus('計測が中断しています（画面のロックなど）', 'warn');
+    } else if (audioCtx.state === 'running') {
+      if (ctxSuspendedSince) {
+        ctxSuspendedSince = 0;
+        probeClock(CLOCK_BREAK_SUSPEND);
+        if (running) setStatus('計測中（中断から復帰しました）', 'warn');
+      }
+    }
+  }
+
+  // 壁時計側の監視。statechange が来ない停止も拾う。
+  // 中断しているあいだは点検を止め（probe を凍結し）、復帰時に1回でまとめて拾う
+  function clockWatchTick() {
+    if (!running || !audioCtx) return;
+    if (audioCtx.state === 'suspended') {
+      if (!ctxSuspendedSince) ctxSuspendedSince = Date.now();
+      audioCtx.resume().catch(() => {});
+      return;
+    }
+    if (audioCtx.state !== 'running') return;
+    if (ctxSuspendedSince) {
+      ctxSuspendedSince = 0;
+      probeClock(CLOCK_BREAK_SUSPEND);
+      return;
+    }
+    probeClock(CLOCK_BREAK_STALL);
+  }
+
+  function startClockWatch() {
+    stopClockWatch();
+    clockWatchId = setInterval(clockWatchTick, CLOCK_WATCH_MS);
+  }
+
+  function stopClockWatch() {
+    if (clockWatchId !== null) {
+      clearInterval(clockWatchId);
+      clockWatchId = null;
+    }
+  }
+
   function currentIntervalSec() {
     return parseIntervalSec(logIntervalInput.value);
   }
@@ -200,9 +309,13 @@
   // ワークレットからの1区間
   function handleIntervalMessage(msg) {
     if (!running || !clockAnchor) return;
-    const rec = buildIntervalRecord(msg, clockAnchor, getFloorDb());
-    // 無音（-Infinity）を捨てる現状の振る舞いはそのまま。直すのは段階2
+    const rec = buildIntervalRecord(msg, clockAnchor, getFloorDb(), {
+      clockBreak: pendingClockBreak
+    });
+    // 無音（-Infinity）を捨てる現状の振る舞いはそのまま。直すのは段階2の2番
     if (!Number.isFinite(rec.rawDb)) return;
+    // 印は行が確定してから外す（捨てた行で印を失わない）
+    pendingClockBreak = null;
     pushRecord(rec);
   }
 
@@ -222,7 +335,9 @@
       endTime: nowSec,
       startWallMs: nowMs - (nowSec - startSec) * 1000,
       endWallMs: nowMs,
-      expectedSamples: Math.round(lastIntervalSec * sr)
+      expectedSamples: Math.round(lastIntervalSec * sr),
+      clockEpoch: clockAnchor ? clockAnchor.epoch : 0,
+      clockBreak: takeClockBreak()
     }));
   }
 
@@ -328,7 +443,16 @@
         console.warn('AudioWorklet を読み込めないため簡易モードで動かします', workletErr);
         workletNode = null;
       }
-      clockAnchor = { audioTime: audioCtx.currentTime, wallMs: Date.now() };
+      // 時刻のアンカーと、その監視
+      clockAnchor = createClockAnchor(audioCtx.currentTime, Date.now());
+      clockProbe = { audioTime: clockAnchor.audioTime, wallMs: clockAnchor.wallMs };
+      pendingClockBreak = null;
+      clockBreaks = [];
+      ctxSuspendedSince = 0;
+      renderRecordNotice();
+      audioCtx.addEventListener('statechange', handleContextStateChange);
+      startClockWatch();
+
       renderEngineMode();
 
       startedAt = performance.now() / 1000;
@@ -378,6 +502,12 @@
   }
 
   async function cleanup() {
+    // 時刻の監視を止める
+    stopClockWatch();
+    if (audioCtx) {
+      try { audioCtx.removeEventListener('statechange', handleContextStateChange); } catch {}
+    }
+
     // ストリームを最初に停止（これが最も重要）
     if (mediaStream) {
       mediaStream.getTracks().forEach(t => {
@@ -398,6 +528,8 @@
       silentGain = null;
     }
     clockAnchor = null;
+    clockProbe = null;
+    ctxSuspendedSince = 0;
 
     // Audio Nodeの切断
     if (sourceNode) { 
@@ -582,6 +714,12 @@
   resetBtn.addEventListener('click', resetAllStats);
   themeToggle.addEventListener('click', toggleTheme);
   window.addEventListener('beforeunload', stop);
+
+  // 画面が戻ったら、次の監視タイマーを待たずに時刻を点検する
+  // （スマートフォンのロック解除・タブの復帰がここを通る）
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') clockWatchTick();
+  });
   
   // ヘルプモーダル機能
   function setupHelpModal() {

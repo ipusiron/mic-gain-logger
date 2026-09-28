@@ -113,13 +113,57 @@ const MicGainLogic = (() => {
   }
 
   // オーディオクロックの秒 → 壁時計のミリ秒
-  // anchor = { audioTime, wallMs }（記録開始時に1回だけ取る）
+  // anchor = { epoch, audioTime, wallMs }
   function audioTimeToWallMs(audioTime, anchor) {
     return anchor.wallMs + (audioTime - anchor.audioTime) * 1000;
   }
 
+  // ---- 時刻のアンカーと、その取り直し ----
+  //
+  // AudioContext が suspend されているあいだ currentTime は進まないが、壁時計は進む。
+  // 記録開始時のアンカーを使い続けると、再開後のタイムスタンプが中断していた時間ぶん
+  // 過去へずれる。スマートフォンの画面ロックで必ず通る経路なので、ずれを検出して
+  // アンカーを取り直し、取り直したことを記録に残す。
+  //
+  // ずれの見方は「前回の点検からの差分」である。開始時からの累積で見ると、
+  // オーディオ機器のクロックと OS のクロックのわずかな周波数差
+  // （数十 ppm ＝ 1時間で数百ミリ秒）が積み上がって中断と区別できなくなる。
+  // 差分で見れば周波数差は1秒あたり 0.1 ミリ秒未満に収まり、
+  // 中断（秒単位の跳び）とはっきり分かれる。
+
+  const CLOCK_JUMP_THRESHOLD_MS = 250;
+  const CLOCK_BREAK_SUSPEND = 'suspend';   // statechange で中断を観測した
+  const CLOCK_BREAK_STALL = 'stall';       // 状態変化なしにオーディオクロックが遅れた
+  const CLOCK_OK = 'ok';
+  const CLOCK_RESYNC = 'resync';           // この区間はアンカーの取り直しを跨いでいる
+
+  function createClockAnchor(audioTime, wallMs) {
+    return { epoch: 0, audioTime, wallMs };
+  }
+
+  // 2点間で、壁時計の経過とオーディオクロックの経過の差（ミリ秒）。
+  // 正＝オーディオクロックが遅れている＝その間オーディオが止まっていた。
+  function clockDriftMs(from, audioTime, wallMs) {
+    return (wallMs - from.wallMs) - (audioTime - from.audioTime) * 1000;
+  }
+
+  // 前回の点検（probe）からのずれが閾値以上なら跳びとして報告する。閾値未満なら null。
+  // probe は「点検した時刻の組」で、アンカーとは別に持つ。
+  function detectClockJump(probe, audioTime, wallMs, thresholdMs) {
+    const limit = Number.isFinite(thresholdMs) ? thresholdMs : CLOCK_JUMP_THRESHOLD_MS;
+    const drift = clockDriftMs(probe, audioTime, wallMs);
+    if (!(Math.abs(drift) >= limit)) return null;
+    return { jumpMs: drift };
+  }
+
+  // アンカーを取り直す（epoch を1つ進める）
+  function reanchorClock(anchor, audioTime, wallMs) {
+    return { epoch: anchor.epoch + 1, audioTime, wallMs };
+  }
+
   // ワークレットからの1メッセージを1行分の区間レコードへ
-  function buildIntervalRecord(msg, anchor, floorDb) {
+  // extra = { clockBreak: { kind, jumpMs } | null }
+  function buildIntervalRecord(msg, anchor, floorDb, extra) {
     const sr = msg.sampleRate;
     const startTime = msg.startFrame / sr;
     const endTime = msg.endFrame / sr;
@@ -127,6 +171,7 @@ const MicGainLogic = (() => {
     const rawDb = rmsToDbfs(rms);
     const startWall = new Date(audioTimeToWallMs(startTime, anchor));
     const endWall = new Date(audioTimeToWallMs(endTime, anchor));
+    const brk = (extra && extra.clockBreak) || null;
     return {
       seq: msg.seq,
       engine: ENGINE_WORKLET,
@@ -136,13 +181,17 @@ const MicGainLogic = (() => {
       endWall,
       ts: endWall,                       // CSV の timestamp 列（区間の終わり）
       rawDb,                             // 区間のエネルギー平均（生値）
-      db: Math.max(rawDb, floorDb),      // 表示下限でのクリップ（段階2で表示専用へ移す）
+      db: Math.max(rawDb, floorDb),      // 表示下限でのクリップ（段階3で表示専用へ移す）
       peak: msg.peak,
       peakDb: rmsToDbfs(msg.peak),
       clipCount: msg.clip,
       sampleCount: msg.count,
       expectedSamples: msg.expected,
-      validRatio: validRatioOf(msg.count, msg.expected)
+      validRatio: validRatioOf(msg.count, msg.expected),
+      clockEpoch: anchor.epoch || 0,
+      clockStatus: brk ? CLOCK_RESYNC : CLOCK_OK,
+      clockBreakKind: brk ? brk.kind : null,
+      clockJumpMs: brk ? brk.jumpMs : null
     };
   }
 
@@ -151,6 +200,7 @@ const MicGainLogic = (() => {
   function buildFallbackRecord(opts) {
     const rawDb = opts.db;
     const endWall = new Date(opts.endWallMs);
+    const brk = opts.clockBreak || null;
     return {
       seq: opts.seq,
       engine: ENGINE_FALLBACK,
@@ -166,7 +216,11 @@ const MicGainLogic = (() => {
       clipCount: null,
       sampleCount: null,
       expectedSamples: opts.expectedSamples,
-      validRatio: null
+      validRatio: null,
+      clockEpoch: opts.clockEpoch || 0,
+      clockStatus: brk ? CLOCK_RESYNC : CLOCK_OK,
+      clockBreakKind: brk ? brk.kind : null,
+      clockJumpMs: brk ? brk.jumpMs : null
     };
   }
 
@@ -202,6 +256,15 @@ const MicGainLogic = (() => {
     framesForInterval,
     validRatioOf,
     audioTimeToWallMs,
+    CLOCK_JUMP_THRESHOLD_MS,
+    CLOCK_BREAK_SUSPEND,
+    CLOCK_BREAK_STALL,
+    CLOCK_OK,
+    CLOCK_RESYNC,
+    createClockAnchor,
+    clockDriftMs,
+    detectClockJump,
+    reanchorClock,
     buildIntervalRecord,
     buildFallbackRecord,
     buildCsv,
