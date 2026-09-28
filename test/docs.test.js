@@ -324,7 +324,10 @@ test('シナリオ例が「画面ロック相当で実測確認」と言い切�
 });
 
 test('ハッシュチェーンの限界を README が書いている', () => {
-  assert.ok(readme.includes('改ざんを防ぐ」ものではありません'), 'ハッシュチェーンの限界が書かれていない');
+  assert.ok(
+    readme.includes('意図的な改変には、相手が誰であっても耐えません'),
+    'ハッシュチェーンの限界が書かれていない'
+  );
   assert.ok(readme.includes(logic.HASH_ALGO_LABEL), `README に ${logic.HASH_ALGO_LABEL} が無い`);
 });
 
