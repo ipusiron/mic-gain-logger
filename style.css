@@ -10,6 +10,10 @@
   --shadow:0 8px 30px rgba(0,0,0,.4);
   --radius:18px;
   --border:rgba(255,255,255,.15);
+  /* キャンバスの描画色。JS がベタ書きするとテーマの片方で見えなくなる
+     （改修前はグリッドが rgba(255,255,255,.06) 固定で、ライトでは白地に白だった） */
+  --grid:rgba(255,255,255,.18);
+  --plot:#7cc0ff;
 }
 
 *{box-sizing:border-box}
@@ -737,4 +741,6 @@ body.light{
   --err:#d83a3a;
   --shadow:0 8px 28px rgba(16,24,40,.12);
   --border:rgba(0,0,0,.08);
+  --grid:rgba(11,13,16,.22);
+  --plot:#0b5bd3;
 }

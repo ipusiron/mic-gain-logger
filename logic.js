@@ -110,6 +110,100 @@ const MicGainLogic = (() => {
     };
   }
 
+  // ---- グラフ（時間軸）----
+  //
+  // 改修前は「1フレーム＝1px」で左へ流す実装だった。1px の意味する時間が
+  // リフレッシュレート（60Hz / 120Hz）とタブの非アクティブ化で変わるので、
+  // 横軸が時間になっていない。目盛りもラベルも無かった。
+  // 段階1で時刻がオーディオクロックに乗ったので、ここで横軸を実時間にする。
+  //
+  // ⚠ 点は dB 値のまま持つ。改修前は 0..1 へ正規化してから積んでいたため、
+  //    記録中に表示下限を変えると、過去の点だけ古い正規化のまま残っていた。
+
+  const GRAPH_WINDOW_SEC = 60;   // 横軸に映す長さ（秒）
+  const GRAPH_TOP_DB = 0;        // 縦軸の上端（dBFS の最大は 0）
+
+  // 目盛りとラベルのぶんだけ内側へ寄せた描画領域。
+  // 狭い画面では余白を詰める（スマートフォンでは高さ 120px しかない）。
+  function graphArea(width, height) {
+    const left = width < 360 ? 28 : 40;
+    const right = 8;
+    const top = 8;
+    const bottom = height < 160 ? 14 : 18;
+    return {
+      x: left,
+      y: top,
+      w: Math.max(1, width - left - right),
+      h: Math.max(1, height - top - bottom)
+    };
+  }
+
+  // 時刻 → x 座標（右端が「いま」、左端が windowMs 前）
+  function timeToX(tMs, nowMs, windowMs, area) {
+    const span = windowMs > 0 ? windowMs : 1;
+    const ago = clamp((nowMs - tMs) / span, 0, 1);
+    return area.x + area.w * (1 - ago);
+  }
+
+  // dBFS → y 座標。無音（-Infinity）は下端へ置く
+  function dbToY(db, floorDb, topDb, area) {
+    if (!Number.isFinite(db)) return area.y + area.h;
+    const span = (topDb - floorDb) || 1;
+    const t = clamp((db - floorDb) / span, 0, 1);
+    return area.y + area.h * (1 - t);
+  }
+
+  // 目盛りの間隔。本数がおおむね6本以下に収まる刻みを選ぶ
+  function timeTickStepSec(windowSec) {
+    const candidates = [1, 2, 5, 10, 15, 30, 60, 120, 300];
+    for (let i = 0; i < candidates.length; i++) {
+      if (windowSec / candidates[i] <= 6) return candidates[i];
+    }
+    return Math.ceil(windowSec / 6);
+  }
+
+  // 右端を 0 秒前として、左へ step 秒ずつ
+  function timeTicks(windowSec, stepSec) {
+    const step = stepSec > 0 ? stepSec : timeTickStepSec(windowSec);
+    const out = [];
+    for (let ago = 0; ago <= windowSec + 1e-9; ago += step) {
+      const a = Math.round(ago * 1000) / 1000;
+      out.push({ agoSec: a, label: a === 0 ? '0s' : `-${a}s` });
+    }
+    return out;
+  }
+
+  function dbTickStep(spanDb) {
+    const candidates = [1, 2, 5, 10, 20, 30, 50];
+    for (let i = 0; i < candidates.length; i++) {
+      if (spanDb / candidates[i] <= 6) return candidates[i];
+    }
+    return Math.ceil(spanDb / 6);
+  }
+
+  // 上端（0 dBFS）から下へ。表示下限そのものは必ず1本入れる
+  function dbTicks(floorDb, topDb, stepDb) {
+    const span = topDb - floorDb;
+    const step = stepDb > 0 ? stepDb : dbTickStep(span > 0 ? span : 1);
+    const out = [];
+    for (let v = topDb; v >= floorDb - 1e-9; v -= step) {
+      out.push(Math.round(v * 100) / 100);
+    }
+    if (!out.length || Math.abs(out[out.length - 1] - floorDb) > 1e-9) out.push(floorDb);
+    return out.map(db => ({ db, label: String(Math.round(db)) }));
+  }
+
+  // 窓の外へ出た点を落とす。線が左端まで届くように、窓の外の直近1点は残す
+  function pruneSeries(series, nowMs, windowMs) {
+    if (!series.length) return series;
+    const cutoff = nowMs - windowMs;
+    let keepFrom = series.length - 1;   // 全部古ければ最後の1点だけ残す
+    for (let i = 0; i < series.length; i++) {
+      if (series[i].tMs >= cutoff) { keepFrom = i > 0 ? i - 1 : 0; break; }
+    }
+    return keepFrom > 0 ? series.slice(keepFrom) : series;
+  }
+
   // ---- 区間（1行＝1区間）----
   //
   // 計測の単位は「瞬間」ではなく「区間」である。1区間は次を持つ。
@@ -464,6 +558,16 @@ const MicGainLogic = (() => {
     formatStats,
     emptyStatsText,
     canvasPixelSize,
+    GRAPH_WINDOW_SEC,
+    GRAPH_TOP_DB,
+    graphArea,
+    timeToX,
+    dbToY,
+    timeTickStepSec,
+    timeTicks,
+    dbTickStep,
+    dbTicks,
+    pruneSeries,
     ENGINE_WORKLET,
     ENGINE_FALLBACK,
     framesForInterval,

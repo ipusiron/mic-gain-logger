@@ -7,6 +7,8 @@
   const {
     clamp, dbToPercent, formatHMS, rmsToDbfs, rmsOf,
     parseFloorDb, parseIntervalSec, canvasPixelSize,
+    GRAPH_WINDOW_SEC, GRAPH_TOP_DB, graphArea, timeToX, dbToY,
+    timeTickStepSec, timeTicks, dbTickStep, dbTicks, pruneSeries,
     createStats, addStatsSample, formatStats, emptyStatsText,
     ENGINE_WORKLET, ENGINE_FALLBACK, framesForInterval,
     CLOCK_BREAK_SUSPEND, CLOCK_BREAK_STALL,
@@ -98,7 +100,10 @@
 
   let WIDTH = canvas.width;
   let HEIGHT = canvas.height;
-  let series = new Array(WIDTH).fill(0); // 0..1 の値（可視化用）
+  // グラフの点。{ tMs: 壁時計ミリ秒, db: dBFS の生値 }
+  // ⚠ 0..1 へ正規化して持たない。記録中に表示下限を変えたとき、
+  //    過去の点だけ古い正規化のまま残ってしまう
+  let series = [];
   
   // キャンバスの内部解像度だけを合わせる。
   // 表示上の大きさ（width:100% / height）は style.css が決める。
@@ -122,15 +127,7 @@
 
     WIDTH = size.cssW;
     HEIGHT = size.cssH;
-
-    // 既存のseriesをリサイズ
-    if (series.length !== WIDTH) {
-      const newSeries = new Array(WIDTH).fill(0);
-      for (let i = 0; i < Math.min(series.length, WIDTH); i++) {
-        newSeries[i] = series[i] || 0;
-      }
-      series = newSeries;
-    }
+    // series は時刻で持つので、幅が変わっても詰め替えは要らない
   }
 
   // コンテナ幅の変化を拾う。window の resize だけでは、設定の開閉や
@@ -164,39 +161,99 @@
     return rmsToDbfs(rmsOf(buffer));
   }
 
-  // キャンバス描画
+  // キャンバスの色はテーマ変数から取る。
+  // ベタ書きだとライトで完全に見えなくなる（グリッドは白地に白で 1.00:1 だった）
+  function graphColors() {
+    const s = getComputedStyle(document.body);
+    const pick = (name, fallback) => (s.getPropertyValue(name) || '').trim() || fallback;
+    return {
+      bg: pick('--card', '#141820'),
+      grid: pick('--grid', 'rgba(128,128,128,.28)'),
+      axis: pick('--muted', '#8b95a7'),
+      plot: pick('--plot', '#4da3ff')
+    };
+  }
+
+  // キャンバス描画。横軸は実時間（右端が「いま」）、縦軸は dBFS。
   function drawSeries() {
+    const col = graphColors();
+    const nowMs = Date.now();
+    const floorDb = getFloorDb();
+    const area = graphArea(WIDTH, HEIGHT);
+    const windowMs = GRAPH_WINDOW_SEC * 1000;
+
     // 背景
-    ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--card') || '#141820';
+    ctx.fillStyle = col.bg;
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    // グリッド
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    const fontPx = WIDTH < 360 ? 9 : 10;
+    ctx.font = `${fontPx}px ui-sans-serif, system-ui, sans-serif`;
     ctx.lineWidth = 1;
-    for (let x = 0; x < WIDTH; x += 80) {
+
+    // 縦のグリッドと時間ラベル
+    const tStep = timeTickStepSec(GRAPH_WINDOW_SEC);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    for (const tick of timeTicks(GRAPH_WINDOW_SEC, tStep)) {
+      const x = Math.round(timeToX(nowMs - tick.agoSec * 1000, nowMs, windowMs, area)) + 0.5;
+      ctx.strokeStyle = col.grid;
       ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, HEIGHT);
+      ctx.moveTo(x, area.y);
+      ctx.lineTo(x, area.y + area.h);
       ctx.stroke();
-    }
-    for (let y = 0; y < HEIGHT; y += 40) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(WIDTH, y);
-      ctx.stroke();
+      ctx.fillStyle = col.axis;
+      ctx.fillText(tick.label, x, area.y + area.h + 3);
     }
 
-    // ライン
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#4da3ff';
-    ctx.beginPath();
-    for (let x = 0; x < WIDTH; x++) {
-      const v = series[x]; // 0..1
-      const y = HEIGHT - (HEIGHT * v);
-      if (x === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
+    // 横のグリッドと dB ラベル
+    const dStep = dbTickStep(GRAPH_TOP_DB - floorDb);
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    for (const tick of dbTicks(floorDb, GRAPH_TOP_DB, dStep)) {
+      const y = Math.round(dbToY(tick.db, floorDb, GRAPH_TOP_DB, area)) + 0.5;
+      ctx.strokeStyle = col.grid;
+      ctx.beginPath();
+      ctx.moveTo(area.x, y);
+      ctx.lineTo(area.x + area.w, y);
+      ctx.stroke();
+      ctx.fillStyle = col.axis;
+      ctx.fillText(tick.label, area.x - 4, y);
     }
-    ctx.stroke();
+
+    // 縦軸の単位。左の余白が狭い画面（390px など）では dB の目盛りラベルと
+    // 重なるので、収まるときだけ描く（単位は canvas の title にも書いてある）
+    const unit = 'dBFS';
+    if (ctx.measureText(unit).width + 2 <= area.x - 14) {
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = col.axis;
+      ctx.fillText(unit, 1, area.y - 1);
+    }
+
+    // 折れ線。x は実時刻、y は dB 値（正規化して持たない）
+    if (series.length) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(area.x, area.y, area.w, area.h);
+      ctx.clip();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = col.plot;
+      ctx.beginPath();
+      for (let i = 0; i < series.length; i++) {
+        const p = series[i];
+        const x = timeToX(p.tMs, nowMs, windowMs, area);
+        const y = dbToY(p.db, floorDb, GRAPH_TOP_DB, area);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 枠
+    ctx.strokeStyle = col.grid;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(area.x + 0.5, area.y + 0.5, area.w - 1, area.h - 1);
   }
 
   function renderStats(text) {
@@ -813,9 +870,10 @@
     else if (db >= -40) meterBar.style.filter = 'hue-rotate(-25deg)'; // 黄寄り
     else meterBar.style.filter = 'hue-rotate(-60deg)';                 // 緑寄り
 
-    // 可視化シリーズ更新（右端に追加して左へ流す）
-    series.shift();
-    series.push(clamp(pct/100, 0, 1));
+    // 可視化シリーズ更新。dB の生値を時刻つきで積み、窓の外は落とす
+    const nowMs = Date.now();
+    series.push({ tMs: nowMs, db });
+    series = pruneSeries(series, nowMs, GRAPH_WINDOW_SEC * 1000);
     drawSeries();
 
     // 統計（母集団を区間へそろえるのは段階3）
