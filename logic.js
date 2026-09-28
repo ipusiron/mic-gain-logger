@@ -700,7 +700,11 @@ const MicGainLogic = (() => {
   // CSV の列は増やさない（列の確定は段階4の CSV v2）。内部のレコードから
   // 参照できる形で1セッション分を1つだけ持ち、行ごとに複製しない。
 
-  // 主要3項目。どの実装も報告するので、報告が無ければ「不明」として扱う
+  // 主要3項目。報告が無ければ「不明」として扱う。
+  // ⚠ 「どの実装も報告する」わけではない。WebKit（Safari）の MediaTrackSettings には
+  //    autoGainControl と noiseSuppression が無く、getSettings() は echoCancellation しか
+  //    返さない作りになっている（WebKit のソース main で確認、2026-09-29。iPhone の実機の
+  //    CSV ではまだ確かめていない）。Safari ではこの2項目が毎回「不明」になる前提で扱う
   const PROCESSING_KEYS = ['autoGainControl', 'noiseSuppression', 'echoCancellation'];
   // 実装によっては存在しない加工。報告されて有効なときだけ数え、
   // 無ければ「不明」にはしない（大半のブラウザーで不明だらけになるため）

@@ -458,7 +458,7 @@ dBFSは、そのデジタル系で表せる最大振幅を0 dBFSとしたとき�
 |---|---|---|---|
 | **Chrome / Edge**（Chromium） | ✅ 実測で確認 | ⚠️ エミュレーションのみ | 本READMEの実測値はすべてChromiumで採った |
 | **Firefox** | ⚠️ 未検証 | ⚠️ 未検証 | Web Audio APIとAudioWorkletには対応しているが、実機では確かめていない |
-| **Safari** | ⚠️ 未検証 | ✅ iPhone 18 Pro Maxの実機1台で記録とCSVを確認 | 画面ロック中・バックグラウンドは未確認。`autoGainControl`を報告しないことがあり、そのときメタ行は`# processing=unknown:autoGainControl`になる |
+| **Safari** | ⚠️ 未検証 | ✅ iPhone 18 Pro Maxの実機1台で記録とCSVを確認 | 画面ロック中・バックグラウンドは未確認。WebKitのソースを読むと、Safariは`autoGainControl`と`noiseSuppression`を報告しない作りになっている。そのときメタ行は`# processing=unknown:autoGainControl+noiseSuppression`になる（iPhoneの実機のCSVではまだ確かめていない） |
 | **Opera** | ⚠️ 未検証 | ⚠️ 未検証 | Chromium系なので同等と見込まれるが、確かめていない |
 
 AudioWorkletが使えない環境では簡易モードへ切り替わります。簡易モードでも記録はできますが、画面の描画が止まると記録も止まります。
@@ -567,7 +567,7 @@ timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash
 | `started` | 最初の区間の時刻 |
 | `sampleRate` | AudioContextのサンプルレート |
 | `device` | マイクのデバイス名 |
-| `processing` | マイク側の音の加工（AGC・ノイズ抑制・エコーキャンセル）について、ブラウザーの`getSettings()`が報告した状態。`off`＝3項目すべてが無効と報告された。`active:<項目>`＝有効と報告された項目。`unknown:<項目>`＝ブラウザーが報告しなかった項目（Safariは`autoGainControl`を報告しないことがある）。両方あるときは`active:echoCancellation;unknown:autoGainControl`のように`;`でつなぐ。⚠**c7b6bad（2026-09-29公開）までの版は、報告しない項目があっても`# processing=off`と書いていた。**その版のCSVの`off`は「加工が切れていた」の証明にならない |
+| `processing` | マイク側の音の加工（AGC・ノイズ抑制・エコーキャンセル）について、ブラウザーの`getSettings()`が報告した状態。`off`＝3項目すべてが無効と報告された。`active:<項目>`＝有効と報告された項目。`unknown:<項目>`＝ブラウザーが報告しなかった項目（WebKitのソースを読むと、Safariは`autoGainControl`と`noiseSuppression`を報告しない作りになっている）。両方あるときは`active:echoCancellation;unknown:autoGainControl`のように`;`でつなぐ。⚠**c7b6bad（2026-09-29公開）までの版は、報告しない項目があっても`# processing=off`と書いていた。**その版のCSVの`off`は「加工が切れていた」の証明にならない |
 | `weighting` | 周波数の重み付け。本ツールは重み付けをしないので常に`Z` |
 | `hash` | ハッシュチェーンの方式。鎖を作れなかった記録では行そのものが出ない |
 
