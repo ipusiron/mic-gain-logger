@@ -11,6 +11,8 @@
     ENGINE_WORKLET, ENGINE_FALLBACK, framesForInterval,
     CLOCK_BREAK_SUSPEND, CLOCK_BREAK_STALL,
     createClockAnchor, detectClockJump, reanchorClock,
+    DEVICE_LOST_ENDED, DEVICE_LOST_GONE,
+    readTrackState, isTrackLost, markDeviceLoss,
     buildIntervalRecord, buildFallbackRecord,
     buildCsv, csvFileName
   } = MicGainLogic; // logic.js（classic script のグローバル束縛）
@@ -68,6 +70,11 @@
   let clockWatchId = null;       // 壁時計側の監視タイマー
   let ctxSuspendedSince = 0;     // suspended を観測した時刻（0＝観測していない）
   const CLOCK_WATCH_MS = 1000;
+
+  // マイクのデバイス喪失
+  let deviceLoss = null;         // { reason, atWallMs, lastSeq, rowsKept }
+  let deviceMuted = false;       // 供給元で無音化されている（通話の割り込みなど）
+  let watchedTrack = null;
 
   let rafId = null;
   let running = false;
@@ -199,19 +206,87 @@
     }
   }
 
-  // 記録に関わる注意書き（時刻の跳びなど）を画面へ出す
+  // 記録に関わる注意書き（デバイス喪失・時刻の跳び）を画面へ出す
+  function deviceLossLabel(reason) {
+    if (reason === DEVICE_LOST_GONE) return '音声トラックが無くなりました';
+    return 'マイクが切断されました';
+  }
+
   function renderRecordNotice() {
     if (!recordNoticeEl) return;
-    if (!clockBreaks.length) {
-      recordNoticeEl.className = 'record-notice';
-      recordNoticeEl.textContent = '';
-      return;
+    const parts = [];
+    if (deviceLoss) {
+      parts.push(
+        `${deviceLossLabel(deviceLoss.reason)}。${deviceLoss.rowsKept}行目までを記録し、`
+        + 'そのあとは記録していません（ここまでのログは書き出せます）'
+      );
+    } else if (deviceMuted) {
+      parts.push('マイクが供給元で無音化されています（通話の割り込みなど）。'
+        + 'この間の記録はデジタル無音になります');
     }
-    const totalSec = clockBreaks.reduce((a, b) => a + b.jumpMs, 0) / 1000;
-    recordNoticeEl.className = 'record-notice warn';
-    recordNoticeEl.textContent =
-      `時刻の跳びを${clockBreaks.length}回検出（累計 ${totalSec.toFixed(2)} 秒）。`
-      + '該当区間に印を付け、以降の時刻は取り直したアンカーで出しています';
+    if (clockBreaks.length) {
+      const totalSec = clockBreaks.reduce((a, b) => a + b.jumpMs, 0) / 1000;
+      parts.push(
+        `時刻の跳びを${clockBreaks.length}回検出（累計 ${totalSec.toFixed(2)} 秒）。`
+        + '該当区間に印を付け、以降の時刻は取り直したアンカーで出しています'
+      );
+    }
+    const kind = deviceLoss ? ' err' : (parts.length ? ' warn' : '');
+    recordNoticeEl.className = 'record-notice' + kind;
+    recordNoticeEl.textContent = parts.join(' / ');
+  }
+
+  // ---- マイクのデバイス喪失 ----
+  //
+  // 有効サンプル率では検出できない。トラックを stop しても
+  // MediaStreamAudioSourceNode はデジタル無音を流し続けるので、
+  // validRatio は 1.0、sampleCount も期待どおりのままで、dBFS だけが
+  // -Infinity になる。区別できるのは MediaStreamTrack の状態だけである。
+  function handleDeviceLost(reason) {
+    if (!running || deviceLoss) return;
+    deviceLoss = markDeviceLoss(logs, { reason, atWallMs: Date.now() });
+    stop();
+    setStatus('マイクが切断されました。記録を停止しました', 'err');
+    renderRecordNotice();
+  }
+
+  function detachTrackWatch() {
+    if (!watchedTrack) return;
+    try { watchedTrack.removeEventListener('ended', onTrackEnded); } catch {}
+    try { watchedTrack.removeEventListener('mute', onTrackMute); } catch {}
+    try { watchedTrack.removeEventListener('unmute', onTrackUnmute); } catch {}
+    watchedTrack = null;
+  }
+
+  function onTrackEnded() { handleDeviceLost(DEVICE_LOST_ENDED); }
+
+  function onTrackMute() {
+    deviceMuted = true;
+    renderRecordNotice();
+  }
+
+  function onTrackUnmute() {
+    deviceMuted = false;
+    renderRecordNotice();
+  }
+
+  function attachTrackWatch(stream) {
+    detachTrackWatch();
+    const tracks = stream ? stream.getAudioTracks() : [];
+    if (!tracks.length) return;
+    watchedTrack = tracks[0];
+    deviceMuted = readTrackState(watchedTrack).muted === true;
+    watchedTrack.addEventListener('ended', onTrackEnded);
+    watchedTrack.addEventListener('mute', onTrackMute);
+    watchedTrack.addEventListener('unmute', onTrackUnmute);
+  }
+
+  // ended が来ない環境の取りこぼしを readyState で拾う
+  function checkTrackHealth() {
+    if (!running || deviceLoss) return;
+    const tracks = mediaStream ? mediaStream.getAudioTracks() : [];
+    if (!tracks.length) { handleDeviceLost(DEVICE_LOST_GONE); return; }
+    if (isTrackLost(readTrackState(tracks[0]))) handleDeviceLost(DEVICE_LOST_ENDED);
   }
 
   // ---- 時刻の中断の検出 ----
@@ -269,6 +344,8 @@
   // 中断しているあいだは点検を止め（probe を凍結し）、復帰時に1回でまとめて拾う
   function clockWatchTick() {
     if (!running || !audioCtx) return;
+    checkTrackHealth();
+    if (!running) return;
     if (audioCtx.state === 'suspended') {
       if (!ctxSuspendedSince) ctxSuspendedSince = Date.now();
       audioCtx.resume().catch(() => {});
@@ -430,6 +507,11 @@
         video: false
       });
 
+      // デバイス喪失の監視（記録中に切断されたら止める）
+      deviceLoss = null;
+      deviceMuted = false;
+      attachTrackWatch(mediaStream);
+
       // 新しいAudioContextを作成
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       analyser = audioCtx.createAnalyser();
@@ -512,6 +594,8 @@
   async function cleanup() {
     // 時刻の監視を止める
     stopClockWatch();
+    // トラックの監視を外す（自分で stop したときの ended を喪失と読まない）
+    detachTrackWatch();
     if (audioCtx) {
       try { audioCtx.removeEventListener('statechange', handleContextStateChange); } catch {}
     }
@@ -728,6 +812,11 @@
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') clockWatchTick();
   });
+
+  // デバイス構成が変わったら、使っているトラックが生きているかを見る
+  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+    navigator.mediaDevices.addEventListener('devicechange', checkTrackHealth);
+  }
   
   // ヘルプモーダル機能
   function setupHelpModal() {

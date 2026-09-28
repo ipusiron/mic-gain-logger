@@ -241,6 +241,49 @@ const MicGainLogic = (() => {
     };
   }
 
+  // ---- マイクのデバイス喪失 ----
+  //
+  // トラックを stop しても MediaStreamAudioSourceNode はデジタル無音を流し続ける。
+  // そのため有効サンプル率は 1.0 のまま、サンプル数も期待どおりのままで、
+  // dBFS だけが -Infinity になる。つまり計測値からは
+  // 「部屋が静かだった」と「マイクが死んだ」を区別できない。
+  // 区別できるのは MediaStreamTrack の状態だけである。
+
+  const TRACK_LIVE = 'live';
+  const TRACK_ENDED = 'ended';
+  const DEVICE_LOST_ENDED = 'ended';   // ended イベント／readyState が live でない
+  const DEVICE_LOST_GONE = 'gone';     // 音声トラックそのものが無くなった
+
+  function readTrackState(track) {
+    if (!track) return { readyState: null, muted: null, enabled: null, live: false };
+    return {
+      readyState: track.readyState || null,
+      muted: track.muted === true,
+      enabled: track.enabled !== false,
+      live: track.readyState === TRACK_LIVE
+    };
+  }
+
+  function isTrackLost(state) {
+    return !state || state.live !== true;
+  }
+
+  // 最後の行に「この行のあとでマイクを失った」印を付ける。
+  // 失ったあとの区間は測っていないので、行を作らない（作れば嘘になる）。
+  function markDeviceLoss(logs, event) {
+    const last = logs.length ? logs[logs.length - 1] : null;
+    if (last) {
+      last.deviceLostAfter = true;
+      last.deviceLostReason = event.reason;
+    }
+    return {
+      reason: event.reason,
+      atWallMs: event.atWallMs,
+      lastSeq: last ? last.seq : null,
+      rowsKept: logs.length
+    };
+  }
+
   // ---- CSV ----
   // 列は増やさない（timestamp,dbfs のまま。列の確定は段階4の CSV v2）。
   // どちらの計測モードで取った記録かだけを、先頭のコメント行で残す。
@@ -292,6 +335,13 @@ const MicGainLogic = (() => {
     detectClockJump,
     reanchorClock,
     clipForDisplay,
+    TRACK_LIVE,
+    TRACK_ENDED,
+    DEVICE_LOST_ENDED,
+    DEVICE_LOST_GONE,
+    readTrackState,
+    isTrackLost,
+    markDeviceLoss,
     buildIntervalRecord,
     buildFallbackRecord,
     formatCsvDb,
