@@ -247,3 +247,64 @@ test('ready のメッセージは、決まっていない起点を名乗らな�
   assert.equal(ready[0].sampleRate, SAMPLE_RATE);
   assert.equal(ready[0].intervalFrames, 4800);
 });
+
+
+// ---- 記録開始直後、入力が空のまま process() が呼ばれるとき（第2弾a3）----
+//
+// ⚠⚠ iPhone の実機で、記録開始直後の区間の有効サンプル率が 74.9% になった
+//    （2026-09-29）。48kHz・1秒の区間なら、欠けたのは 12032 フレーム
+//    ＝ちょうど 94 クォンタム（約251ミリ秒）である。第1弾で塞いだのは
+//    「process() が呼ばれるまでの間」だったが、こちらは「process() は呼ばれて
+//    いるのに、マイクの経路が動き出すまで入力が空で届く間」で、別の穴である。
+//    入力に音が載った最初の process() を起点にして塞ぐ。
+
+// 入力を空のまま（チャンネルなしで）1クォンタム進める
+function emptyTick(h, kind) {
+  h.proc.process(kind === 'zero-length' ? [[new Float32Array(0)]] : [[]]);
+  h.state.frame += QUANTUM;
+}
+
+test('⭐記録の頭で入力が空のあいだは区間を始めない（実機の 74.9% の再現）', () => {
+  // 改修前はこの状況で1行目が 35968/48000 になった
+  assert.equal(((SAMPLE_RATE - 94 * QUANTUM) / SAMPLE_RATE).toFixed(3), '0.749');
+
+  const h = createHarness(SAMPLE_RATE);
+  for (let q = 0; q < 94; q++) emptyTick(h);
+  for (let q = 0; q < Math.ceil(SAMPLE_RATE / QUANTUM) * 3; q++) h.tick(sine(0.1));
+  const iv = h.intervals();
+  assert.ok(iv.length >= 2, `intervals=${iv.length}`);
+  assert.equal(iv[0].count / iv[0].expected, 1, '1行目が見せかけの欠測になっている');
+  // 起点は「入力に音が載った最初の process()」
+  assert.equal(iv[0].startFrame, 94 * QUANTUM);
+  assert.equal(iv[0].endFrame - iv[0].startFrame, SAMPLE_RATE, '区間長が縮んでいる');
+});
+
+test('長さ0の配列で届く入力も、空の入力として扱う', () => {
+  const h = createHarness(SAMPLE_RATE);
+  for (let q = 0; q < 20; q++) emptyTick(h, 'zero-length');
+  for (let q = 0; q < Math.ceil(SAMPLE_RATE / QUANTUM) * 2; q++) h.tick(sine(0.1));
+  const iv = h.intervals();
+  assert.equal(iv[0].startFrame, 20 * QUANTUM);
+  assert.equal(iv[0].count / iv[0].expected, 1);
+});
+
+test('入力がいつまでも来ないときは、猶予（1秒）のあとで区間を始め、欠測として残す', () => {
+  // マイクが最初から届かない場合に1行も出ないと、「記録していない」ことすら残らない。
+  // 猶予を過ぎたら最初の process() を起点にし、届かなかったぶんを count=0 で出す
+  const h = createHarness(SAMPLE_RATE);
+  for (let q = 0; q < Math.ceil(SAMPLE_RATE / QUANTUM) * 3; q++) emptyTick(h);
+  const iv = h.intervals();
+  assert.ok(iv.length >= 2, `intervals=${iv.length}`);
+  assert.equal(iv[0].startFrame, 0, '起点が最初の process() になっていない');
+  assert.equal(iv[0].count, 0);
+  assert.equal(iv[0].count / iv[0].expected, 0, '届いていないのに欠測として残っていない');
+});
+
+test('猶予の途中で音が届けば、その時点を起点にする', () => {
+  const h = createHarness(SAMPLE_RATE);
+  for (let q = 0; q < 200; q++) emptyTick(h);   // 約0.53秒（猶予の1秒より短い）
+  for (let q = 0; q < Math.ceil(SAMPLE_RATE / QUANTUM) * 2; q++) h.tick(sine(0.1));
+  const iv = h.intervals();
+  assert.equal(iv[0].startFrame, 200 * QUANTUM);
+  assert.equal(iv[0].count / iv[0].expected, 1);
+});

@@ -26,9 +26,19 @@
 //    起点をコンストラクターに置いたままでも 1 行目から valid_ratio=1 だった）。
 //    出力デバイスが無いあいだ currentFrame が進まないためで、実機とは条件が違う。
 
+// ⚠⚠ 起点はさらに「入力に音が載った最初の process()」まで待つ（第2弾a3）。
+//    iPhone の実機で、記録開始直後の区間の有効サンプル率が 74.9% になった。
+//    48kHz・1秒の区間なら、欠けたのは 12032 フレーム＝ちょうど 94 クォンタム
+//    （約251ミリ秒）である。上の穴とは別で、process() は呼ばれているのに、
+//    マイクの経路が動き出すまで入力が空（チャンネルなし）で届く間を数えていた。
+//    ただし、いつまでも音が来ない（マイクが最初から届かない）と1行も出ず、
+//    「記録していない」ことすら残らない。猶予を過ぎたら最初の process() を起点にし、
+//    届かなかったぶんを欠測（count=0）として残す。
+
 'use strict';
 
 const MIN_INTERVAL_FRAMES = 128;
+const STARTUP_GRACE_SEC = 1;
 
 function normalizeFrames(value, fallback) {
   const v = Math.round(Number(value));
@@ -45,8 +55,10 @@ class MeterProcessor extends AudioWorkletProcessor {
     this.pendingIntervalFrames = 0;
     this.stopped = false;
     this.seq = 0;
-    // null＝まだ起点が決まっていない（最初の process() で currentFrame を取る）
+    // null＝まだ起点が決まっていない（入力に音が載った最初の process() で取る）
     this.startFrame = null;
+    // 最初に process() が呼ばれたフレーム（猶予を数える起点）
+    this.firstProcessFrame = null;
     this.resetAccumulator();
 
     this.port.onmessage = (event) => {
@@ -96,11 +108,23 @@ class MeterProcessor extends AudioWorkletProcessor {
   process(inputs) {
     if (this.stopped) return false;
 
-    // 1区間めの起点。ここが最初に呼ばれたフレームであり、音が流れ始めた時刻である
-    if (this.startFrame === null) this.startFrame = currentFrame;
-
     const input = inputs[0];
-    const channel = (input && input.length > 0) ? input[0] : null;
+    // 長さ0の配列も「空の入力」として扱う（チャンネルなしと同じ）
+    const channel = (input && input.length > 0 && input[0] && input[0].length > 0)
+      ? input[0] : null;
+
+    // 1区間めの起点。入力に音が載った最初のフレームであり、音が流れ始めた時刻である
+    if (this.startFrame === null) {
+      if (this.firstProcessFrame === null) this.firstProcessFrame = currentFrame;
+      if (channel) {
+        this.startFrame = currentFrame;
+      } else if (currentFrame - this.firstProcessFrame >= Math.round(sampleRate * STARTUP_GRACE_SEC)) {
+        // 猶予を過ぎても音が来ない。最初の process() を起点にし、欠測として残す
+        this.startFrame = this.firstProcessFrame;
+      } else {
+        return true;   // まだ始めない
+      }
+    }
     // 入力が途切れている間もオーディオクロックは進むので、ブロック長は既定の128で数える
     const blockLength = channel ? channel.length : 128;
 
