@@ -674,6 +674,27 @@ const MicGainLogic = (() => {
     return out;
   }
 
+  // AudioContext の中断（時刻の跳び）をメタ行へ出す。
+  //
+  // ⚠ 列は増やさない。clockStatus / clockBreakKind / clockJumpMs はレコードには
+  // 載っているが、CSV の列は段階4で 7列に確定させた。列を足すと README・テスト・
+  // Excel の手順まで波が及ぶので、回数と位置だけをメタ行で示す。
+  //
+  // これが無いあいだ、画面は「該当区間に印を付けた」と言うのに CSV には何も出ていなかった。
+  // clockBreakAt は印が付いた区間の seq で、その行の直前でアンカーを取り直している。
+  function clockMetaLines(logs) {
+    const marked = (logs || []).filter(r => r && r.clockStatus === CLOCK_RESYNC);
+    if (!marked.length) return [];   // 中断が0回なら行そのものを出さない
+    const drift = marked.reduce(
+      (a, r) => a + (Number.isFinite(r.clockJumpMs) ? r.clockJumpMs : 0), 0
+    );
+    return [
+      `# clockBreaks=${marked.length}`,
+      `# clockBreakAt=${marked.map(r => (Number.isFinite(r.seq) ? r.seq : '')).join(',')}`,
+      `# clockDriftMs=${Math.round(drift)}`
+    ];
+  }
+
   // ⚠ 書き出すのは rawDb（生値）である。
   // 改修前は表示下限でクリップした値を記録していたため、記録中に表示の設定を
   // 変えるとログデータ自体が変質していた。表示下限は表示のための設定なので、
@@ -691,6 +712,8 @@ const MicGainLogic = (() => {
       // 無音は -Infinity で残す。行を落とすと「活動がなかった」証拠にならない
       metaLines.push('# silence=-Infinity');
     }
+    // 中断の印。0回なら1行も足さない
+    for (const line of clockMetaLines(logs)) metaLines.push(line);
     const prefix = metaLines.length ? metaLines.join('\n') + '\n' : '';
     const header = CSV_COLUMNS.join(',') + '\n';
     const lines = logs.map((r, i) => {
@@ -776,6 +799,7 @@ const MicGainLogic = (() => {
     formatOptionalDb,
     csvDataFields,
     csvMetaLines,
+    clockMetaLines,
     csvSeed,
     hashInput,
     HASH_ALGO_LABEL,

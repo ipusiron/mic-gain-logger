@@ -324,7 +324,8 @@
       const totalSec = clockBreaks.reduce((a, b) => a + b.jumpMs, 0) / 1000;
       parts.push(
         `時刻の跳びを${clockBreaks.length}回検出（累計 ${totalSec.toFixed(2)} 秒）。`
-        + '該当区間に印を付け、以降の時刻は取り直したアンカーで出しています'
+        + '以降の時刻は取り直したアンカーで出し、'
+        + '該当区間はCSVのメタ行（# clockBreaks / # clockBreakAt / # clockDriftMs）に残ります'
       );
     }
     const kind = deviceLoss ? ' err' : (parts.length ? ' warn' : '');

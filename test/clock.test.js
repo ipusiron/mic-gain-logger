@@ -21,7 +21,9 @@ const {
   reanchorClock,
   audioTimeToWallMs,
   buildIntervalRecord,
-  buildFallbackRecord
+  buildFallbackRecord,
+  buildCsv,
+  clockMetaLines
 } = require('../logic.js');
 
 test('createClockAnchor: epoch は0から始まる', () => {
@@ -201,4 +203,87 @@ test('簡易モードのレコードも epoch と印を持つ', () => {
   assert.equal(plain.clockEpoch, 0);
   assert.equal(plain.clockStatus, CLOCK_OK);
   assert.equal(plain.clockJumpMs, null);
+});
+
+// ---- 中断の印を CSV のメタ行へ出す ----
+//
+// ⚠ 画面は「該当区間に印を付けた」と言うのに、CSV には印が1つも出ていなかった。
+// clockEpoch / clockStatus / clockBreakKind / clockJumpMs はレコードには載るのに
+// CSV_COLUMNS に無く、段階4で列を確定したときに落ちていた（第1弾の締めで発覚）。
+// 列は増やさない（増やすと README・テスト・Excel の手順まで波が及ぶ）。
+// 回数と位置と累計を、メタ行だけで示す。
+
+function markedRow(seq, startFrame, anchor, jumpMs) {
+  return buildIntervalRecord(message(seq, startFrame), anchor, -60, {
+    clockBreak: jumpMs ? { kind: CLOCK_BREAK_SUSPEND, jumpMs } : null
+  });
+}
+
+function metaOf(csv) {
+  return csv.split('\n').filter(l => l.charAt(0) === '#');
+}
+
+test('CSV: 中断を1回検出したら、回数・位置・累計がメタ行に出る', () => {
+  const t0 = Date.UTC(2026, 8, 28, 3, 0, 0);
+  const anchor0 = createClockAnchor(0, t0);
+  const anchor1 = reanchorClock(anchor0, 1, t0 + 11000);
+  const rows = [
+    markedRow(0, 0, anchor0, 0),
+    markedRow(1, 48000, anchor1, 10000),
+    markedRow(2, 96000, anchor1, 0)
+  ];
+  const lines = metaOf(buildCsv(rows, {}));
+  assert.ok(lines.includes('# clockBreaks=1'), lines.join(' / '));
+  assert.ok(lines.includes('# clockBreakAt=1'), lines.join(' / '));
+  assert.ok(lines.includes('# clockDriftMs=10000'), lines.join(' / '));
+});
+
+test('CSV: 中断が0回なら、その行は1つも出ない', () => {
+  const anchor = createClockAnchor(0, Date.UTC(2026, 8, 28, 3, 0, 0));
+  const rows = [markedRow(0, 0, anchor, 0), markedRow(1, 48000, anchor, 0)];
+  const csv = buildCsv(rows, {});
+  assert.ok(!csv.includes('clockBreaks'), '中断なしなのに行が出ている');
+  assert.ok(!csv.includes('clockBreakAt'), '中断なしなのに行が出ている');
+  assert.ok(!csv.includes('clockDriftMs'), '中断なしなのに行が出ている');
+});
+
+test('CSV: 中断が複数回なら、seq がカンマ区切りで並び、累計が足し合わされる', () => {
+  const t0 = Date.UTC(2026, 8, 28, 3, 0, 0);
+  const a0 = createClockAnchor(0, t0);
+  const a1 = reanchorClock(a0, 11, t0 + 11500);
+  const a2 = reanchorClock(a1, 25, t0 + 25880);
+  const rows = [];
+  for (let i = 0; i < 30; i++) {
+    const anchor = i < 11 ? a0 : (i < 25 ? a1 : a2);
+    const jump = i === 11 ? 500 : (i === 25 ? 380 : 0);
+    rows.push(markedRow(i, i * 48000, anchor, jump));
+  }
+  const lines = metaOf(buildCsv(rows, {}));
+  assert.ok(lines.includes('# clockBreaks=2'), lines.join(' / '));
+  assert.ok(lines.includes('# clockBreakAt=11,25'), lines.join(' / '));
+  assert.ok(lines.includes('# clockDriftMs=880'), lines.join(' / '));
+});
+
+test('簡易モードの行も中断の印として数える', () => {
+  const rows = [
+    buildFallbackRecord({
+      seq: 0, db: -30, floorDb: -60, startTime: 0, endTime: 1,
+      startWallMs: 0, endWallMs: 1000, expectedSamples: 48000
+    }),
+    buildFallbackRecord({
+      seq: 1, db: -30, floorDb: -60, startTime: 1, endTime: 2,
+      startWallMs: 11000, endWallMs: 12000, expectedSamples: 48000,
+      clockEpoch: 1, clockBreak: { kind: CLOCK_BREAK_SUSPEND, jumpMs: 10000 }
+    })
+  ];
+  assert.deepEqual(clockMetaLines(rows), [
+    '# clockBreaks=1',
+    '# clockBreakAt=1',
+    '# clockDriftMs=10000'
+  ]);
+});
+
+test('clockMetaLines: 空のログでも落ちない', () => {
+  assert.deepEqual(clockMetaLines([]), []);
+  assert.deepEqual(clockMetaLines(null), []);
 });
