@@ -187,7 +187,10 @@ test('リセットすると起点も直前のハッシュも消える', async ()
   assert.equal(await chain.sealTrailer(['# rows=0']), null);
 });
 
-// ---- 鎖を作れない環境（file:// など） ----
+// ---- 鎖を作れない環境 ----
+//
+// ⚠ crypto.subtle が使えない場所、つまり https でないホスト名つきの URL である。
+//    file:// は安全なコンテキストなので、ここには当てはまらない（Chromium で実測）。
 
 test('digest が null を返す環境では鎖を名乗らない', async () => {
   const chain = createHashChain(() => Promise.resolve(null));

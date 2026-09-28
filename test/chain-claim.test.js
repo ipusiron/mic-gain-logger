@@ -178,10 +178,27 @@ test('script.js のコメントが file:// を原因にしていない', () => {
   );
 });
 
-test('CLAUDE.md の開発コマンドが file:// を crypto.subtle の原因にしていない', () => {
+test('CLAUDE.md が file:// を crypto.subtle の原因にしていない', () => {
+  // ⚠ 開発コマンドの行と Key Implementation Notes の行の2か所にあった。
+  //    片方だけ直すと、次に読む者がもう片方を信じる
+  const banned = [
+    'file:// では AudioWorklet も crypto.subtle も使えない',
+    '`file://`ではハッシュ列が空になる'
+  ];
+  for (const s of banned) {
+    assert.ok(!claudeMd.includes(s), `CLAUDE.md に file:// の誤りが残っている: ${s}`);
+  }
   assert.ok(
-    !claudeMd.includes('file:// では AudioWorklet も crypto.subtle も使えない'),
-    'CLAUDE.md に file:// の誤りが残っている'
+    claudeMd.includes('`file://`は安全なコンテキストである'),
+    'CLAUDE.md が file:// の実態を書いていない'
+  );
+});
+
+test('テストのコメントが file:// を「鎖を作れない環境」にしていない', () => {
+  const chainRunner = fs.readFileSync(path.join(root, 'test', 'chain-runner.test.js'), 'utf8');
+  assert.ok(
+    !chainRunner.includes('鎖を作れない環境（file:// など）'),
+    'chain-runner.test.js に file:// の誤りが残っている'
   );
 });
 
