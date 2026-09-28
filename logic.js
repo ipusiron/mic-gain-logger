@@ -207,7 +207,10 @@ const MicGainLogic = (() => {
       clockEpoch: anchor.epoch || 0,
       clockStatus: brk ? CLOCK_RESYNC : CLOCK_OK,
       clockBreakKind: brk ? brk.kind : null,
-      clockJumpMs: brk ? brk.jumpMs : null
+      clockJumpMs: brk ? brk.jumpMs : null,
+      // 測定条件は1セッションに1つ。参照だけを持ち、行ごとに複製しない
+      metaId: (extra && extra.meta) ? extra.meta.id : null,
+      meta: (extra && extra.meta) || null
     };
   }
 
@@ -237,8 +240,78 @@ const MicGainLogic = (() => {
       clockEpoch: opts.clockEpoch || 0,
       clockStatus: brk ? CLOCK_RESYNC : CLOCK_OK,
       clockBreakKind: brk ? brk.kind : null,
-      clockJumpMs: brk ? brk.jumpMs : null
+      clockJumpMs: brk ? brk.jumpMs : null,
+      metaId: opts.meta ? opts.meta.id : null,
+      meta: opts.meta || null
     };
+  }
+
+  // ---- 測定条件（セッションのメタデータ）----
+  //
+  // AGC・ノイズ抑制・エコーキャンセルを「無効で」と要求しても、
+  // 実際に無効になったかは track.getSettings() の実値でしか分からない。
+  // AGC が効いていると入力の利得が勝手に動くので、dBFS の値そのものが
+  // 測定値として信用できなくなる。
+  // CSV の列は増やさない（列の確定は段階4の CSV v2）。内部のレコードから
+  // 参照できる形で1セッション分を1つだけ持ち、行ごとに複製しない。
+
+  // 主要3項目。どの実装も報告するので、報告が無ければ「不明」として扱う
+  const PROCESSING_KEYS = ['autoGainControl', 'noiseSuppression', 'echoCancellation'];
+  // 実装によっては存在しない加工。報告されて有効なときだけ数え、
+  // 無ければ「不明」にはしない（大半のブラウザーで不明だらけになるため）
+  const PROCESSING_OPTIONAL_KEYS = ['voiceIsolation'];
+  const PROCESSING_OFF = 'off';           // 3つとも無効と報告された
+  const PROCESSING_ACTIVE = 'active';     // 1つ以上が有効になっている
+  const PROCESSING_UNKNOWN = 'unknown';   // 報告しない項目がある
+
+  function numberOrNull(v) {
+    return Number.isFinite(v) ? v : null;
+  }
+
+  // true / false / null（その環境が報告しない）の3値にそろえる
+  function tristate(v) {
+    if (v === true) return true;
+    if (v === false) return false;
+    return null;
+  }
+
+  function buildSessionMeta(input) {
+    const src = input || {};
+    const s = src.settings || {};
+    const processing = {};
+    const allKeys = PROCESSING_KEYS.concat(PROCESSING_OPTIONAL_KEYS);
+    for (let i = 0; i < allKeys.length; i++) {
+      processing[allKeys[i]] = tristate(s[allKeys[i]]);
+    }
+    const active = allKeys.filter(k => processing[k] === true);
+    const unknown = PROCESSING_KEYS.filter(k => processing[k] === null);
+    return Object.freeze({
+      id: src.id || null,
+      startedWallMs: numberOrNull(src.startedWallMs),
+      engine: src.engine || null,
+      contextSampleRate: numberOrNull(src.contextSampleRate),
+      trackSampleRate: numberOrNull(s.sampleRate),
+      channelCount: numberOrNull(s.channelCount),
+      deviceLabel: src.deviceLabel || null,
+      deviceId: s.deviceId || null,
+      groupId: s.groupId || null,
+      latency: numberOrNull(s.latency),
+      processing: Object.freeze(processing),
+      processingActive: Object.freeze(active),
+      processingUnknown: Object.freeze(unknown),
+      requested: Object.freeze(Object.assign({}, src.requested)),
+      settings: Object.freeze(Object.assign({}, s)),
+      userAgent: src.userAgent || null,
+      timeZone: src.timeZone || null
+    });
+  }
+
+  // 測定値をそのまま信用してよいか
+  function processingVerdict(meta) {
+    if (!meta) return PROCESSING_UNKNOWN;
+    if (meta.processingActive.length) return PROCESSING_ACTIVE;
+    if (meta.processingUnknown.length) return PROCESSING_UNKNOWN;
+    return PROCESSING_OFF;
   }
 
   // ---- マイクの取得の試行 ----
@@ -383,6 +456,13 @@ const MicGainLogic = (() => {
     detectClockJump,
     reanchorClock,
     clipForDisplay,
+    PROCESSING_KEYS,
+    PROCESSING_OPTIONAL_KEYS,
+    PROCESSING_OFF,
+    PROCESSING_ACTIVE,
+    PROCESSING_UNKNOWN,
+    buildSessionMeta,
+    processingVerdict,
     CONNECT_HINT_MS,
     CONNECT_TIMEOUT_MS,
     createAttemptGate,

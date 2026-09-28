@@ -12,6 +12,7 @@
     CLOCK_BREAK_SUSPEND, CLOCK_BREAK_STALL,
     createClockAnchor, detectClockJump, reanchorClock,
     CONNECT_HINT_MS, CONNECT_TIMEOUT_MS, createAttemptGate, raceWithTimeout,
+    PROCESSING_ACTIVE, buildSessionMeta, processingVerdict,
     DEVICE_LOST_ENDED, DEVICE_LOST_GONE,
     readTrackState, isTrackLost, markDeviceLoss,
     buildIntervalRecord, buildFallbackRecord,
@@ -76,6 +77,15 @@
   const attemptGate = createAttemptGate();
   let connecting = false;
   let connectHintId = null;
+
+  // 測定条件（1セッションに1つ。レコードは参照だけを持つ）
+  let sessionMeta = null;
+  let sessionCounter = 0;
+  const AUDIO_CONSTRAINTS = {
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false
+  };
 
   // マイクのデバイス喪失
   let deviceLoss = null;         // { reason, atWallMs, lastSeq, rowsKept }
@@ -230,6 +240,12 @@
       parts.push('マイクが供給元で無音化されています（通話の割り込みなど）。'
         + 'この間の記録はデジタル無音になります');
     }
+    if (sessionMeta && processingVerdict(sessionMeta) === PROCESSING_ACTIVE) {
+      parts.push(
+        `マイク側の音の加工が有効です（${sessionMeta.processingActive.join(', ')}）。`
+        + '利得が自動で動くため、この記録の dBFS は絶対値として扱えません'
+      );
+    }
     if (clockBreaks.length) {
       const totalSec = clockBreaks.reduce((a, b) => a + b.jumpMs, 0) / 1000;
       parts.push(
@@ -240,6 +256,36 @@
     const kind = deviceLoss ? ' err' : (parts.length ? ' warn' : '');
     recordNoticeEl.className = 'record-notice' + kind;
     recordNoticeEl.textContent = parts.join(' / ');
+  }
+
+  // ---- 測定条件の取得 ----
+  //
+  // AGC が効いていると入力の利得が勝手に動くので、dBFS の値そのものが
+  // 測定値として信用できない。要求した制約ではなく getSettings() の実値を残す。
+  function captureSessionMeta() {
+    const track = watchedTrack
+      || (mediaStream ? mediaStream.getAudioTracks()[0] : null)
+      || null;
+    let settings = {};
+    if (track && typeof track.getSettings === 'function') {
+      try { settings = track.getSettings() || {}; } catch { settings = {}; }
+    }
+    let timeZone = null;
+    try {
+      timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+    } catch { timeZone = null; }
+    sessionCounter += 1;
+    return buildSessionMeta({
+      id: `s${sessionCounter}`,
+      startedWallMs: Date.now(),
+      engine: engineMode,
+      contextSampleRate: audioCtx ? audioCtx.sampleRate : null,
+      deviceLabel: track ? (track.label || null) : null,
+      requested: AUDIO_CONSTRAINTS,
+      settings,
+      userAgent: navigator.userAgent || null,
+      timeZone
+    });
   }
 
   // ---- マイクのデバイス喪失 ----
@@ -395,7 +441,8 @@
   function handleIntervalMessage(msg) {
     if (!running || !clockAnchor) return;
     const rec = buildIntervalRecord(msg, clockAnchor, getFloorDb(), {
-      clockBreak: pendingClockBreak
+      clockBreak: pendingClockBreak,
+      meta: sessionMeta
     });
     // デジタル無音（-Infinity）は「音がなかった」という記録なので残す。
     // 捨てるのは数値にならなかったものだけ
@@ -425,7 +472,8 @@
       endWallMs: nowMs,
       expectedSamples: Math.round(lastIntervalSec * sr),
       clockEpoch: clockAnchor ? clockAnchor.epoch : 0,
-      clockBreak: takeClockBreak()
+      clockBreak: takeClockBreak(),
+      meta: sessionMeta
     }));
   }
 
@@ -547,11 +595,7 @@
 
       // 新しいメディアストリームを取得（時間切れを設ける）
       const attempt = navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false
-        },
+        audio: Object.assign({}, AUDIO_CONSTRAINTS),
         video: false
       });
       const outcome = await raceWithTimeout(attempt, CONNECT_TIMEOUT_MS);
@@ -598,6 +642,10 @@
         console.warn('AudioWorklet を読み込めないため簡易モードで動かします', workletErr);
         workletNode = null;
       }
+      // 測定条件を1セッションぶん記録する（CSV の列は増やさない）。
+      // 要求した制約ではなく、track.getSettings() の実値を残すのが要点である
+      sessionMeta = captureSessionMeta();
+
       // 時刻のアンカーと、その監視
       clockAnchor = createClockAnchor(audioCtx.currentTime, Date.now());
       clockProbe = { audioTime: clockAnchor.audioTime, wallMs: clockAnchor.wallMs };
