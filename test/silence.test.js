@@ -92,9 +92,9 @@ test('簡易モードでも無音は -Infinity のまま残る', () => {
 test('CSV: 無音の行が出て、印の行が先頭に付く', () => {
   const t = (sec) => new Date(ANCHOR.wallMs + sec * 1000);
   const logs = [
-    { ts: t(1), db: -20 },
-    { ts: t(2), db: -Infinity },
-    { ts: t(3), db: -20 }
+    { ts: t(1), rawDb: -20, db: -20 },
+    { ts: t(2), rawDb: -Infinity, db: -Infinity },
+    { ts: t(3), rawDb: -20, db: -20 }
   ];
   const csv = buildCsv(logs, { engine: 'worklet' });
   const lines = csv.split('\n');
@@ -108,7 +108,7 @@ test('CSV: 無音の行が出て、印の行が先頭に付く', () => {
 });
 
 test('CSV: 無音が1行もなければ印の行は出ない（既存の出力を変えない）', () => {
-  const logs = [{ ts: new Date('2026-09-28T05:00:01.000Z'), db: -20 }];
+  const logs = [{ ts: new Date('2026-09-28T05:00:01.000Z'), rawDb: -20, db: -20 }];
   assert.equal(
     buildCsv(logs, { engine: 'worklet' }),
     '# engine=worklet\ntimestamp,dbfs\n2026-09-28T05:00:01.000Z,-20.00'

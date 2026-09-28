@@ -18,6 +18,9 @@ const {
   parseIntervalSec,
   createStats,
   addStatsSample,
+  statsLeq,
+  dbToPower,
+  powerToDb,
   formatStats,
   emptyStatsText,
   buildCsv,
@@ -74,14 +77,24 @@ test('formatHMS: 00:00:00 から桁あふれまで', () => {
   assert.equal(formatHMS(360000), '100:00:00');
 });
 
-test('parseFloorDb: 非数は -60、数値はそのまま（min/max なし＝現状）', () => {
+test('parseFloorDb: 非数は -60。範囲は -120〜-1 に丸める', () => {
   assert.equal(parseFloorDb('-60'), -60);
   assert.equal(parseFloorDb(''), -60);
   assert.equal(parseFloorDb('abc'), -60);
-  assert.equal(parseFloorDb('0'), 0);
-  assert.equal(parseFloorDb('10'), 10);
-  assert.equal(parseFloorDb('-120'), -120);
   assert.equal(parseFloorDb('-40.5'), -40.5);
+  assert.equal(parseFloorDb('-120'), -120);
+  assert.equal(parseFloorDb('-1'), -1);
+
+  // 0 以上を入れるとメーター幅が NaN%（CSSOM に拒否され無言で凍結）になり、
+  // 大型表示も物理的にありえない正の dBFS を出していた
+  assert.equal(parseFloorDb('0'), -1);
+  assert.equal(parseFloorDb('10'), -1);
+  assert.equal(parseFloorDb('-200'), -120);
+  for (const raw of ['0', '10', '60', '-200', '-1e9']) {
+    const v = parseFloorDb(raw);
+    assert.ok(v >= -120 && v <= -1, `${raw} -> ${v}`);
+    assert.ok(Number.isFinite(dbToPercent(-30, v)), `${raw} で百分率が数値にならない`);
+  }
 });
 
 test('parseIntervalSec: 下限 0.2 秒、0 と非数は 1 秒（|| の現状の振る舞い）', () => {
@@ -94,27 +107,90 @@ test('parseIntervalSec: 下限 0.2 秒、0 と非数は 1 秒（|| の現状の�
   assert.equal(parseIntervalSec('60'), 60);
 });
 
-test('統計: 有限値だけを取り込み、表示文字列を組み立てる', () => {
+test('統計: 平均はエネルギー平均（Leq）。算術平均ではない', () => {
   const stats = createStats();
-  assert.equal(addStatsSample(stats, -Infinity), false);
   assert.equal(addStatsSample(stats, NaN), false);
-  assert.deepEqual(stats, { sum: 0, n: 0, minDb: Infinity, maxDb: -Infinity });
+  assert.equal(addStatsSample(stats, Infinity), false);
+  assert.deepEqual(stats,
+    { powerSum: 0, n: 0, finiteN: 0, silentN: 0, minDb: Infinity, maxDb: -Infinity });
 
   assert.equal(addStatsSample(stats, -20), true);
   assert.equal(addStatsSample(stats, -40), true);
   assert.equal(addStatsSample(stats, -30), true);
+  // Leq = 10*log10((10^-2 + 10^-4 + 10^-3)/3) = -24.3180…
+  // 算術平均なら -30.0 で、5.7dB ずれる
   assert.deepEqual(formatStats(stats, 3), {
-    avg: '-30.0 dBFS',
+    avg: '-24.3 dBFS',
     max: '-20.0 dBFS',
     min: '-40.0 dBFS',
     range: '20.0 dB',
     count: '3'
   });
+  assert.ok(Math.abs(statsLeq(stats) + 24.31798275933005) < 1e-9);
+});
+
+test('統計: 算術平均との差は条件しだいで 26dB を超える', () => {
+  const mk = (list) => {
+    const s = createStats();
+    list.forEach(d => addStatsSample(s, d));
+    return s;
+  };
+  const cases = [
+    { list: [-20, -60], arith: -40, leq: -23.00993 },
+    { list: [-20, -80], arith: -50, leq: -23.01030 }
+  ];
+  for (const c of cases) {
+    const leq = statsLeq(mk(c.list));
+    assert.ok(Math.abs(leq - c.leq) < 1e-4, `${c.list} -> ${leq}`);
+    assert.ok(leq > c.arith, 'エネルギー平均は算術平均より必ず大きいか等しい');
+  }
+  // 大きい音1つと無音に近い音1つ。差は約27dB
+  assert.ok(Math.abs(statsLeq(mk([-20, -80])) - (-50)) > 26);
+});
+
+test('統計: 無音（-Infinity）は電力0として平均に入り、最大・最小からは外れる', () => {
+  const stats = createStats();
+  assert.equal(addStatsSample(stats, -20), true);
+  assert.equal(addStatsSample(stats, -Infinity), true, '無音の行も母集団に入る');
+  assert.equal(addStatsSample(stats, -20), true);
+  assert.equal(stats.n, 3);
+  assert.equal(stats.finiteN, 2);
+  assert.equal(stats.silentN, 1);
+  // Leq = 10*log10((0.01 + 0 + 0.01)/3) = -21.76…（3行で割る）
+  assert.deepEqual(formatStats(stats, 3), {
+    avg: '-21.8 dBFS',
+    max: '-20.0 dBFS',
+    min: '-20.0 dBFS',
+    range: '0.0 dB',
+    count: '3'
+  });
+});
+
+test('統計: すべて無音なら平均は -∞、最大・最小は未定義のまま', () => {
+  const stats = createStats();
+  addStatsSample(stats, -Infinity);
+  addStatsSample(stats, -Infinity);
+  assert.deepEqual(formatStats(stats, 2), {
+    avg: '-∞ dBFS',
+    max: '--.- dBFS',
+    min: '--.- dBFS',
+    range: '--.- dB',
+    count: '2'
+  });
+});
+
+test('統計: dBToPower / powerToDb は往復する', () => {
+  for (const db of [-1, -6, -20, -40, -60, -90, -120]) {
+    assert.ok(Math.abs(powerToDb(dbToPower(db)) - db) < 1e-9, `${db}`);
+  }
+  assert.equal(dbToPower(-Infinity), 0);
+  assert.equal(powerToDb(0), -Infinity);
 });
 
 test('統計: 1件でも平均が出る。件数は logs 側の数を使う', () => {
   const stats = createStats();
   addStatsSample(stats, -12.34);
+  // 1件のエネルギー平均はその値そのもの
   assert.deepEqual(formatStats(stats, 0), {
     avg: '-12.3 dBFS',
     max: '-12.3 dBFS',
@@ -136,8 +212,8 @@ test('統計: リセット直後の表示文字列', () => {
 
 test('CSV: ヘッダーは timestamp,dbfs、値は小数2桁', () => {
   const logs = [
-    { ts: new Date('2026-09-28T02:55:02.192Z'), db: -20 },
-    { ts: new Date('2026-09-28T02:55:03.192Z'), db: -19.999 }
+    { ts: new Date('2026-09-28T02:55:02.192Z'), rawDb: -20, db: -20 },
+    { ts: new Date('2026-09-28T02:55:03.192Z'), rawDb: -19.999, db: -19.999 }
   ];
   assert.equal(
     buildCsv(logs),

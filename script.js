@@ -265,7 +265,8 @@
   }
 
   function updateStats(db) {
-    if (!addStatsSample(stats, db)) return;
+    addStatsSample(stats, db);
+    // 件数は、取り込めなかった行があっても logs に合わせる
     renderStats(formatStats(stats, logs.length));
   }
 
@@ -499,11 +500,15 @@
     return parseIntervalSec(logIntervalInput.value);
   }
 
-  // 1行＝1区間。ここだけがログを増やす
+  // 1行＝1区間。ここだけがログを増やす。
+  // 統計もここだけで進める（母集団を CSV の行にそろえる）
   function pushRecord(rec) {
     const wasEmpty = logs.length === 0;
     logs.push(rec);
     if (wasEmpty) updateButtonStates();
+    // ⚠ 統計に入れるのは rawDb（記録される生値）である。
+    //    表示用の db を使うと、表示下限を変えただけで統計が動いてしまう
+    updateStats(rec.rawDb);
     // 件数は行が増えたら必ず出す。無音だけの区間が続いても 0 のままにしない
     countEl.textContent = String(logs.length);
   }
@@ -876,8 +881,8 @@
     series = pruneSeries(series, nowMs, GRAPH_WINDOW_SEC * 1000);
     drawSeries();
 
-    // 統計（母集団を区間へそろえるのは段階3）
-    updateStats(db);
+    // 統計はここでは進めない。母集団を CSV の行（区間）にそろえるため、
+    // pushRecord() でのみ更新する（改修前はここで毎フレーム加算していた）
 
     // 稼働時間
     const nowSec = performance.now() / 1000;

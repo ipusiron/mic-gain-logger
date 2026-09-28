@@ -141,7 +141,8 @@ test('簡易モードのレコード: ピーク・クリップ・有効サンプ
 });
 
 test('CSV: 列は増えない。モードだけ先頭の1行に残る', () => {
-  const logs = [{ ts: new Date('2026-09-28T02:55:02.000Z'), db: -20 }];
+  // 書き出すのは rawDb（生値）。db は表示用なので CSV には出ない
+  const logs = [{ ts: new Date('2026-09-28T02:55:02.000Z'), rawDb: -20, db: -20 }];
   assert.equal(buildCsv(logs), 'timestamp,dbfs\n2026-09-28T02:55:02.000Z,-20.00');
   assert.equal(
     buildCsv(logs, { engine: ENGINE_WORKLET }),
@@ -154,4 +155,18 @@ test('CSV: 列は増えない。モードだけ先頭の1行に残る', () => {
   // データ行の形は段階0から変わっていない
   const body = buildCsv(logs, { engine: ENGINE_WORKLET }).split('\n').slice(1).join('\n');
   assert.equal(body, buildCsv(logs));
+});
+
+test('CSV: 表示下限を変えても記録される値は動かない（表示専用である）', () => {
+  // 同じ区間を、表示下限だけ変えて2通り作る。
+  // 改修前は表示下限でクリップした値を記録していたため、記録中に表示の設定を
+  // 変えるとログデータ自体が変質していた
+  const loud = buildIntervalRecord(message(), ANCHOR, -60);
+  const clipped = buildIntervalRecord(message(), ANCHOR, -10);
+  assert.equal(loud.rawDb, clipped.rawDb, 'rawDb が表示下限で動いている');
+  assert.notEqual(loud.db, clipped.db, '表示用の db は表示下限で切られるはず');
+  assert.equal(clipped.db, -10);
+  // CSV は両方とも同じ行になる
+  assert.equal(buildCsv([loud]), buildCsv([clipped]));
+  assert.ok(buildCsv([clipped]).endsWith(',-20.00'), buildCsv([clipped]));
 });

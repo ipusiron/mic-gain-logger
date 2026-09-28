@@ -38,11 +38,17 @@ const MicGainLogic = (() => {
     return Math.sqrt(sumSq / samples.length);
   }
 
-  // 表示下限の入力値を数値へ（空欄・非数は既定の -60）
+  // 表示下限の許される範囲。
+  // 0 以上を入れるとメーター幅が NaN%（＝CSSOM に拒否されて無言で凍結）になり、
+  // 大型表示も「10.0 dBFS」という物理的にありえない正の dBFS を出していた。
+  const FLOOR_DB_MIN = -120;
+  const FLOOR_DB_MAX = -1;
+
+  // 表示下限の入力値を数値へ（空欄・非数は既定の -60。範囲外は丸める）
   function parseFloorDb(raw) {
     const v = parseFloat(raw);
     if (Number.isNaN(v)) return -60;
-    return v;
+    return clamp(v, FLOOR_DB_MIN, FLOOR_DB_MAX);
   }
 
   // ログ間隔の入力値を秒へ（下限 0.2 秒）
@@ -51,29 +57,76 @@ const MicGainLogic = (() => {
   }
 
   // ---- 統計 ----
-  function createStats() {
-    return { sum: 0, n: 0, minDb: Infinity, maxDb: -Infinity };
+  //
+  // 母集団は「記録された行（区間）」である。
+  // 改修前は requestAnimationFrame ごと（約60Hz）に集計していたので、
+  // ログ間隔（既定1秒）で書かれる CSV とは母集団が違っていた。実測では
+  // ログ間隔5秒・14秒の記録で、CSV は -20.0 が2行なのに画面の最小は
+  // -39.1 dBFS、変動幅は 19.1 dB と出ていた。第三者が CSV から画面の値を
+  // 再現できないので、証拠・監査の用途では単独で失格になる。
+  //
+  // ⚠ 平均は dB の算術平均ではなくエネルギー平均（Leq と同じ定義）にする。
+  //    dB は対数なので算術平均には物理的な意味がなく、実測で最大26dBずれる。
+  //      Leq = 10 * log10( (1/N) * Σ 10^(db_i/10) )
+  //    区間の代表値は段階1ですでにエネルギー平均なので、区間を連結すれば
+  //    正しい Leq が出る（等間隔の区間であることが前提）。
+  //
+  // 無音（-Infinity）の扱いを分けてある。
+  //   平均（Leq）＝ 全行。無音は電力 0 として数える（これが定義どおり）
+  //   最大・最小・変動幅 ＝ 有限値の行だけ。無音を入れると最小が -∞ になり、
+  //                        変動幅が意味を失うため
+
+  function dbToPower(db) {
+    if (db === -Infinity) return 0;
+    return Math.pow(10, db / 10);
   }
 
-  // 有限値だけを取り込む。取り込んだら true。
+  function powerToDb(power) {
+    if (!(power > 0)) return -Infinity;
+    return 10 * Math.log10(power);
+  }
+
+  function createStats() {
+    return { powerSum: 0, n: 0, finiteN: 0, silentN: 0, minDb: Infinity, maxDb: -Infinity };
+  }
+
+  // 1区間ぶんを取り込む。取り込んだら true（数値にならないものだけ false）。
   function addStatsSample(stats, db) {
-    if (!Number.isFinite(db)) return false;
-    stats.sum += db;
+    if (Number.isNaN(db)) return false;
+    if (db === Infinity) return false;
+    stats.powerSum += dbToPower(db);
     stats.n += 1;
-    stats.minDb = Math.min(stats.minDb, db);
-    stats.maxDb = Math.max(stats.maxDb, db);
+    if (Number.isFinite(db)) {
+      stats.finiteN += 1;
+      stats.minDb = Math.min(stats.minDb, db);
+      stats.maxDb = Math.max(stats.maxDb, db);
+    } else {
+      stats.silentN += 1;
+    }
     return true;
   }
 
+  // 記録された行から Leq を出す。記録が無ければ null
+  function statsLeq(stats) {
+    if (!stats.n) return null;
+    return powerToDb(stats.powerSum / stats.n);
+  }
+
+  function formatDbCell(db) {
+    if (db === -Infinity) return '-∞ dBFS';
+    if (!Number.isFinite(db)) return '--.- dBFS';
+    return `${db.toFixed(1)} dBFS`;
+  }
+
   function formatStats(stats, logCount) {
-    const rng = (Number.isFinite(stats.minDb) && Number.isFinite(stats.maxDb))
-      ? (stats.maxDb - stats.minDb)
-      : 0;
+    const leq = statsLeq(stats);
+    const hasFinite = stats.finiteN > 0;
+    const rng = hasFinite ? (stats.maxDb - stats.minDb) : null;
     return {
-      avg: `${(stats.sum / stats.n).toFixed(1)} dBFS`,
-      max: `${stats.maxDb.toFixed(1)} dBFS`,
-      min: `${stats.minDb.toFixed(1)} dBFS`,
-      range: `${rng.toFixed(1)} dB`,
+      avg: leq === null ? '--.- dBFS' : formatDbCell(leq),
+      max: hasFinite ? formatDbCell(stats.maxDb) : '--.- dBFS',
+      min: hasFinite ? formatDbCell(stats.minDb) : '--.- dBFS',
+      range: rng === null ? '--.- dB' : `${rng.toFixed(1)} dB`,
       count: String(logCount)
     };
   }
@@ -532,11 +585,15 @@ const MicGainLogic = (() => {
     return String(db);   // -Infinity（無音）。想定外の値も隠さずそのまま出す
   }
 
+  // ⚠ 書き出すのは rawDb（生値）である。
+  // 改修前は表示下限でクリップした値を記録していたため、記録中に表示の設定を
+  // 変えるとログデータ自体が変質していた。表示下限は表示のための設定なので、
+  // 記録には触らせない（db は表示用、rawDb は記録用と役割を分ける）。
   function buildCsv(logs, opts) {
     const header = 'timestamp,dbfs\n';
-    const lines = logs.map(r => `${r.ts.toISOString()},${formatCsvDb(r.db)}`).join('\n');
+    const lines = logs.map(r => `${r.ts.toISOString()},${formatCsvDb(r.rawDb)}`).join('\n');
     let prefix = (opts && opts.engine) ? `# engine=${opts.engine}\n` : '';
-    if (logs.some(r => r.db === -Infinity)) prefix += '# silence=-Infinity\n';
+    if (logs.some(r => r.rawDb === -Infinity)) prefix += '# silence=-Infinity\n';
     return prefix + header + lines;
   }
 
@@ -552,9 +609,15 @@ const MicGainLogic = (() => {
     rmsToDbfs,
     rmsOf,
     parseFloorDb,
+    FLOOR_DB_MIN,
+    FLOOR_DB_MAX,
     parseIntervalSec,
+    dbToPower,
+    powerToDb,
     createStats,
     addStatsSample,
+    statsLeq,
+    formatDbCell,
     formatStats,
     emptyStatsText,
     canvasPixelSize,

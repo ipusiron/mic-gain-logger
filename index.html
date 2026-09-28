@@ -85,7 +85,7 @@
             </div>
             <div class="control">
               <label for="floorDb" title="表示する最小音量レベル">表示下限（dBFS）</label>
-              <input type="number" id="floorDb" step="1" value="-60" title="この値未満の音量は表示されません（通常-60〜-40dBFS）">
+              <input type="number" id="floorDb" min="-120" max="-1" step="1" value="-60" title="この値未満の音量は表示されません（通常-60〜-40dBFS）。表示だけに効き、記録される値は変わりません">
             </div>
           </div>
         </div>
@@ -111,19 +111,19 @@
             <div class="stat-label">ログ件数</div>
             <div id="count" class="stat-value">0</div>
           </div>
-          <div class="stat" title="記録期間中の平均音量レベル">
-            <div class="stat-label">平均</div>
+          <div class="stat" title="記録された行のエネルギー平均（Leq）。無音の行は電力0として数える">
+            <div class="stat-label">平均（Leq）</div>
             <div id="avgDb" class="stat-value">--.- dBFS</div>
           </div>
-          <div class="stat" title="記録期間中の最大音量レベル">
+          <div class="stat" title="記録された行のうち、有限値の行での最大音量レベル">
             <div class="stat-label">最大</div>
             <div id="maxDb" class="stat-value">--.- dBFS</div>
           </div>
-          <div class="stat" title="記録期間中の最小音量レベル">
+          <div class="stat" title="記録された行のうち、有限値の行での最小音量レベル">
             <div class="stat-label">最小</div>
             <div id="minDb" class="stat-value">--.- dBFS</div>
           </div>
-          <div class="stat" title="最大値と最小値の差（音量の変動幅）">
+          <div class="stat" title="最大値と最小値の差（有限値の行での変動幅）">
             <div class="stat-label">変動幅</div>
             <div id="rangeDb" class="stat-value">--.- dB</div>
           </div>
@@ -187,11 +187,12 @@
           <ul>
             <li><strong>稼働時間：</strong>記録開始からの経過時間</li>
             <li><strong>ログ件数：</strong>CSVに記録されたデータポイント総数</li>
-            <li><strong>平均/最大/最小：</strong>記録期間中の音量レベル</li>
-            <li><strong>変動幅：</strong>最大値と最小値の差（音環境の変化度合い）</li>
+            <li><strong>平均（Leq）：</strong>記録された行のエネルギー平均。dBは対数なので算術平均には物理的な意味がなく、条件によっては20dB以上ずれる。無音の行は電力0として数える</li>
+            <li><strong>最大/最小/変動幅：</strong>記録された行のうち、有限値の行での最大・最小とその差</li>
             <li><strong>リアルタイムグラフ：</strong>時系列での音量推移を可視化</li>
             <li><strong>音量メーター：</strong>現在の音量を色分けで表示（緑→黄→赤）</li>
           </ul>
+          <p><em>※ 統計はCSVに書き出される行（区間）だけから計算します。画面の値とCSVから計算し直した値は一致します</em></p>
           <p><em>※ 複数回の記録セッション（記録開始→停止→記録開始）でデータは累積されます</em></p>
         </section>
 
