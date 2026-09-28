@@ -88,6 +88,28 @@ const MicGainLogic = (() => {
     };
   }
 
+  // ---- キャンバスの大きさ ----
+  //
+  // getBoundingClientRect() は非整数を返す（ブラウザーのズーム 90/110/133%、
+  // スマートフォンの幅）。改修前はその値をそのまま `new Array(WIDTH)` へ渡していて
+  // RangeError: Invalid array length になった。しかも例外が resizeCanvas() の
+  // 途中で飛ぶため、呼び出し元の drawSeries() と handleMobileButtonLayout() まで
+  // 巻き添えで実行されない連鎖故障になっていた。整数へ丸めてから使う。
+  //
+  // cssW/cssH は描画で使う論理サイズ、pixelW/pixelH は canvas の内部解像度
+  // （dpr 倍）である。表示上の大きさは CSS が決めるので、ここでは返さない。
+  function canvasPixelSize(rectW, rectH, dpr) {
+    const ratio = (Number.isFinite(dpr) && dpr > 0) ? dpr : 1;
+    const cssW = Math.max(1, Math.round(Number.isFinite(rectW) ? rectW : 1));
+    const cssH = Math.max(1, Math.round(Number.isFinite(rectH) ? rectH : 1));
+    return {
+      cssW,
+      cssH,
+      pixelW: Math.max(1, Math.round(cssW * ratio)),
+      pixelH: Math.max(1, Math.round(cssH * ratio))
+    };
+  }
+
   // ---- 区間（1行＝1区間）----
   //
   // 計測の単位は「瞬間」ではなく「区間」である。1区間は次を持つ。
@@ -441,6 +463,7 @@ const MicGainLogic = (() => {
     addStatsSample,
     formatStats,
     emptyStatsText,
+    canvasPixelSize,
     ENGINE_WORKLET,
     ENGINE_FALLBACK,
     framesForInterval,

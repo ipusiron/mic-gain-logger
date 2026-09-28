@@ -6,7 +6,7 @@
   // 純粋ロジックは logic.js（DOM非依存）から取る
   const {
     clamp, dbToPercent, formatHMS, rmsToDbfs, rmsOf,
-    parseFloorDb, parseIntervalSec,
+    parseFloorDb, parseIntervalSec, canvasPixelSize,
     createStats, addStatsSample, formatStats, emptyStatsText,
     ENGINE_WORKLET, ENGINE_FALLBACK, framesForInterval,
     CLOCK_BREAK_SUSPEND, CLOCK_BREAK_STALL,
@@ -100,26 +100,29 @@
   let HEIGHT = canvas.height;
   let series = new Array(WIDTH).fill(0); // 0..1 の値（可視化用）
   
-  // キャンバスサイズをレスポンシブに調整
+  // キャンバスの内部解像度だけを合わせる。
+  // 表示上の大きさ（width:100% / height）は style.css が決める。
+  //
+  // 改修前はここに3つの不具合が同居していた。
+  //  (1) rect.width が非整数のとき `new Array(WIDTH)` が RangeError を投げ、
+  //      呼び出し元の drawSeries() と handleMobileButtonLayout() まで止まった
+  //  (2) canvas.style.width/height へ px を焼き込み、CSS のレスポンシブ規則を
+  //      インラインスタイルで無効化していた（狭めたあと二度と広がらない）
+  //  (3) (2) の結果、481〜915px でキャンバスが 800px のまま横へはみ出した
+  // 同じ関数の中の話なので、3つまとめて1つの修正として直す。
   function resizeCanvas() {
     const rect = canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    
-    // 実際のピクセルサイズを設定
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    
-    // CSSサイズと同期
-    canvas.style.width = rect.width + 'px';
-    canvas.style.height = rect.height + 'px';
-    
-    // スケールを設定
-    ctx.scale(dpr, dpr);
-    
-    // 論理サイズを更新（描画用）
-    WIDTH = rect.width;
-    HEIGHT = rect.height;
-    
+    const size = canvasPixelSize(rect.width, rect.height, window.devicePixelRatio);
+
+    canvas.width = size.pixelW;
+    canvas.height = size.pixelH;
+    // canvas.width への代入で変換行列は単位行列へ戻る。dpr 倍を入れ直す
+    // （ctx.scale の積み重ねだと呼ぶたびに倍率が累乗になる）
+    ctx.setTransform(size.pixelW / size.cssW, 0, 0, size.pixelH / size.cssH, 0, 0);
+
+    WIDTH = size.cssW;
+    HEIGHT = size.cssH;
+
     // 既存のseriesをリサイズ
     if (series.length !== WIDTH) {
       const newSeries = new Array(WIDTH).fill(0);
@@ -128,6 +131,17 @@
       }
       series = newSeries;
     }
+  }
+
+  // コンテナ幅の変化を拾う。window の resize だけでは、設定の開閉や
+  // レイアウトの組み替えで起きるカード幅の変化を取りこぼす
+  function observeCanvasSize() {
+    if (typeof ResizeObserver !== 'function') return;
+    // canvas.width を変えても CSS 上の大きさは変わらないので、観測は循環しない
+    new ResizeObserver(() => {
+      resizeCanvas();
+      drawSeries();
+    }).observe(canvas);
   }
   let lastLogTime = 0;
   let startedAt = 0;
@@ -1062,6 +1076,7 @@
   renderEngineMode();
   applyTheme();
   resizeCanvas();
+  observeCanvasSize();
   drawSeries();
   updateButtonStates(); // 初期状態でのボタン状態設定
 

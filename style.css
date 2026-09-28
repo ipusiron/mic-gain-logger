@@ -98,6 +98,20 @@ body.light .theme-toggle .icon-moon{display:block;}
   margin-bottom:20px;
 }
 
+/* グラフのキャンバス。表示上の大きさは CSS だけが決め、JS は内部解像度
+   （canvas.width / canvas.height）しか触らない。
+   ⚠ JS が canvas.style.width/height に px を焼き込むと、インラインスタイルが
+   ここより強くなってレスポンシブ規則が死ぬ。改修前は 1280px で開いてから
+   320px へ狭め、また 1280px へ戻しても 270px のまま広がらなかった。
+   ⚠ この規則は 480px 以下の上書きより前に置く（メディアクエリーは詳細度を
+   上げないので、後ろに置くと上書きを打ち消す）。 */
+#levelCanvas{
+  width:100%;
+  max-width:100%;
+  height:220px;
+  display:block;
+}
+
 .grid{
   display:grid;
   gap:16px;
