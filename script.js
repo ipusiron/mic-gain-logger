@@ -736,6 +736,7 @@
     connecting = true;
     startBtn.disabled = true;
     stopBtn.disabled = false;   // 接続中も「停止」で取り消せる
+    updateButtonStates();       // 接続中はリセットさせない
     setStatus('マイクに接続中…', 'warn');
 
     // 前回のクリーンアップが完了していることを確認
@@ -1088,7 +1089,17 @@
     setStatus(`CSVを書き出しました（${logs.length}件）`, 'ok');
   }
 
+  // 記録の母集団をまとめて捨てる。
+  //
+  // ⚠ 捨てるのは記録を止めてから（書き出しボタンと同じ条件）。
+  //    改修前は記録中にも押せた。ワークレットの seq は続くので CSV の seq が
+  //    0 から始まらず、捨てた点と新しい点がグラフ上で1本の線につながった。
+  // ⚠ ログ・統計・グラフ・注意書きを一緒に捨てる。
+  //    改修前は logs と統計だけを捨てていたので、グラフの点（series）と
+  //    時刻の跳び・切断の注意書きが、もう存在しないログについて残り続けた。
+  //    グラフの点は pushRecord で CSV の行と同じ源から積んでいるので、母集団も同じである
   function resetAllStats() {
+    if (running || connecting) return;
     resetStats();
     logs.length = 0;
     seqCounter = 0;
@@ -1096,17 +1107,29 @@
     seqMax = -1;
     // ログを捨てたら鎖も捨てる。次の1行目で新しい起点を凍結する
     hashChain.reset();
-    updateButtonStates(); // ボタン状態を更新
-    setStatus('統計とログをリセットしました', 'ok');
+    // グラフの点を捨てて描き直す。停止中は rAF が止まっているので、
+    // ここで描き直さないと画面が変わらない
+    series = [];
+    drawSeries();
+    // 捨てたログについての注意書きの元も捨ててから、注意書きを出し直す
+    clockBreaks = [];
+    pendingClockBreak = null;
+    deviceLoss = null;
+    deviceMuted = false;
+    sessionMeta = null;
+    startedAt = 0;
+    renderRecordNotice();
+    updateButtonStates();
+    setStatus('統計・ログ・グラフをリセットしました', 'ok');
   }
 
   // ボタン状態の管理
   function updateButtonStates() {
     // CSV書き出しボタンは記録停止中かつログが存在する場合のみ有効
     exportBtn.disabled = running || logs.length === 0;
-    
-    // 統計リセットボタンはログが存在する場合のみ有効
-    resetBtn.disabled = logs.length === 0;
+
+    // リセットも記録を止めてから（接続中も押させない）。ログが無ければ押せない
+    resetBtn.disabled = running || connecting || logs.length === 0;
   }
 
   // テーマ切り替え
