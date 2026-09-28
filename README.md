@@ -285,6 +285,7 @@ mic-gain-logger/
 │   └── workflows/                 # GitHub Actionsのワークフロー
 │       └── test.yml               # CI（pushとpull requestでnpm testを実行する）
 ├── package.json                   # npm testの定義（依存パッケージなし）
+├── .nojekyll                      # GitHub PagesでJekyll処理を無効化（空ファイル）
 ├── .gitignore                     # Gitの除外設定
 ├── CLAUDE.md                      # 開発ガイド（ファイルの役割分担・計測の要点・CSVの約束）
 ├── README.md                      # プロジェクト説明書（本ファイル）
