@@ -10,6 +10,21 @@
 // 区間長のずれが積み上がらない。
 // オーディオスレッドがレンダークォンタムを落とした場合は currentFrame だけが
 // 先へ飛ぶため、count / expected（有効サンプル率）が 1 を下回って痕跡が残る。
+//
+// ⚠ 1区間めの起点は、コンストラクターではなく最初の process() で取る。
+//    改修前は `this.startFrame = currentFrame` をコンストラクターに置いていた。
+//    AudioWorkletNode を作ってからレンダーグラフへ繋ぐまでのあいだ process() は
+//    呼ばれないので、その間のフレームが expected にだけ入り count には入らず、
+//    記録開始直後の1行目だけ有効サンプル率が 1 を下回った。
+//    観測されたのは「通常の記録で1行目だけ valid_ratio=0.979」である。
+//    そこから逆算すると 48kHz で 8 クォンタム（1024 フレーム＝21.3 ミリ秒）ぶんに
+//    当たり、このファイルを node:vm で動かして同じ値を再現できた
+//    （test/meter-processor.test.js）。欠測ではなく、まだ音が流れていない時間を
+//    区間に数えていたことによる見せかけの穴である。
+//
+// ⚠ ヘッドレスの Chrome ではこの穴を再現できない（疑似マイクで実測したところ、
+//    起点をコンストラクターに置いたままでも 1 行目から valid_ratio=1 だった）。
+//    出力デバイスが無いあいだ currentFrame が進まないためで、実機とは条件が違う。
 
 'use strict';
 
@@ -30,7 +45,8 @@ class MeterProcessor extends AudioWorkletProcessor {
     this.pendingIntervalFrames = 0;
     this.stopped = false;
     this.seq = 0;
-    this.startFrame = currentFrame;
+    // null＝まだ起点が決まっていない（最初の process() で currentFrame を取る）
+    this.startFrame = null;
     this.resetAccumulator();
 
     this.port.onmessage = (event) => {
@@ -43,7 +59,9 @@ class MeterProcessor extends AudioWorkletProcessor {
       }
     };
 
-    this.port.postMessage({ type: 'ready', sampleRate, startFrame: this.startFrame });
+    // 起点はまだ決まっていないので載せない（コンストラクターの currentFrame は
+    // レンダーグラフへ繋ぐ前の値で、1区間めの実際の起点にはならない）
+    this.port.postMessage({ type: 'ready', sampleRate, intervalFrames: this.intervalFrames });
   }
 
   resetAccumulator() {
@@ -77,6 +95,9 @@ class MeterProcessor extends AudioWorkletProcessor {
 
   process(inputs) {
     if (this.stopped) return false;
+
+    // 1区間めの起点。ここが最初に呼ばれたフレームであり、音が流れ始めた時刻である
+    if (this.startFrame === null) this.startFrame = currentFrame;
 
     const input = inputs[0];
     const channel = (input && input.length > 0) ? input[0] : null;

@@ -55,6 +55,11 @@ function createHarness(intervalFrames, startFrame = 0) {
       }
       state.frame += QUANTUM;
     },
+    // レンダーグラフへ繋ぐ前。process() は呼ばれないが、オーディオクロックは進む
+    skip(n) {
+      const k = (n === undefined) ? 1 : n;   // 0 を 1 に読み替えない
+      for (let i = 0; i < k; i++) state.frame += QUANTUM;
+    },
     intervals() { return messages.filter(m => m.type === 'interval'); }
   };
 }
@@ -172,4 +177,73 @@ test('不正な intervalFrames は既定（1秒）に落とす', () => {
     for (let q = 0; q < Math.ceil(SAMPLE_RATE / QUANTUM) + 2; q++) h.tick(sine(0.1));
     assert.equal(h.intervals()[0].expected, SAMPLE_RATE, `intervalFrames=${bad}`);
   }
+});
+
+
+// ---- 記録開始直後の1行目 ----
+//
+// ⚠⚠ 改修前は `this.startFrame = currentFrame` をコンストラクターに置いていた。
+//    AudioWorkletNode を作ってからレンダーグラフへ繋ぐまでのあいだ process() は
+//    呼ばれないので、その間のフレームが expected にだけ入り count には入らない。
+//    そのため記録開始直後の1行目だけ有効サンプル率が 1 を下回り、画面が
+//    「欠測があった」と警告していた。実測では通常の記録で valid_ratio=0.979。
+//    欠測ではなく、まだ音が流れていない時間を区間に数えていただけである。
+//    起点を最初の process() へ移して塞いだ。
+
+test('⭐繋ぐまでに間があっても、1行目の有効サンプル率は 1 になる', () => {
+  // 実測の 0.979 は 48kHz で 8 クォンタム（1024フレーム＝21.3ミリ秒）ぶんに当たる
+  assert.equal((1 - (8 * QUANTUM) / SAMPLE_RATE).toFixed(4), '0.9787');
+
+  for (const gap of [0, 1, 4, 8, 16, 40]) {
+    const h = createHarness(SAMPLE_RATE);
+    h.skip(gap);                                   // 構築〜接続のあいだ
+    for (let q = 0; q < Math.ceil(SAMPLE_RATE / QUANTUM) * 3; q++) h.tick(sine(0.1));
+    const iv = h.intervals();
+    assert.ok(iv.length >= 2, `gap=${gap} intervals=${iv.length}`);
+    assert.equal(iv[0].count, iv[0].expected, `gap=${gap} の1行目が欠測になっている`);
+    assert.equal(iv[0].count / iv[0].expected, 1, `gap=${gap}`);
+    // 起点は「最初に process() が呼ばれたフレーム」である
+    assert.equal(iv[0].startFrame, gap * QUANTUM, `gap=${gap} の起点`);
+    assert.equal(iv[0].endFrame, gap * QUANTUM + SAMPLE_RATE, `gap=${gap} の終わり`);
+    // 区間長は縮まない（短い1区間を作って重みを狂わせない）
+    assert.equal(iv[0].endFrame - iv[0].startFrame, SAMPLE_RATE, `gap=${gap} の区間長`);
+  }
+});
+
+test('記録中にクォンタムを落としたときは、いまでも有効サンプル率が下がる', () => {
+  // ⚠ 起点を動かしたことで「本当の欠測」まで見えなくなっていないこと
+  const h = createHarness(4800);
+  h.skip(8);
+  for (let q = 0; q < 38; q++) h.tick(sine(0.1));
+  for (let q = 0; q < 40; q++) h.tick(sine(0.1), true);   // 落とす
+  for (let q = 0; q < 80; q++) h.tick(sine(0.1));
+  const ratios = h.intervals().map(m => m.count / m.expected);
+  assert.equal(ratios[0], 1, '1行目が欠測になっている');
+  assert.ok(ratios.slice(1, 3).some(r => r < 0.5), JSON.stringify(ratios));
+  assert.equal(ratios[ratios.length - 1], 1, '復帰後に戻っていない');
+});
+
+test('ready のメッセージは、決まっていない起点を名乗らない', () => {
+  // ⚠ コンストラクターの currentFrame は1区間めの実際の起点にならない
+  const state = { frame: 12345 };
+  const messages = [];
+  const registered = {};
+  const sandbox = {
+    sampleRate: SAMPLE_RATE, Math, Number, console,
+    registerProcessor(name, cls) { registered[name] = cls; },
+    AudioWorkletProcessor: class {
+      constructor() { this.port = { postMessage: (m) => messages.push(m), onmessage: null }; }
+    }
+  };
+  Object.defineProperty(sandbox, 'currentFrame', { get: () => state.frame });
+  Object.defineProperty(sandbox, 'currentTime', { get: () => state.frame / SAMPLE_RATE });
+  vm.createContext(sandbox);
+  vm.runInContext(SOURCE, sandbox, { filename: 'meter-processor.js' });
+  new registered['meter-processor']({ processorOptions: { intervalFrames: 4800 } });
+
+  const ready = messages.filter(m => m.type === 'ready');
+  assert.equal(ready.length, 1);
+  assert.equal('startFrame' in ready[0], false, 'まだ決まっていない起点を載せている');
+  assert.equal(ready[0].sampleRate, SAMPLE_RATE);
+  assert.equal(ready[0].intervalFrames, 4800);
 });
