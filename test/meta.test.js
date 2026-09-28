@@ -256,18 +256,24 @@ test('CSV: ログ間隔は起点（ヘッダー）に出ない', () => {
   assert.ok(lines.includes('# intervalSec=1+3'), csv);
 });
 
-test('script.js: 書き出し時点のログ間隔を読んでいない', () => {
+test('script.js: 書き出し時点のログ間隔も、画面の設定値も読んでいない', () => {
   const script = fs.readFileSync(path.join(__dirname, '..', 'script.js'), 'utf8');
   assert.ok(
     !/intervalSec: currentIntervalSec\(\)/.test(script),
     'メタ行が書き出し時点の設定を読んでいる'
   );
+  // ⚠ 画面の設定値（lastIntervalSec）を控えて並べるのも嘘だった。
+  //    設定は即座に変わるのに、ワークレットは次の境界まで前の区間長で測り続ける。
+  //    行の実測（rec.intervalSec）から組み直す
+  assert.ok(
+    !/usedIntervals/.test(script),
+    '画面の設定値を控える持ち回りが残っている'
+  );
   assert.match(
     script,
-    /intervalSec: usedIntervals\.length \? usedIntervals\.join\('\+'\) : null/,
-    '記録に使った値を持ち回っていない'
+    /intervalSec: intervalRunsLabel\(logs\)/,
+    '行の実測からログ間隔のラベルを組んでいない'
   );
-  assert.match(script, /usedIntervals\.push\(lastIntervalSec\)/, '行を採ったときの値を控えていない');
   // ⚠ ログ間隔を鎖の起点（chainMetaOf）に戻さない
   const chainMeta = script.slice(script.indexOf('function chainMetaOf'));
   assert.ok(

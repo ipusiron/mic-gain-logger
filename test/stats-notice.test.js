@@ -20,8 +20,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const {
-  createStats, addStatsRecord, formatStats, statsWarnings, emptyStatsText,
-  buildIntervalRecord, buildFallbackRecord
+  createStats, addStatsRecord, formatStats, statsWarnings, statsIntegrity,
+  emptyStatsText, buildIntervalRecord, buildFallbackRecord
 } = require('../logic.js');
 
 const root = path.join(__dirname, '..');
@@ -223,4 +223,116 @@ test('画面: クレストファクターは出さない（第3弾の診断へ�
   // 区間ごとの値の分布から作ること
   assert.ok(!html.includes('クレストファクター'), 'クレストファクターの枠が増えている');
   assert.ok(!('crest' in emptyStatsText()), '統計にクレストファクターが入っている');
+});
+
+
+// ---- 記録の穴の有無を、両側で出す ----
+//
+// ⚠⚠ statsWarnings は「悪いときだけ」出る片側表示だった。記録がきれいなときは
+//    画面に何も出ないので、利用者は「穴が無い」と「まだ調べていない」を
+//    区別できない。「欠測のない記録」を名乗る道具として、これは足りない。
+//    穴の有無を必ず1行で言い切る（statsIntegrity）。
+
+function fallbackOf(seq) {
+  return buildFallbackRecord({
+    seq, db: -20, floorDb: -60,
+    startTime: seq, endTime: seq + 1,
+    startWallMs: ANCHOR.wallMs + seq * 1000,
+    endWallMs: ANCHOR.wallMs + (seq + 1) * 1000,
+    expectedSamples: SR, intervalSec: 1,
+    clockEpoch: 0, clockBreak: null, meta: { id: 's1' }
+  });
+}
+
+test('穴の有無: 記録がまだ無ければ何も出さない', () => {
+  const v = statsIntegrity(createStats());
+  assert.equal(v.level, 'none');
+  assert.equal(v.text, '');
+  // null を渡しても落ちない（リセット直後の経路）
+  assert.equal(statsIntegrity(null).level, 'none');
+});
+
+test('⭐穴の有無: きれいな記録では「穴なし」と肯定的に出す', () => {
+  const stats = statsOf([recordOf(0), recordOf(1), recordOf(2)]);
+  const v = statsIntegrity(stats);
+  assert.equal(v.level, 'ok');
+  assert.match(v.text, /記録の穴なし/);
+  // 何区間ぶんを確かめたのかを出す（「0件」だけでは調べた範囲が分からない）
+  assert.match(v.text, /クリップ0区間/);
+  assert.match(v.text, /有効サンプル率は3区間すべて1\.000/);
+  // ⚠ 警告のほうは空のまま（両者の役割を混ぜない）
+  assert.deepEqual(statsWarnings(stats), []);
+});
+
+test('⭐穴の有無: クリップがあっても、欠測が無いほうは肯定的に言い切る', () => {
+  // ⚠ 実測（疑似マイク・5区間）でクリップ5区間・欠測0区間の記録が出た。
+  //    改修前はここで「有効サンプル率が1.000未満の区間0件・最小1.000」と出していて、
+  //    穴が無いのに穴があるように読めた。2つの観点は別々に言う
+  const v = statsIntegrity(statsOf([recordOf(0, { clip: 3 }), recordOf(1, { clip: 12 })]));
+  assert.equal(v.level, 'warn');
+  assert.match(v.text, /記録に穴あり/);
+  assert.match(v.text, /クリップ2区間/);
+  assert.match(v.text, /有効サンプル率は2区間すべて1\.000/);
+  assert.ok(!/1\.000未満の区間0件/.test(v.text), `穴が無いのに件数を出している: ${v.text}`);
+});
+
+test('穴の有無: クリップが無く欠測だけなら、クリップ側を0区間と言い切る', () => {
+  const v = statsIntegrity(statsOf([
+    recordOf(0),
+    recordOf(1, { count: Math.round(SR * 0.5) })
+  ]));
+  assert.equal(v.level, 'warn');
+  assert.match(v.text, /クリップ0区間/);
+  assert.match(v.text, /有効サンプル率が1\.000未満の区間1件・最小0\.500/);
+});
+
+test('穴の有無: 欠測があれば件数と最小の率を出す', () => {
+  const v = statsIntegrity(statsOf([
+    recordOf(0),
+    recordOf(1, { count: Math.round(SR * 0.979) })
+  ]));
+  assert.equal(v.level, 'warn');
+  assert.match(v.text, /有効サンプル率が1\.000未満の区間1件・最小0\.979/);
+});
+
+test('穴の有無: 簡易モードだけの記録は「確かめられません」と出す', () => {
+  // ⚠ 測れないことを「異常なし」として出さない
+  const v = statsIntegrity(statsOf([fallbackOf(0), fallbackOf(1)]));
+  assert.equal(v.level, 'unknown');
+  assert.match(v.text, /確かめられません/);
+  assert.match(v.text, /簡易モードの2区間/);
+});
+
+test('穴の有無: モードが混ざったら、測れない区間の数を添える', () => {
+  const v = statsIntegrity(statsOf([recordOf(0), recordOf(1), fallbackOf(2)]));
+  assert.equal(v.level, 'ok');
+  assert.match(v.text, /有効サンプル率は2区間すべて1\.000/);
+  assert.match(v.text, /簡易モードの1区間は測れません/);
+});
+
+test('穴の有無: 画面に出す場所と配線がある', () => {
+  assert.match(html, /id="integrityNote"/, '穴の有無を出す要素が無い');
+  // ⚠ ボタンは増やさない（style.css の 480px 分岐が壊れやすい）
+  const buttons = (html.match(/<button/g) || []).length;
+  assert.equal(buttons, 13, `ボタンの数が変わっている: ${buttons}`);
+  assert.match(script, /statsIntegrity\(stats\)/, 'script.js が穴の有無を出していない');
+  assert.match(script, /renderIntegrity\(\)/, '穴の有無を出し直す関数が無い');
+  // 行が増えるたびに出し直す（0区間→1区間で文言が変わる）
+  const upd = script.slice(script.indexOf('function updateStats'));
+  assert.match(upd.slice(0, upd.indexOf('\n  }')), /renderIntegrity\(\)/,
+    '行が増えたときに出し直していない');
+  // リセットでも消す
+  const rst = script.slice(script.indexOf('function resetStats'));
+  assert.match(rst.slice(0, rst.indexOf('\n  }')), /renderIntegrity\(\)/,
+    'リセットで消していない');
+});
+
+test('穴の有無: 色は既存のトークンだけを使う（コントラスト検査の範囲に収める）', () => {
+  const css = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
+  const block = css.slice(css.indexOf('.integrity-note{'));
+  const head = block.slice(0, block.indexOf('.stats-grid'));
+  assert.ok(head.includes('.integrity-note:empty{display:none}'), '空のとき隠していない');
+  for (const m of head.matchAll(/color:\s*([^;}]+)/g)) {
+    assert.match(m[1].trim(), /^var\(--(muted|ok|warn|err)\)$/, `生の色が入っている: ${m[1]}`);
+  }
 });

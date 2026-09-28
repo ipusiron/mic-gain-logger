@@ -9,7 +9,8 @@
     parseFloorDb, parseIntervalSec, canvasPixelSize,
     GRAPH_WINDOW_SEC, GRAPH_TOP_DB, graphArea, timeToX, dbToY,
     timeTickStepSec, timeTicks, dbTickStep, dbTicks, pruneSeries, seriesPointOf,
-    createStats, addStatsRecord, formatStats, statsWarnings, emptyStatsText,
+    createStats, addStatsRecord, formatStats, statsWarnings, statsIntegrity,
+    emptyStatsText, intervalRunsLabel,
     ENGINE_WORKLET, ENGINE_FALLBACK, framesForInterval,
     CLOCK_BREAK_SUSPEND, CLOCK_BREAK_STALL,
     createClockAnchor, detectClockJump, reanchorClock,
@@ -48,6 +49,7 @@
 
   const engineModeEl = document.getElementById('engineMode');
   const recordNoticeEl = document.getElementById('recordNotice');
+  const integrityEl = document.getElementById('integrityNote');
 
   const canvas = document.getElementById('levelCanvas');
   const ctx = canvas.getContext('2d');
@@ -73,15 +75,17 @@
   let seqMax = -1;            // ログに入っている最大の seq（次の起点の元）
   let lastIntervalSec = null;
 
-  // 記録に使ったログ間隔。
-  // ⚠ 改修前は書き出し時に currentIntervalSec() を読んでいたので、
-  //    1秒で採った行を 3s へ切り替えてから書き出すと「# intervalSec=3」と嘘が出た。
-  //    メタ行は「その行がどういう条件で採られたか」を残す場所なので、
-  //    画面の現在値ではなく、行を採ったときの値を持ち回る。
-  //    ログ間隔は記録中でも変えられ、ログはセッションをまたいで累積するため、
-  //    1つのCSVに複数の間隔が混ざりうる。processing=agc+ns と同じ書き方で全部並べる。
-  //    ⚠ これは記録中に増える値なので、鎖の起点（ヘッダー）ではなくトレーラーへ出す。
-  let usedIntervals = [];
+  // 記録に使ったログ間隔は、ここでは持ち回らない。
+  //
+  // ⚠ 改修前は書き出し時に currentIntervalSec() を読んでいたので、1秒で採った行を
+  //    3s へ切り替えてから書き出すと「# intervalSec=3」と嘘が出た。次に画面の設定値
+  //    （lastIntervalSec）を行へ貼るようにしたが、これも嘘だった。設定は即座に
+  //    変わるのに、ワークレットは次の境界まで前の区間長で測り続けるので、
+  //    「1秒で測った区間に 3 というラベルが付く」行ができた。
+  //    いまは区間レコード自身が「その区間を実際に測ったときの間隔」（rec.intervalSec）
+  //    を持つ。トレーラーのラベルは書き出しのときに logs から組み直す
+  //    （logic.js の intervalRunsLabel）。別に控えておくと、また実態とずれる。
+  //    ⚠ これは記録中に変わる値なので、鎖の起点（ヘッダー）ではなくトレーラーへ出す。
 
   // ---- ハッシュチェーン ----
   //
@@ -307,6 +311,17 @@
     countEl.textContent = text.count;
   }
 
+  // 記録に穴があるかないかを、必ず1行で言い切る。
+  // ⚠ 片側表示にしない。穴が無いときも「無い」と出す（改修前は、クリップも欠測も
+  //    無い記録では画面が何も言わなかった。利用者は「穴が無い」と「まだ調べて
+  //    いない」を区別できない）
+  function renderIntegrity() {
+    if (!integrityEl) return;
+    const v = statsIntegrity(stats);
+    integrityEl.className = 'integrity-note' + (v.level === 'none' ? '' : ' ' + v.level);
+    integrityEl.textContent = v.text;
+  }
+
   // ⚠ 統計を進めるのはここだけである（母集団を CSV の行にそろえる）。
   //   区間レコードをそのまま渡す。重み（区間長）とピーク・クリップ・
   //   有効サンプル率は logic.js 側の addStatsRecord が拾う
@@ -314,6 +329,8 @@
     addStatsRecord(stats, rec);
     // 件数は、取り込めなかった行があっても logs に合わせる
     renderStats(formatStats(stats, logs.length));
+    // 穴の有無は行が増えるたびに出し直す（0区間→1区間で文言が変わる）
+    renderIntegrity();
     // クリップ・欠測が出たら、その区間で注意書きへ反映する。
     // 区間の数が増えれば文字列も変わるので、増えたぶんもここで拾える
     const text = statsWarnings(stats).join('\n');
@@ -327,6 +344,8 @@
     stats = createStats();
     statsNoticeText = '';
     renderStats(emptyStatsText());
+    // 穴の有無の表示も消す（統計と同じ母集団から出ているため）
+    renderIntegrity();
     // 稼働時間だけ残ると「何をリセットしたのか」が読めない
     uptimeEl.textContent = '00:00:00';
     // クリップ・欠測の注意書きも一緒に消す（統計と同じ母集団から出ているため）
@@ -572,13 +591,11 @@
     hashChain.extend(rec);
     // 次のセッションの起点。捨てた区間の欠番はそのまま残す
     if (Number.isFinite(rec.seq) && rec.seq > seqMax) seqMax = rec.seq;
-    // 行を採ったときのログ間隔を控える（書き出し時点の設定では嘘になる）
-    if (Number.isFinite(lastIntervalSec) && !usedIntervals.includes(lastIntervalSec)) {
-      usedIntervals.push(lastIntervalSec);
-    }
     // グラフの点も、ここで積む（記録と同じ源にする）。
-    // rAF で積むと、タブが裏に回ったあいだの点が抜けて直線で補間されてしまう
-    const intervalMs = Number.isFinite(lastIntervalSec) ? lastIntervalSec * 1000 : null;
+    // rAF で積むと、タブが裏に回ったあいだの点が抜けて直線で補間されてしまう。
+    // ⚠ 線を切る判定に使う区間長も、画面の設定値ではなくその区間の実測を使う。
+    //    ログ間隔を上げた直後に、まだ短い区間で測っていた行が「飛んだ」と誤判定される
+    const intervalMs = Number.isFinite(rec.intervalSec) ? rec.intervalSec * 1000 : null;
     series.push(seriesPointOf(rec, series[series.length - 1] || null, intervalMs));
     series = pruneSeries(series, Date.now(), GRAPH_WINDOW_SEC * 1000);
 
@@ -626,6 +643,8 @@
       startWallMs: nowMs - (nowSec - startSec) * 1000,
       endWallMs: nowMs,
       expectedSamples: Math.round(lastIntervalSec * sr),
+      // 行を出す条件で使った値そのもの（この区間を測ったときの間隔）
+      intervalSec: lastIntervalSec,
       clockEpoch: clockAnchor ? clockAnchor.epoch : 0,
       clockBreak: takeClockBreak(),
       meta: sessionMeta
@@ -1017,8 +1036,10 @@
   //    書き出したときに同じ行のハッシュが変わる。
   function csvTrailerExtraOf() {
     return {
-      // 書き出し時点の設定ではなく、行を採ったときの値。混ざっていれば全部並べる
-      intervalSec: usedIntervals.length ? usedIntervals.join('+') : null
+      // 書き出し時点の設定でも、行を採ったときの設定でもなく、
+      // 「その区間を実際に測ったときの間隔」を行から組み直す。
+      // 変わったところだけを seq つきで並べる（例 1@0+3@12）
+      intervalSec: intervalRunsLabel(logs)
     };
   }
 
@@ -1073,7 +1094,6 @@
     seqCounter = 0;
     seqBase = 0;
     seqMax = -1;
-    usedIntervals = [];
     // ログを捨てたら鎖も捨てる。次の1行目で新しい起点を凍結する
     hashChain.reset();
     updateButtonStates(); // ボタン状態を更新

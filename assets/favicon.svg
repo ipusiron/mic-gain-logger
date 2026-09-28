@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="マイク音量ロガー">
+  <!-- 背景。currentColor を使わないのは、ブラウザーのタブでは色を継げないためである -->
+  <rect width="64" height="64" rx="14" fill="#0f1a2b"/>
+  <!-- レベルメーターの棒（左から右へ高くなる）。小さく描いても形が残る -->
+  <g fill="#3ddc97">
+    <rect x="10" y="38" width="7" height="14" rx="2"/>
+    <rect x="21" y="30" width="7" height="22" rx="2"/>
+  </g>
+  <rect x="32" y="22" width="7" height="30" rx="2" fill="#f5c451"/>
+  <rect x="43" y="12" width="7" height="40" rx="2" fill="#ff6b6b"/>
+</svg>

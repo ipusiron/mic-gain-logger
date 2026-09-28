@@ -227,6 +227,49 @@ const MicGainLogic = (() => {
     return out;
   }
 
+  // 記録に穴が無いことも、画面に出す。
+  //
+  // ⚠ 改修前は statsWarnings だけだったので、クリップや欠測があるときしか
+  //    何も出なかった（片側表示）。「欠測のない記録」を名乗る道具なのに、
+  //    穴が無いことを画面が言わないのでは、利用者は確かめようがない。
+  //    穴の有無を必ず1行で言い切る。
+  //
+  // level = 'none'（記録がまだ無い）/ 'ok'（穴なし）/ 'warn'（穴あり）
+  //       / 'unknown'（簡易モードの行だけで、測れていない）
+  function statsIntegrity(stats) {
+    if (!stats || !stats.n) return { level: 'none', text: '' };
+    const known = stats.validKnownN;
+    const unknown = stats.n - known;
+    // 簡易モードの行は、クリップ数も有効サンプル率も測れない（瞬時値しか無い）
+    if (known === 0) {
+      return {
+        level: 'unknown',
+        text: `記録の穴は確かめられません（簡易モードの${stats.n}区間だけなので、`
+          + 'クリップ数も有効サンプル率も測れません）'
+      };
+    }
+    // ⚠ 2つの観点は別々に言う。片方に穴があっても、もう片方は
+    //    「無かった」と言い切れる（実測でクリップ5区間・欠測0区間の記録が出た）。
+    //    改修前はここで「有効サンプル率が1.000未満の区間0件・最小1.000」という、
+    //    穴が無いのに穴があるように読める文を出していた
+    const clipPart = stats.clipRows > 0
+      ? `クリップ${stats.clipRows}区間`
+      : 'クリップ0区間';
+    const pct = Number.isFinite(stats.minValidRatio)
+      ? stats.minValidRatio.toFixed(3)
+      : '--';
+    const validPart = stats.lowValidRows > 0
+      ? `有効サンプル率が1.000未満の区間${stats.lowValidRows}件・最小${pct}`
+      : `有効サンプル率は${known}区間すべて1.000`;
+    const tail = unknown > 0 ? `／簡易モードの${unknown}区間は測れません` : '';
+    const clean = stats.clipRows === 0 && stats.lowValidRows === 0;
+    return {
+      level: clean ? 'ok' : 'warn',
+      text: `${clean ? '記録の穴なし' : '記録に穴あり'}`
+        + `（${clipPart}／${validPart}）${tail}`
+    };
+  }
+
   function emptyStatsText() {
     return {
       avg: '--.- dBFS',
@@ -392,6 +435,29 @@ const MicGainLogic = (() => {
     return Math.max(128, Number.isFinite(frames) ? frames : Math.round(sampleRate));
   }
 
+  // フレーム数 → ログ間隔（秒）のラベル。
+  //
+  // ⚠⚠ 行に貼るログ間隔は「その区間を実際に測ったときの間隔」でなければならない。
+  //    改修前は画面の設定値（script.js の lastIntervalSec）を貼っていた。設定は
+  //    即座に変わるのに、ワークレットは次の境界まで前の区間長で測り続けるので、
+  //    「1秒で測った区間に 3 というラベルが付く」行ができていた。トレーラーの
+  //    `# intervalSec=1+3` は混在を示すが、どの行がどちらかは分からなかった。
+  //    区間レコードは startFrame / endFrame を持っているので、実測の区間長から
+  //    決められる。framesForInterval の逆算なので、丸めの誤差（0.5/sampleRate
+  //    未満＝48kHz で 10 マイクロ秒未満）だけ戻す。
+  function intervalSecOfFrames(frames, sampleRate) {
+    if (!(frames > 0) || !(sampleRate > 0)) return null;
+    return Math.round((frames / sampleRate) * 1e6) / 1e6;
+  }
+
+  // 有効サンプル率＝実際に届いたサンプル数 ÷ 期待サンプル数。
+  //
+  // ⚠ 記録開始直後の1行目だけが 1 を下回っていたのは欠測ではなかった。
+  //    ワークレットが AudioWorkletNode の構築時に起点を取っていたため、
+  //    レンダーグラフへ繋ぐまでの時間を区間に数えていた（観測された
+  //    valid_ratio=0.979 から逆算すると 48kHz で 21.3 ミリ秒ぶん）。
+  //    起点を最初の process() へ移して塞いだ（worklet/meter-processor.js）。
+  //    いまここが 1 を下回るのは、記録中にレンダークォンタムを落としたときだけである。
   function validRatioOf(count, expected) {
     if (!(expected > 0)) return 0;
     return count / expected;
@@ -496,6 +562,9 @@ const MicGainLogic = (() => {
       sampleCount: msg.count,
       expectedSamples: msg.expected,
       validRatio: validRatioOf(msg.count, msg.expected),
+      // その区間を実際に測ったときのログ間隔（画面の設定値ではない）。
+      // CSV の列は増やさない。トレーラーで「どの seq からどの間隔か」を示す
+      intervalSec: intervalSecOfFrames(msg.endFrame - msg.startFrame, sr),
       clockEpoch: anchor.epoch || 0,
       clockStatus: brk ? CLOCK_RESYNC : CLOCK_OK,
       clockBreakKind: brk ? brk.kind : null,
@@ -529,6 +598,10 @@ const MicGainLogic = (() => {
       sampleCount: null,
       expectedSamples: opts.expectedSamples,
       validRatio: null,
+      // 簡易モードは rAF の間隔でしか区切れないので、区間長は設定値どおりにならない。
+      // ただし行を出す条件（nowSec - lastLogTime >= lastIntervalSec）で使った値
+      // そのものなので、その区間を測ったときの間隔として貼ってよい
+      intervalSec: numberOrNull(opts.intervalSec),
       clockEpoch: opts.clockEpoch || 0,
       clockStatus: brk ? CLOCK_RESYNC : CLOCK_OK,
       clockBreakKind: brk ? brk.kind : null,
@@ -815,6 +888,59 @@ const MicGainLogic = (() => {
     return out;
   }
 
+  // ---- ログ間隔のラン（どの seq からどの間隔か）----
+  //
+  // ⚠ 列は増やさない。行ごとのログ間隔は、変わったところだけを
+  //    `# intervalSec=1@0+3@12`（seq 0 から1秒、seq 12 から3秒）の形で示す。
+  //    読む側は seq を見れば、その行がどちらの間隔で測られたか分かる。
+  //    改修前は `1+3` で、混在していることしか分からなかった。
+  function intervalRuns(rows) {
+    const out = [];
+    for (const r of rows || []) {
+      if (!r || !Number.isFinite(r.intervalSec)) continue;
+      const last = out[out.length - 1];
+      if (last && last.sec === r.intervalSec) continue;
+      out.push({ sec: r.intervalSec, seq: Number.isFinite(r.seq) ? r.seq : null });
+    }
+    return out;
+  }
+
+  function formatIntervalRuns(runs) {
+    if (!runs || !runs.length) return null;
+    return runs
+      .map(r => (r.seq === null ? String(r.sec) : `${r.sec}@${r.seq}`))
+      .join('+');
+  }
+
+  // 行の列から、トレーラーへ出すログ間隔のラベルを作る
+  function intervalRunsLabel(rows) {
+    return formatIntervalRuns(intervalRuns(rows));
+  }
+
+  // ---- セッションの境界（重みを timestamp の差で取れない行）----
+  //
+  // ⚠⚠ timestamp は区間の終わりなので、隣の行との差がそのまま区間長になる。
+  //    ただし記録を止めて再開すると、その差に休止時間がまるごと入る
+  //    （audioCtx はセッションごとに作り直され、壁時計のアンカーも取り直す）。
+  //    README の重み付け手順がこの差を重みにしていたため、実測17行・境界の差
+  //    60.032 秒の記録で Leq が 6.49 dB 外れた（境界の行が静かなら低く、
+  //    大きければ高く外れる。実測ではもう一方の並びで +2.00 dB）。
+  //    セッションの先頭の seq をここに出し、その行だけは差を使わせない。
+  //    列は増やさず、行数ぶんの情報も出さない（境界の位置だけで足りる）。
+  function sessionStartSeqs(rows) {
+    const out = [];
+    let prevId;
+    (rows || []).forEach((r, i) => {
+      if (!r) return;
+      const id = r.metaId || null;
+      if (i === 0 || id !== prevId) {
+        if (Number.isFinite(r.seq)) out.push(r.seq);
+      }
+      prevId = id;
+    });
+    return out;
+  }
+
   // トレーラー行（ハッシュの行を除いた本体）。
   //
   // 記録が終わってから分かる事実はすべてここへ集める。起点に混ぜないためである。
@@ -844,6 +970,10 @@ const MicGainLogic = (() => {
       if (r && r.metaId && sessions.indexOf(r.metaId) === -1) sessions.push(r.metaId);
     }
     if (sessions.length > 1) put('sessions', sessions.length);
+    // 区間長を timestamp の差で取れない行（各セッションの先頭）。
+    // 1行目も必ず入る（前の行が無いので差が取れない）ため、1件でも出す
+    const starts = sessionStartSeqs(rows);
+    if (starts.length) put('sessionStartAt', starts.join(','));
     if (rows.some(r => r && r.rawDb === -Infinity)) {
       // 無音は -Infinity で残す。行を落とすと「活動がなかった」ことを示せない
       put('silence', '-Infinity');
@@ -1058,6 +1188,7 @@ const MicGainLogic = (() => {
     formatDbCell,
     formatStats,
     statsWarnings,
+    statsIntegrity,
     emptyStatsText,
     canvasPixelSize,
     GRAPH_WINDOW_SEC,
@@ -1074,6 +1205,11 @@ const MicGainLogic = (() => {
     ENGINE_WORKLET,
     ENGINE_FALLBACK,
     framesForInterval,
+    intervalSecOfFrames,
+    intervalRuns,
+    formatIntervalRuns,
+    intervalRunsLabel,
+    sessionStartSeqs,
     validRatioOf,
     audioTimeToWallMs,
     CLOCK_JUMP_THRESHOLD_MS,

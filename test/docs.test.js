@@ -179,7 +179,7 @@ test('Excel の手順が dB の算術平均を教えていない', () => {
   for (const line of block.split('\n')) {
     if (!line.includes('=AVERAGE(')) continue;
     assert.ok(
-      /POWER|ではない|Ctrl\+Shift\+Enter/.test(line),
+      /POWER|ではない|Ctrl\+Shift\+Enter|警告なしで無視/.test(line),
       `算術平均の式が手順として残っている: ${line.trim()}`
     );
   }
@@ -189,11 +189,45 @@ test('Excel の手順が dB の算術平均を教えていない', () => {
   );
   // エネルギー平均の式。等間隔のときと、区間長で重み付けするときの2本
   assert.ok(block.includes('SUMPRODUCT(POWER(10,'), '等間隔のときの Leq の式が無い');
+  // ⚠ 作業用の列は H 以降である。C 列は seq で、上書きすると
+  //    境界の行（# sessionStartAt= / # clockBreakAt=）を見つけられなくなる
   assert.ok(
-    block.includes('SUMPRODUCT($C$2:$C$100,POWER(10,'),
+    block.includes('SUMPRODUCT($H$2:$H$100,POWER(10,'),
     '区間長で重み付けした Leq の式が無い'
   );
   assert.ok(block.includes('`-999`'), '無音の行（-Infinity）の扱いが書かれていない');
+});
+
+test('Excel の手順が、seq の列（C）を作業用に潰していない', () => {
+  const head = readme.indexOf('### Excel/Google Sheetsでの分析手順');
+  const tail = readme.indexOf('## 🌐 技術スタック');
+  const block = readme.slice(head, tail);
+  // CSV の列は timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash ＝ A〜G である
+  assert.equal(logic.CSV_COLUMNS.length, 7, 'CSV の列数が変わっている（作業列の位置も見直すこと）');
+  assert.equal(logic.CSV_COLUMNS[2], 'seq', 'C 列が seq でなくなっている');
+  assert.ok(
+    !/C列に隣の行との差/.test(block) && !/C3に`=\(A3-A2\)\*86400`/.test(block),
+    '区間長を C 列（seq）へ書く手順が残っている'
+  );
+  assert.ok(
+    block.includes('作業用の列はH列以降に置く'),
+    '作業用の列の位置が書かれていない'
+  );
+});
+
+test('Excel の手順が、セッションの境界とアンカーの取り直しを重みから外している', () => {
+  const head = readme.indexOf('### Excel/Google Sheetsでの分析手順');
+  const tail = readme.indexOf('## 🌐 技術スタック');
+  const block = readme.slice(head, tail);
+  assert.ok(block.includes('# sessionStartAt='), '境界の行の見つけ方（# sessionStartAt=）が無い');
+  assert.ok(block.includes('# clockBreakAt='), 'アンカーの取り直した行の扱いが無い');
+  // 実装がその行を出していること（README だけ直しても意味がない）
+  const rows = [
+    { seq: 0, metaId: 'a', ts: new Date(0), rawDb: -20, intervalSec: 1 },
+    { seq: 1, metaId: 'b', ts: new Date(1000), rawDb: -20, intervalSec: 1 }
+  ];
+  const trailer = logic.csvTrailerLines(rows, {});
+  assert.ok(trailer.includes('# sessionStartAt=0,1'), trailer.join(' / '));
 });
 
 test('トラブルシューティングが、第1弾で直した不具合の回避策を載せていない', () => {
@@ -422,6 +456,51 @@ test('ヘルプの表示下限が「記録される値は動かない」と書�
 test('ヘルプの簡易モードが file:// に触れている', () => {
   // ブラウザーの未対応より、file:// で直接開いたときのほうが遭遇しやすい
   assert.match(helpItem('計測エンジンの表示：'), /file:\/\//);
+});
+
+test('ヘルプの「統計と表示」が、画面に出している値をすべて説明している', () => {
+  // ⚠ 第2弾で足した3値（真のピーク・クリップ数・有効サンプル率）が
+  //    ヘルプの一覧に無かった。画面に出ているものは、画面で説明する
+  const head = html.indexOf('<h3>📊 統計と表示</h3>');
+  const tail = html.indexOf('<h3>💾 データの取り扱い</h3>');
+  assert.ok(head !== -1 && tail > head, 'ヘルプの「統計と表示」が見つからない');
+  const block = html.slice(head, tail);
+  for (const label of ['稼働時間', 'ログ件数', '平均（Leq）', '最大/最小/変動幅', '真のピーク', '記録の穴']) {
+    assert.ok(block.includes('<strong>' + label + '：</strong>'), `ヘルプに「${label}」が無い`);
+  }
+  // クリップ数と有効サンプル率は、どこかに説明があること
+  assert.ok(block.includes('クリップ'), 'クリップの説明が無い');
+  assert.ok(block.includes('有効サンプル率'), '有効サンプル率の説明が無い');
+});
+
+test('ヘルプが「平均（Leq）の重みは区間長」と書いている', () => {
+  // ⚠ README:92 にはあったが、画面だけ見た読者は Excel で等重みの式を組む
+  assert.match(helpItem('平均（Leq）：'), /重みは行数ではなく区間長/);
+});
+
+test('ヘルプの「CSVから同じ値が出る」が、成り立つ条件つきになっている', () => {
+  // ⚠ 以前は「画面の値とCSVから計算し直した値は一致します」と言い切っていた。
+  //    記録を止めて再開すると timestamp の差に休止時間が入るので、嘘になる
+  assert.ok(
+    !html.includes('画面の値とCSVから計算し直した値は一致します'),
+    '無条件に一致すると言い切ったままになっている'
+  );
+  const head = html.indexOf('<h3>📊 統計と表示</h3>');
+  const tail = html.indexOf('<h3>💾 データの取り扱い</h3>');
+  const block = html.slice(head, tail);
+  assert.ok(block.includes('sessionStartAt'), '境界の行の見つけ方が画面に無い');
+  assert.ok(block.includes('clockBreakAt'), 'アンカーを取り直した行の扱いが画面に無い');
+  assert.match(block, /条件があります/, '条件つきだと書いていない');
+});
+
+test('favicon を参照していて、実ファイルがある', () => {
+  // 参照が無いとブラウザーが /favicon.ico を取りにいって、コンソールに404が残る
+  const m = html.match(/<link rel="icon" href="\.\/([^"]+)"/);
+  assert.ok(m, 'index.html が favicon を参照していない');
+  const file = path.join(root, m[1]);
+  assert.ok(fs.existsSync(file), `favicon の実ファイルが無い: ${m[1]}`);
+  // 外部への取得を増やさない（CSP の default-src 'self' に収まること）
+  assert.ok(!/^https?:/.test(m[1]), 'favicon を外部から取りにいっている');
 });
 
 test('画面へ出す文言の区切りに半角コロンを使っていない', () => {
