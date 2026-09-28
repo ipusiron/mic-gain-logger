@@ -116,6 +116,22 @@ test('dbTickStep / dbTicks: 表示下限と 0 dBFS を必ず含み、本数が�
     ['0', '-10', '-20', '-30', '-40', '-50', '-60']);
 });
 
+test('dbTicks: 表示下限のすぐ手前の目盛りは間引く（ラベルが重ならないように）', () => {
+  // ⚠ 第2弾a6 で表示下限の既定を -90 にしたら、20dB 刻みの最後の目盛り（-80）と
+  //    下限（-90）が 10dB しか離れず、スマートフォン幅（高さ120px）でラベルが重なった
+  assert.deepEqual(dbTicks(-90, 0, dbTickStep(90)).map(t => t.label),
+    ['0', '-20', '-40', '-60', '-90']);
+  // 目盛りどうしの間隔は、刻みの半分より広い
+  for (const floor of [-120, -95, -90, -85, -70, -55, -45, -25]) {
+    const step = dbTickStep(0 - floor);
+    const ticks = dbTicks(floor, 0, step).map(t => t.db);
+    for (let i = 1; i < ticks.length; i++) {
+      assert.ok(ticks[i - 1] - ticks[i] > step / 2,
+        `下限 ${floor}: ${ticks[i - 1]} と ${ticks[i]} が近すぎる（刻み ${step}）`);
+    }
+  }
+});
+
 test('pruneSeries: 窓の外を落とし、左端まで線が届くよう直前の1点は残す', () => {
   const now = 1_700_000_000_000;
   const win = 60_000;

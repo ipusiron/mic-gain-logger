@@ -243,7 +243,9 @@ const MicGainLogic = (() => {
   //    手段が無いので、助言も実行できなかった。
   // 有効サンプル率は欠測の目安である。1.0 を下回った区間は、その区間の音の
   // 一部が届いていない（オーディオスレッドがレンダークォンタムを落とした）。
-  function statsWarnings(stats) {
+  // 注意の項目を、要点（short）と全文（full）の組で返す。
+  // 要点は画面の要約の1行に並べ、全文は開いて読む（第2弾a6）
+  function statsWarningItems(stats) {
     const out = [];
     if (!stats) return out;
     if (stats.clipRows > 0) {
@@ -262,16 +264,31 @@ const MicGainLogic = (() => {
       //    全サンプルの 0.97% が単発で 1.0 に触れた）
       text += 'マイクへの接触・端末の操作音・風や息のほか、音が大きすぎて波の山が1.0に届いている場合があります。'
         + '後者なら端末を音源から離してください';
-      out.push(text);
+      const kind = stats.clipRunKnownN > 0
+        ? (stats.clipRunMax >= CLIP_RUN_SUSTAINED ? '（連続あり）' : '（単発のみ）')
+        : '';
+      out.push({ short: `クリップ${stats.clipRows}区間${kind}`, full: text });
     }
     if (stats.lowValidRows > 0) {
       const pct = (stats.minValidRatio * 100).toFixed(1);
-      out.push(
-        `有効サンプル率が1.0を下回った区間が${stats.lowValidRows}件あります（最小 ${pct}%）。`
-        + 'その区間は音の一部が届いていません（CSVの valid_ratio 列に残ります）'
-      );
+      out.push({
+        short: `有効サンプル率 最小${pct}%`,
+        full: `有効サンプル率が1.0を下回った区間が${stats.lowValidRows}件あります（最小 ${pct}%）。`
+          + 'その区間は音の一部が届いていません（CSVの valid_ratio 列に残ります）'
+      });
     }
     return out;
+  }
+
+  // 全文だけの一覧（既存の呼び方）
+  function statsWarnings(stats) {
+    return statsWarningItems(stats).map(it => it.full);
+  }
+
+  // 要約の1行。件数と要点を並べる（項目が無ければ空）
+  function noticeSummary(items) {
+    if (!items || !items.length) return '';
+    return `記録の注意 ${items.length}件：${items.map(it => it.short).join('／')}`;
   }
 
   // 記録に穴が無いことも、画面に出す。
@@ -429,7 +446,12 @@ const MicGainLogic = (() => {
     for (let v = topDb; v >= floorDb - 1e-9; v -= step) {
       out.push(Math.round(v * 100) / 100);
     }
-    if (!out.length || Math.abs(out[out.length - 1] - floorDb) > 1e-9) out.push(floorDb);
+    if (!out.length || Math.abs(out[out.length - 1] - floorDb) > 1e-9) {
+      // 下限のすぐ手前（刻みの半分以内）の目盛りは間引く。残すとラベルが重なる
+      // （下限 -90・刻み 20 で -80 と -90 が 10dB しか離れず、スマートフォン幅で重なった）
+      if (out.length > 1 && out[out.length - 1] - floorDb <= step / 2) out.pop();
+      out.push(floorDb);
+    }
     return out.map(db => ({ db, label: String(Math.round(db)) }));
   }
 
@@ -1270,6 +1292,8 @@ const MicGainLogic = (() => {
     formatDbCell,
     formatStats,
     statsWarnings,
+    statsWarningItems,
+    noticeSummary,
     statsIntegrity,
     emptyStatsText,
     canvasPixelSize,

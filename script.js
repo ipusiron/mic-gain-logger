@@ -9,7 +9,8 @@
     parseFloorDb, parseIntervalSec, canvasPixelSize, meterScaleLabels,
     GRAPH_WINDOW_SEC, GRAPH_TOP_DB, graphArea, timeToX, dbToY,
     timeTickStepSec, timeTicks, dbTickStep, dbTicks, pruneSeries, seriesPointOf,
-    createStats, addStatsRecord, formatStats, statsWarnings, statsIntegrity,
+    createStats, addStatsRecord, formatStats, statsWarnings, statsWarningItems, noticeSummary,
+    statsIntegrity,
     emptyStatsText, intervalRunsLabel,
     ENGINE_WORKLET, ENGINE_FALLBACK, framesForInterval,
     CLOCK_BREAK_SUSPEND, CLOCK_BREAK_STALL,
@@ -393,44 +394,74 @@
     return 'マイクが切断されました';
   }
 
+  // 注意書きを開いているか（区間ごとに組み直しても閉じないように覚えておく）
+  let noticeOpen = false;
+
+  // 注意書きは「件数と要点の1行」を出し、全文は開いて読む（第2弾a6）。
+  // ⚠ 改修前は全文を ' / ' でつないだ1本の文字列で、430px幅に5行（90px）を占めた。
+  //    中身は限界を正しく書くためのものなので、削らずに出し方を変える
   function renderRecordNotice() {
     if (!recordNoticeEl) return;
-    const parts = [];
+    const parts = [];   // { short, full }
     if (deviceLoss) {
-      parts.push(
-        `${deviceLossLabel(deviceLoss.reason)}。${deviceLoss.rowsKept}行目までを記録し、`
-        + 'そのあとは記録していません（ここまでのログは書き出せます）'
-      );
+      parts.push({
+        short: `${deviceLossLabel(deviceLoss.reason)}（${deviceLoss.rowsKept}行目まで記録）`,
+        full: `${deviceLossLabel(deviceLoss.reason)}。${deviceLoss.rowsKept}行目までを記録し、`
+          + 'そのあとは記録していません（ここまでのログは書き出せます）'
+      });
     } else if (deviceMuted) {
-      parts.push('マイクが供給元で無音化されています（通話の割り込みなど）。'
-        + 'この間の記録はデジタル無音になります');
+      parts.push({
+        short: 'マイクが無音化されている',
+        full: 'マイクが供給元で無音化されています（通話の割り込みなど）。'
+          + 'この間の記録はデジタル無音になります'
+      });
     }
     if (sessionMeta && processingVerdict(sessionMeta) === PROCESSING_ACTIVE) {
-      parts.push(
-        `マイク側の音の加工が有効です（${sessionMeta.processingActive.join(', ')}）。`
-        + '利得が自動で動くため、この記録の dBFS は絶対値として扱えません'
-      );
+      parts.push({
+        short: `音の加工が有効（${sessionMeta.processingActive.join(', ')}）`,
+        full: `マイク側の音の加工が有効です（${sessionMeta.processingActive.join(', ')}）。`
+          + '利得が自動で動くため、この記録の dBFS は絶対値として扱えません'
+      });
     } else if (sessionMeta && processingVerdict(sessionMeta) === PROCESSING_UNKNOWN) {
       // 報告しない項目がある（Safari の autoGainControl など）。
       // 黙っていると「加工なし」と読まれるので、分からないことを出す
-      parts.push(
-        `マイク側の音の加工（${sessionMeta.processingUnknown.join(', ')}）の状態を、`
-        + 'このブラウザーは報告しません。利得が自動で動いていても、この画面とCSVからは分かりません'
-      );
+      parts.push({
+        short: `音の加工の状態が不明（${sessionMeta.processingUnknown.join(', ')}）`,
+        full: `マイク側の音の加工（${sessionMeta.processingUnknown.join(', ')}）の状態を、`
+          + 'このブラウザーは報告しません。利得が自動で動いていても、この画面とCSVからは分かりません'
+      });
     }
     if (clockBreaks.length) {
       const totalSec = clockBreaks.reduce((a, b) => a + b.jumpMs, 0) / 1000;
-      parts.push(
-        `時刻の跳びを${clockBreaks.length}回検出（累計 ${totalSec.toFixed(2)} 秒）。`
-        + '以降の時刻は取り直したアンカーで出し、'
-        + '該当区間はCSVのメタ行（# clockBreaks / # clockBreakAt / # clockDriftMs）に残ります'
-      );
+      parts.push({
+        short: `時刻の跳び${clockBreaks.length}回`,
+        full: `時刻の跳びを${clockBreaks.length}回検出（累計 ${totalSec.toFixed(2)} 秒）。`
+          + '以降の時刻は取り直したアンカーで出し、'
+          + '該当区間はCSVのメタ行（# clockBreaks / # clockBreakAt / # clockDriftMs）に残ります'
+      });
     }
     // クリップと欠測。ボタンを増やさず、記録の信用に関わる事実をここへ集める
-    for (const w of statsWarnings(stats)) parts.push(w);
+    for (const it of statsWarningItems(stats)) parts.push(it);
     const kind = deviceLoss ? ' err' : (parts.length ? ' warn' : '');
     recordNoticeEl.className = 'record-notice' + kind;
-    recordNoticeEl.textContent = parts.join(' / ');
+    if (!parts.length) {
+      recordNoticeEl.replaceChildren();   // :empty で隠れる
+      return;
+    }
+    // 要約の1行（summary）と全文（開いたときの箇条）。中身は textContent で入れる
+    const details = document.createElement('details');
+    details.open = noticeOpen;
+    details.addEventListener('toggle', () => { noticeOpen = details.open; });
+    const summary = document.createElement('summary');
+    summary.textContent = '⚠ ' + noticeSummary(parts);
+    const list = document.createElement('ul');
+    for (const it of parts) {
+      const li = document.createElement('li');
+      li.textContent = it.full;
+      list.appendChild(li);
+    }
+    details.append(summary, list);
+    recordNoticeEl.replaceChildren(details);
   }
 
   // ---- 測定条件の取得 ----

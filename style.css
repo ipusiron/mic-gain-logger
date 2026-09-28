@@ -275,6 +275,10 @@ body.light .theme-toggle .icon-moon{display:block;}
 .record-notice:empty{display:none}
 .record-notice.warn{color:var(--warn)}
 .record-notice.err{color:var(--err)}
+/* 注意書きは要約の1行を出し、全文は開いて読む（第2弾a6） */
+.record-notice summary{cursor:pointer}
+.record-notice ul{margin:4px 0 0; padding-left:18px}
+.record-notice li{margin:2px 0}
 
 /* 記録の穴の有無。⚠ 片側表示にしない（穴が無いときも出す）ため、
    既定の色は --muted に置く。ok/warn のときだけ色を付ける。

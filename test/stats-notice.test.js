@@ -186,7 +186,8 @@ test('画面: クリップと欠測は既存の状態表示へ出す（ボタン
     'startBtn', 'stopBtn', 'themeToggle'
   ]);
   // 注意書きは #recordNotice にまとめる
-  assert.match(script, /for \(const w of statsWarnings\(stats\)\) parts\.push\(w\)/,
+  // 第2弾a6 から、要点と全文の組（statsWarningItems）で取り込む
+  assert.match(script, /for \(const it of statsWarningItems\(stats\)\) parts\.push\(it\)/,
     'renderRecordNotice が統計の注意書きを取り込んでいない');
   // 出たその区間で画面へ出す（停止まで待たない）
   const upd = script.slice(script.indexOf('function updateStats'), script.indexOf('function resetStats'));
