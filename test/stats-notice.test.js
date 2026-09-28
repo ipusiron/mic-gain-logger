@@ -190,8 +190,26 @@ test('画面: クリップと欠測は既存の状態表示へ出す（ボタン
   assert.match(upd, /renderRecordNotice\(\)/, 'updateStats が注意書きを更新していない');
   // 統計リセットで注意書きも消す（統計と同じ母集団から出ているため）
   const reset = script.slice(script.indexOf('function resetStats'), script.indexOf('function setStatus'));
-  assert.match(reset, /statsNoticeCount = 0/);
+  assert.match(reset, /statsNoticeText = ''/);
   assert.match(reset, /renderRecordNotice\(\)/);
+});
+
+test('画面: 注意書きは件数ではなく文字列で比べて組み直す', () => {
+  // ⚠ 件数で比べると、クリップした区間が2つ目・3つ目と増えても警告は1本のまま
+  //    なので、画面が最初の「1区間」で止まる。ブラウザーの実測で、4区間
+  //    クリップしているのに「クリップを1区間で検出しました」と出た
+  const upd = script.slice(script.indexOf('function updateStats'), script.indexOf('function resetStats'));
+  assert.ok(!/statsWarnings\(stats\)\.length/.test(upd), '注意書きを件数で比べている');
+  assert.match(upd, /statsWarnings\(stats\)\.join\(/, '注意書きを文字列にしていない');
+
+  // 区間が増えても警告は1本のまま。文字列だけが変わる
+  const one = statsOf([recordOf(0, { peak: 1, clip: 7 })]);
+  const two = statsOf([recordOf(0, { peak: 1, clip: 7 }), recordOf(1, { peak: 1, clip: 7 })]);
+  assert.equal(statsWarnings(one).length, 1);
+  assert.equal(statsWarnings(two).length, 1);
+  assert.notEqual(statsWarnings(one).join('\n'), statsWarnings(two).join('\n'),
+    '区間が増えても文字列が変わらない');
+  assert.match(statsWarnings(two)[0], /クリップを2区間で検出/);
 });
 
 test('画面: クレストファクターは出さない（第3弾の診断へ回す）', () => {

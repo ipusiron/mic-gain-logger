@@ -179,9 +179,11 @@
 
   // 統計
   let stats = createStats();
-  // 統計から出ている注意書きの件数。増減したときだけ注意書きを組み直す
-  // （1区間ごとに組み直すと、変わっていない文字列を毎秒作ることになる）
-  let statsNoticeCount = 0;
+  // 統計から出ている注意書き。中身が変わったときだけ組み直す。
+  // ⚠ 件数（何本の警告が出ているか）で比べてはいけない。クリップした区間が
+  //    2つ目・3つ目と増えても警告は1本のままなので、画面が「1区間」で止まる。
+  //    実測で、4区間クリップしているのに「1区間」と出た。文字列で比べる。
+  let statsNoticeText = '';
 
   // ログ（CSV用）
   const logs = []; // { ts: Date, db: number }
@@ -310,17 +312,18 @@
     addStatsRecord(stats, rec);
     // 件数は、取り込めなかった行があっても logs に合わせる
     renderStats(formatStats(stats, logs.length));
-    // クリップ・欠測が出たら、その区間で注意書きへ反映する
-    const n = statsWarnings(stats).length;
-    if (n !== statsNoticeCount) {
-      statsNoticeCount = n;
+    // クリップ・欠測が出たら、その区間で注意書きへ反映する。
+    // 区間の数が増えれば文字列も変わるので、増えたぶんもここで拾える
+    const text = statsWarnings(stats).join('\n');
+    if (text !== statsNoticeText) {
+      statsNoticeText = text;
       renderRecordNotice();
     }
   }
 
   function resetStats() {
     stats = createStats();
-    statsNoticeCount = 0;
+    statsNoticeText = '';
     renderStats(emptyStatsText());
     // 稼働時間だけ残ると「何をリセットしたのか」が読めない
     uptimeEl.textContent = '00:00:00';

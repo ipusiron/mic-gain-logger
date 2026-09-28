@@ -69,30 +69,40 @@ function equalWeightLeq(recs) {
 // ---- CSV のテキストだけから重み付きの Leq を組み直す（第三者の再現）----
 //
 // timestamp 列は区間の「終わり」である。区間長は隣の行との差で取れる。
-// 1行目だけは前の行が無いので、ヘッダーの `# started=` との差を使う。
+//
+// ⚠ 1行目だけは前の行が無い。ここで `# started=` との差を使ってはいけない。
+//    `# started=` は「1行目の区間の終わりの時刻」である（chainMetaOf が
+//    firstRec.ts をそのまま載せている。アンカーは中断のたびに取り直すので
+//    記録開始の時刻には使えないためである）。差を取ると必ず 0 になり、
+//    1行目の重みが消える。実測では 0.2dB 低く出た。
+//    1行目の長さは、トレーラーの `# intervalSec=` の最初の値を使う。
 function weightedLeqFromCsv(csvText) {
   const lines = csvText.split('\n').filter(l => l.length);
-  const started = lines
-    .filter(l => l.startsWith('# started='))
-    .map(l => Date.parse(l.slice('# started='.length)))[0];
-  assert.ok(Number.isFinite(started), 'ヘッダーに # started= が無い');
+  const pick = (key) => lines
+    .filter(l => l.startsWith(`# ${key}=`))
+    .map(l => l.slice(`# ${key}=`.length))[0];
+
+  const firstLen = Number(String(pick('intervalSec') || '').split('+')[0]);
+  assert.ok(firstLen > 0, 'トレーラーに # intervalSec= が無い');
 
   const data = lines.filter(l => !l.startsWith('#'));
   assert.equal(data[0], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash', 'ヘッダーが違う');
+  const rows = data.slice(1).map(line => {
+    const cells = line.split(',');
+    return {
+      tMs: Date.parse(cells[0]),
+      db: (cells[1] === '-Infinity') ? -Infinity : Number(cells[1])
+    };
+  });
 
-  let prevMs = started;
   let energy = 0;   // Σ T_i * 10^(db_i/10)
   let totalSec = 0; // Σ T_i
-  for (const line of data.slice(1)) {
-    const cells = line.split(',');
-    const tMs = Date.parse(cells[0]);
-    const db = (cells[1] === '-Infinity') ? -Infinity : Number(cells[1]);
-    const lenSec = (tMs - prevMs) / 1000;
-    prevMs = tMs;
-    assert.ok(lenSec > 0, `区間長が正でない: ${line}`);
-    energy += ((db === -Infinity) ? 0 : Math.pow(10, db / 10)) * lenSec;
+  rows.forEach((r, i) => {
+    const lenSec = (i === 0) ? firstLen : (r.tMs - rows[i - 1].tMs) / 1000;
+    assert.ok(lenSec > 0, `区間長が正でない: ${i}`);
+    energy += ((r.db === -Infinity) ? 0 : Math.pow(10, r.db / 10)) * lenSec;
     totalSec += lenSec;
-  }
+  });
   return (energy > 0) ? 10 * Math.log10(energy / totalSec) : -Infinity;
 }
 
@@ -202,17 +212,24 @@ test('⭐CSV のタイムスタンプから、第三者が同じ重み付きの 
     { db: -40, lenSec: 1 },
     { db: -10, lenSec: 3 }
   ]);
+  // ヘッダーの started は script.js の chainMetaOf と同じものを入れる
+  // （1行目の区間の終わりの時刻。記録開始の時刻ではない）
   const csv = buildCsv(recs, {
     engine: 'worklet',
-    meta: { started: STARTED },
+    meta: { started: recs[0].ts.toISOString() },
     intervalSec: '1+3'
   });
   // 重みの根拠（区間長の混在）が CSV に残っていること
   assert.ok(csv.includes('# intervalSec=1+3'), 'トレーラーにログ間隔の混在が無い');
-  assert.ok(csv.includes(`# started=${STARTED}`), 'ヘッダーに記録開始時刻が無い');
 
   const fromCsv = weightedLeqFromCsv(csv);
   const screen = weightedLeq(recs);
   assert.ok(Math.abs(fromCsv - screen) < 1e-6, `csv=${fromCsv} screen=${screen}`);
   assert.equal(fromCsv.toFixed(1), '-13.0');
+
+  // ⚠ `# started=` は1行目の区間の終わりである。ここから差を取ると 0 になり、
+  //    1行目の重みが消える。この落とし穴を固定しておく
+  const startedLine = csv.split('\n').filter(l => l.startsWith('# started='))[0];
+  assert.equal(startedLine, `# started=${recs[0].ts.toISOString()}`);
+  assert.equal(Date.parse(startedLine.slice('# started='.length)), recs[0].ts.getTime());
 });

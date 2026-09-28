@@ -130,7 +130,7 @@
             <div class="stat-label">変動幅</div>
             <div id="rangeDb" class="stat-value">--.- dB</div>
           </div>
-          <div class="stat" title="区間内の最大絶対振幅（真のピーク）のうち、最も大きかったもの。上の「最大」はRMSなので別の値になる。簡易モードでは測れないため「--.-」のまま">
+          <div class="stat" title="区間内の最大絶対振幅（真のピーク）のうち、最も大きかったもの。上の「最大」はRMSなので別の値になる。0 dBFSを超えることがある（浮動小数点の音声なので、リサンプリングの跳ね返りで振幅が1.0を超える）。超えていたら確実にクリップしている。簡易モードでは測れないため「--.-」のまま">
             <div class="stat-label">真のピーク</div>
             <div id="peakDb" class="stat-value">--.- dBFS</div>
           </div>
