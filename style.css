@@ -410,9 +410,15 @@ body.light .theme-toggle .icon-moon{display:block;}
 .control input[type="number"],
 .control input[type="range"]{width:100%}
 
-/* PC版では折りたたみボタンを非表示 */
-.controls-toggle {
-  display: none;
+/* PC版では折りたたみボタンを非表示。
+   ⚠ メディアクエリーは詳細度を上げない。`.controls-toggle{display:flex}`（480px以下）
+   と同じ詳細度のまま後ろへ置くと、幅によらずこちらが勝って折りたたみボタンが
+   常に消え、スマートフォンで設定を1つも開けなくなる。481px以上へ閉じ込めて、
+   480px以下の規則と範囲が重ならないようにする。 */
+@media (min-width: 481px) {
+  .controls-toggle {
+    display: none;
+  }
 }
 
 .interval-controls{
