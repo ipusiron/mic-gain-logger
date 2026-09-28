@@ -89,6 +89,39 @@ test('構成図の全項目に1行の説明が付いている', () => {
   }
 });
 
+// ---- 第1弾で下げた名乗りに、外形が追随していること ----
+//
+// 第1弾で「証拠保全」「裁判資料」という名乗りを下げたのに、フロントマターと
+// 想定ターゲット層と将来案がそのまま残っていた。散文と同じで、名乗りも
+// 誰も直さないので腐る。機械で見られるものは機械に見させる。
+
+// ⚠ フロントマターはハブ（hackinglab.online）の tools.json が読む。
+//    README の本文だけ直しても、ハブの一覧には古い名乗りが出たままになる。
+function frontMatter() {
+  const m = readme.match(/^<!--\n---\n([\s\S]*?)\n---\n-->/);
+  assert.ok(m, 'フロントマターの HTML コメントが見つからない');
+  return m[1];
+}
+
+test('フロントマターの構造（キーと順序）が変わっていない', () => {
+  // ハブ側がこのキーを読む。値を直すときに構造を動かしてはいけない
+  const keys = frontMatter().split('\n')
+    .filter(l => /^[a-z_]+:/.test(l))
+    .map(l => l.slice(0, l.indexOf(':')));
+  assert.deepEqual(keys, [
+    'id', 'slug', 'title', 'subtitle_ja', 'subtitle_en',
+    'description_ja', 'description_en', 'category_ja', 'category_en',
+    'difficulty', 'tags', 'repo_url', 'demo_url', 'hub'
+  ]);
+});
+
+test('フロントマターの説明が「調査員・探偵・法執行機関」を名乗っていない', () => {
+  const fm = frontMatter();
+  for (const s of ['調査員', '探偵', '法執行', 'investigator', 'law enforcement']) {
+    assert.ok(!fm.includes(s), `フロントマターに ${s} が残っている`);
+  }
+});
+
 // ---- README の記述と実装の照合 ----
 
 test('廃止した TECHNICAL.md を README が参照していない', () => {

@@ -8,8 +8,8 @@ title: "Mic Gain Logger"
 subtitle_ja: "マイク音量ロガー"
 subtitle_en: "Microphone Gain Logger"
 
-description_ja: "録音せずにマイク入力の音量（dBFS）をリアルタイムで可視化・記録するWebツール。調査員・探偵などが現場で音響環境を監視するために設計。"
-description_en: "A web-based tool that visualizes and logs microphone input levels (dBFS) in real-time without recording audio. Designed for investigators and security professionals to monitor acoustic environments in the field."
+description_ja: "マイク入力の音量（dBFS）を、録音せずに区間ごとに記録し続けるWebツール。描画が止まっても穴のあかない時系列を、ハッシュチェーン付きのCSVへ書き出す。dBFSは端末ごとの相対値であり、音圧（dB SPL）ではない。"
+description_en: "A browser tool that logs microphone input level (dBFS) interval by interval without recording any audio. The measurement runs in an AudioWorklet, so the log keeps no gaps even when rendering stalls, and each CSV row carries a hash chained to the previous row. dBFS is relative to each device full scale, not sound pressure (dB SPL)."
 
 category_ja:
   - 物理セキュリティ
@@ -18,7 +18,7 @@ category_en:
   - Physical Security
   - Acoustic Surveillance
 
-difficulty: 1
+difficulty: 3
 
 tags:
   - web-audio-api
@@ -45,7 +45,7 @@ hub: true
 
 **Day041 - 生成AIで作るセキュリティツール100**
 
-**Mic Gain Logger** は、調査員・探偵などが現場で利用することを想定した、Webブラウザーベースのマイク音量モニターツールです。
+**Mic Gain Logger** は、マイク入力の音量（dBFS）を録音せずに記録し続けるWebブラウザーベースのツールです。
 
 録音機能はあえて搭載せず、音の「存在」や「強さ」をリアルタイムで可視化・記録することに特化しています。
 
@@ -145,7 +145,7 @@ dBFSの±0.0002dBは「デジタルサンプルからdBFSを求める計算が�
 
 ### 外した設定（スムージング）
 
-以前あった「スムージング」のスライダーは外しました。この設定が動かしていたのは`AnalyserNode.smoothingTimeConstant`だけで、これは周波数領域の値にしか作用しません。本ツールの計測は時間領域のRMSなので、**表示にも記録にも一切反映されていませんでした**。音の揺れをならす扱いは、次の弾で時間重み（Fast=125ms／Slow=1s）として、表示と記録の両方に反映される形で入れ直します。
+以前あった「スムージング」のスライダーは外しました。この設定が動かしていたのは`AnalyserNode.smoothingTimeConstant`だけで、これは周波数領域の値にしか作用しません。本ツールの計測は時間領域のRMSなので、**表示にも記録にも一切反映されていませんでした**。音の揺れをならす扱いは、この先の弾で時間重み（Fast=125ms／Slow=1s）として入れ直します。⚠**入れ直すのは表示までです。**区間のLeqは区間の完全な要約なので、時間重みをかけても区間の平均は変わりません。記録に追加で載せられるのは、区間内のLFmax／LSmaxまでです。
 
 ---
 
@@ -723,7 +723,7 @@ print("%d行すべて通りました（トレーラーも一致）" % len(data))
 | グラフの座標・目盛り・キャンバス | `logic.js`の「グラフ」「キャンバスの大きさ」の節、`test/graph.test.js`・`test/canvas.test.js` |
 | 開発時の約束ごと（どのファイルに何を書くか） | [CLAUDE.md](./CLAUDE.md) |
 
-テストは`npm test`で実行します（依存パッケージなし・Node.js 22以上）。2026-09-29時点で230件あり、すべて通ります。CIも`push`と`pull request`で同じものを実行します。
+テストは`npm test`で実行します（依存パッケージなし・Node.js 22以上）。2026-09-29時点で232件あり、すべて通ります。CIも`push`と`pull request`で同じものを実行します。
 
 ### 参考資料
 
