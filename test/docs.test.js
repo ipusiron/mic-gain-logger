@@ -165,6 +165,43 @@ test('モバイルを検証済みと書いていない', () => {
   );
 });
 
+test('シナリオ例が「画面ロック相当で実測確認」と言い切っていない', () => {
+  // 画面ロック相当の状態は Chromium のエミュレーションである。
+  // 同じ README の対応表が「モバイルはエミュレーションのみ」と書いているので、
+  // シナリオ側が「実測で確認した」と言い切ると食い違う。
+  // 未確認である旨は「ブラウザー対応状況」の1か所へ集約し、他はそこを指す
+  const head = readme.indexOf('## 📋 具体的なシナリオ例');
+  const tail = readme.indexOf('## 📂 ディレクトリー構成');
+  assert.ok(head !== -1 && tail > head, 'シナリオ例の節が見つからない');
+  const scenarios = readme.slice(head, tail);
+
+  assert.ok(
+    !scenarios.includes('確認済みの動作環境'),
+    'シナリオ例が「確認済みの動作環境」と言い切っている'
+  );
+  assert.ok(
+    !/画面ロック相当[^。]*実測で確認/.test(scenarios),
+    'シナリオ例が画面ロック相当を実測で確認したと書いている'
+  );
+  assert.ok(
+    scenarios.includes('スマートフォンの実機では確かめていない'),
+    'シナリオ例が実機未確認であることを書いていない'
+  );
+  assert.ok(
+    scenarios.includes('ブラウザー対応状況'),
+    'シナリオ例が検証範囲の集約先を指していない'
+  );
+  // 集約先の側にも、そこが唯一の記載場所であることを書いておく
+  assert.ok(
+    readme.includes('「どこまで確かめたか」の唯一の記載場所です'),
+    '検証範囲の集約先が明示されていない'
+  );
+  assert.ok(
+    readme.includes('「画面ロック相当」はブラウザーのエミュレーションであり'),
+    '画面ロック相当がエミュレーションであることを書いていない'
+  );
+});
+
 test('ハッシュチェーンの限界を README が書いている', () => {
   assert.ok(readme.includes('改ざんを防ぐ」ものではありません'), 'ハッシュチェーンの限界が書かれていない');
   assert.ok(readme.includes(logic.HASH_ALGO_LABEL), `README に ${logic.HASH_ALGO_LABEL} が無い`);
