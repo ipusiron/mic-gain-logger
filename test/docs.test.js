@@ -168,6 +168,48 @@ test('廃止したスムージングの置き換え（時間重み）の約束�
   assert.ok(readme.includes('LFmax'), '記録に足せる範囲（LFmax／LSmax）が書かれていない');
 });
 
+test('Excel の手順が dB の算術平均を教えていない', () => {
+  // `=AVERAGE(B:B)` は第1弾が画面で捨てた計算である。
+  // しかも `-Infinity` の行はセルの上では文字列なので、警告も出ずに集計から外れる
+  const head = readme.indexOf('### Excel/Google Sheetsでの分析手順');
+  const tail = readme.indexOf('## 🌐 技術スタック');
+  assert.ok(head !== -1 && tail > head, 'Excel の手順が見つからない');
+  const block = readme.slice(head, tail);
+
+  for (const line of block.split('\n')) {
+    if (!line.includes('=AVERAGE(')) continue;
+    assert.ok(
+      /POWER|ではない|Ctrl\+Shift\+Enter/.test(line),
+      `算術平均の式が手順として残っている: ${line.trim()}`
+    );
+  }
+  assert.ok(
+    block.includes('画面の「平均（Leq）」ではない'),
+    '算術平均が画面の値でないことを書いていない'
+  );
+  // エネルギー平均の式。等間隔のときと、区間長で重み付けするときの2本
+  assert.ok(block.includes('SUMPRODUCT(POWER(10,'), '等間隔のときの Leq の式が無い');
+  assert.ok(
+    block.includes('SUMPRODUCT($C$2:$C$100,POWER(10,'),
+    '区間長で重み付けした Leq の式が無い'
+  );
+  assert.ok(block.includes('`-999`'), '無音の行（-Infinity）の扱いが書かれていない');
+});
+
+test('トラブルシューティングが、第1弾で直した不具合の回避策を載せていない', () => {
+  const head = readme.indexOf('### よくある問題と解決方法');
+  const tail = readme.indexOf('### ブラウザー対応状況');
+  assert.ok(head !== -1 && tail > head, 'トラブルシューティングの節が見つからない');
+  const block = readme.slice(head, tail);
+
+  // ⚠ ズームで拡大するのは、非整数の幅で RangeError を踏む側の操作だった
+  assert.ok(!block.includes('ブラウザーのズーム機能で拡大'), 'ズームで拡大する回避策が残っている');
+  assert.ok(!block.includes('ブラウザーのキャッシュをクリア'), 'キャッシュクリアの回避策が残っている');
+  // 直したこと自体は、正体つきで残す（同じ症状が出たら別の原因である）
+  assert.ok(block.includes('RangeError'), '直した不具合の正体が書かれていない');
+  assert.ok(block.includes('第1弾で直した'), '第1弾で直したことが書かれていない');
+});
+
 // ---- README の記述と実装の照合 ----
 
 test('廃止した TECHNICAL.md を README が参照していない', () => {
