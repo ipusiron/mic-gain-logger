@@ -9,7 +9,7 @@
     parseFloorDb, parseIntervalSec, canvasPixelSize,
     GRAPH_WINDOW_SEC, GRAPH_TOP_DB, graphArea, timeToX, dbToY,
     timeTickStepSec, timeTicks, dbTickStep, dbTicks, pruneSeries, seriesPointOf,
-    createStats, addStatsSample, formatStats, emptyStatsText,
+    createStats, addStatsRecord, formatStats, emptyStatsText,
     ENGINE_WORKLET, ENGINE_FALLBACK, framesForInterval,
     CLOCK_BREAK_SUSPEND, CLOCK_BREAK_STALL,
     createClockAnchor, detectClockJump, reanchorClock,
@@ -298,8 +298,10 @@
     countEl.textContent = text.count;
   }
 
-  function updateStats(db) {
-    addStatsSample(stats, db);
+  // ⚠ 統計を進めるのはここだけである（母集団を CSV の行にそろえる）。
+  //   区間レコードをそのまま渡す。重み（区間長）は logic.js 側で拾う
+  function updateStats(rec) {
+    addStatsRecord(stats, rec);
     // 件数は、取り込めなかった行があっても logs に合わせる
     renderStats(formatStats(stats, logs.length));
   }
@@ -561,7 +563,8 @@
     if (wasEmpty) updateButtonStates();
     // ⚠ 統計に入れるのは rawDb（記録される生値）である。
     //    表示用の db を使うと、表示下限を変えただけで統計が動いてしまう
-    updateStats(rec.rawDb);
+    //    （addStatsRecord が rawDb を読む）
+    updateStats(rec);
     // 件数は行が増えたら必ず出す。無音だけの区間が続いても 0 のままにしない
     countEl.textContent = String(logs.length);
   }

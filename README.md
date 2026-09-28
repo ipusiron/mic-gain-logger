@@ -89,7 +89,7 @@ hub: true
 - **欠測のない記録（AudioWorklet）**  
   区間の集計をオーディオスレッドで行うため、画面の描画が止まっても記録は続く。CSVの1行が1区間に対応する。AudioWorkletを読み込めない環境は**簡易モード**へ自動的に切り替わる。
 - **統計情報の自動算出**  
-  稼働時間、ログ件数、平均・最大・最小音量、変動幅を自動計算・表示。平均はエネルギー平均（Leqと同じ定義）で、母集団はCSVの行と一致する。
+  稼働時間、ログ件数、平均・最大・最小音量、変動幅を自動計算・表示。平均はエネルギー平均（Leqと同じ定義）で、母集団はCSVの行と一致する。**平均の重みは行数ではなく区間長（秒）である。**ログ間隔は記録中に変えられるため、1秒の区間と3秒の区間を同じ重みで平均すると実時間に比例しない値が出る。
 - **録音なしのプライバシー配慮**  
   音声そのものは保存せず、音量データのみを扱う。CSP（`connect-src 'none'`）により、外部への送信をブラウザーの機能として止めている。
 - **CSVログ出力（v2）**  
@@ -269,6 +269,7 @@ mic-gain-logger/
 │   ├── hashchain.test.js          # 段階4-1: ハッシュチェーン（起点・トレーラー・改変の検出）
 │   ├── chain-runner.test.js       # 段階4-2: 記録中に鎖を進める入れ物（非同期の状態機械）
 │   ├── smoothing.test.js          # 第1弾の締め: 効かなかったスムージング設定の廃止
+│   ├── stats-weight.test.js       # 公開前の直し: 統計（Leq）を区間長で重み付けする
 │   ├── dbfs-fixture.test.js       # 既知振幅の正弦波に対するdBFSの計算精度
 │   ├── docs.test.js               # READMEと実装・実ファイルが合っているかの検査（構成図を含む）
 │   └── fixtures/                  # テストの期待値
@@ -697,6 +698,7 @@ print("%d行すべて通りました（トレーラーも一致）" % len(data))
 |---|---|
 | 区間の切り方（1行＝1区間） | `worklet/meter-processor.js`、`logic.js`の「区間」の節、`test/interval.test.js` |
 | dBFSの求め方と統計（Leq） | `logic.js`の「統計」の節、`test/dbfs-fixture.test.js`・`test/stats-csv.test.js` |
+| 統計（Leq）の重み＝区間長 | `logic.js`の「統計」の節、`test/stats-weight.test.js` |
 | 時刻のアンカーと取り直し | `logic.js`の「時刻のアンカー」の節、`test/clock.test.js` |
 | デジタル無音・デバイス喪失 | `logic.js`の「デジタル無音の扱い」「マイクのデバイス喪失」の節、`test/silence.test.js`・`test/device.test.js` |
 | 測定条件のメタデータ | `logic.js`の「測定条件」の節、`test/meta.test.js` |
@@ -705,7 +707,7 @@ print("%d行すべて通りました（トレーラーも一致）" % len(data))
 | グラフの座標・目盛り・キャンバス | `logic.js`の「グラフ」「キャンバスの大きさ」の節、`test/graph.test.js`・`test/canvas.test.js` |
 | 開発時の約束ごと（どのファイルに何を書くか） | [CLAUDE.md](./CLAUDE.md) |
 
-テストは`npm test`で実行します（依存パッケージなし・Node.js 22以上）。2026-09-28時点で184件あり、すべて通ります。CIも`push`と`pull request`で同じものを実行します。
+テストは`npm test`で実行します（依存パッケージなし・Node.js 22以上）。2026-09-29時点で216件あり、すべて通ります。CIも`push`と`pull request`で同じものを実行します。
 
 ### 参考資料
 

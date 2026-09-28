@@ -14,7 +14,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-  createStats, addStatsSample, formatStats,
+  createStats, addStatsRecord, formatStats,
   buildIntervalRecord, buildCsv
 } = require('../logic.js');
 
@@ -46,6 +46,10 @@ function msgForDb(seq, db) {
 }
 
 // ---- CSV のテキストだけから統計を組み直す（実装を共有しない独立の計算）----
+//
+// ⚠ ここのフィクスチャーはすべて1秒の区間である（startFrame=seq*sr）。
+//    区間長がそろっているので、行数で割る平均と区間長で重み付けした平均は
+//    一致する。間隔が混ざったときの重み付けは test/stats-weight.test.js で見る。
 function recomputeFromCsv(csvText) {
   const lines = csvText.split('\n')
     .filter(l => l.length && !l.startsWith('#'));
@@ -78,7 +82,7 @@ function recomputeFromCsv(csvText) {
 // 画面と同じ手順で統計を進める（pushRecord から呼ばれる経路と同じ）
 function screenStats(recs) {
   const stats = createStats();
-  for (const r of recs) addStatsSample(stats, r.rawDb);
+  for (const r of recs) addStatsRecord(stats, r);
   return formatStats(stats, recs.length);
 }
 
@@ -154,7 +158,7 @@ test('統計: 母集団はフレーム数ではなく行数である', () => {
   // いまは行ごとに1回だけなので、n は必ず行数と一致する
   const recs = [-20, -30, -40].map((db, i) => buildIntervalRecord(msgForDb(i, db), ANCHOR, -60));
   const stats = createStats();
-  for (const r of recs) addStatsSample(stats, r.rawDb);
+  for (const r of recs) addStatsRecord(stats, r);
   assert.equal(stats.n, recs.length);
   assert.equal(stats.finiteN, 3);
   assert.equal(formatStats(stats, recs.length).count, '3');
@@ -167,6 +171,15 @@ test('script.js: 統計を毎フレーム進めない（pushRecord からだけ�
   const animate = src.slice(src.indexOf('function animate()'), src.indexOf('function exportCSV'));
   assert.ok(!/updateStats\(/.test(animate), 'animate() から updateStats を呼んでいる');
   const push = src.slice(src.indexOf('function pushRecord'), src.indexOf('function handleIntervalMessage'));
-  assert.ok(/updateStats\(rec\.rawDb\)/.test(push),
-    'pushRecord が rawDb で統計を進めていない');
+  assert.ok(/updateStats\(rec\)/.test(push),
+    'pushRecord が区間レコードで統計を進めていない');
+  // 表示用の db ではなく rawDb（記録される生値）を読んでいること。
+  // 表示下限を変えただけで統計が動いてはいけない
+  const logicSrc = fs.readFileSync(path.join(__dirname, '..', 'logic.js'), 'utf8');
+  const add = logicSrc.slice(
+    logicSrc.indexOf('function addStatsRecord'),
+    logicSrc.indexOf('function statsLeq')
+  );
+  assert.ok(/rec\.rawDb/.test(add), 'addStatsRecord が rawDb を読んでいない');
+  assert.ok(!/rec\.db\b/.test(add), 'addStatsRecord が表示用の db を読んでいる');
 });

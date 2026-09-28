@@ -67,9 +67,18 @@ const MicGainLogic = (() => {
   //
   // ⚠ 平均は dB の算術平均ではなくエネルギー平均（Leq と同じ定義）にする。
   //    dB は対数なので算術平均には物理的な意味がなく、実測で最大26dBずれる。
-  //      Leq = 10 * log10( (1/N) * Σ 10^(db_i/10) )
+  //      Leq = 10 * log10( (Σ T_i * 10^(db_i/10)) / Σ T_i )
   //    区間の代表値は段階1ですでにエネルギー平均なので、区間を連結すれば
-  //    正しい Leq が出る（等間隔の区間であることが前提）。
+  //    正しい Leq が出る。
+  //
+  // ⚠⚠ 重みは行数ではなく区間長（秒）である。
+  //    ログ間隔は記録中に変えられる（CSV のトレーラーは `# intervalSec=1+3` の
+  //    ように混在を明記している）。1秒の区間と3秒の区間を同じ重みで平均すると、
+  //    短い区間が実時間に不相応な発言力を持って Leq が誤る。定義どおり
+  //    「エネルギーの時間積分 ÷ 全時間」にすれば、間隔を途中で変えても
+  //    実時間に比例した平均になる。
+  //    区間長は startTime / endTime（オーディオクロック）の差で取る。取れない
+  //    ときだけ重み1へ退化する（全区間が同じ長さなら行数平均と一致する）。
   //
   // 無音（-Infinity）の扱いを分けてある。
   //   平均（Leq）＝ 全行。無音は電力 0 として数える（これが定義どおり）
@@ -87,14 +96,37 @@ const MicGainLogic = (() => {
   }
 
   function createStats() {
-    return { powerSum: 0, n: 0, finiteN: 0, silentN: 0, minDb: Infinity, maxDb: -Infinity };
+    return {
+      powerSum: 0,          // Σ T_i * 10^(db_i/10)（エネルギーの時間積分）
+      weightSec: 0,         // Σ T_i（重みの総和＝記録された実時間）
+      n: 0,
+      finiteN: 0,
+      silentN: 0,
+      minDb: Infinity,
+      maxDb: -Infinity
+    };
+  }
+
+  // 区間レコードの長さ（秒）。オーディオクロックの差で取る。取れなければ null
+  function recordDurationSec(rec) {
+    if (!rec) return null;
+    const d = rec.endTime - rec.startTime;
+    return (Number.isFinite(d) && d > 0) ? d : null;
+  }
+
+  // 区間長が取れないときだけ重み1へ退化する
+  function statsWeightOf(durationSec) {
+    return (Number.isFinite(durationSec) && durationSec > 0) ? durationSec : 1;
   }
 
   // 1区間ぶんを取り込む。取り込んだら true（数値にならないものだけ false）。
-  function addStatsSample(stats, db) {
+  // durationSec は区間長（秒）。省略すると重み1（等重み）になる
+  function addStatsSample(stats, db, durationSec) {
     if (Number.isNaN(db)) return false;
     if (db === Infinity) return false;
-    stats.powerSum += dbToPower(db);
+    const w = statsWeightOf(durationSec);
+    stats.powerSum += dbToPower(db) * w;
+    stats.weightSec += w;
     stats.n += 1;
     if (Number.isFinite(db)) {
       stats.finiteN += 1;
@@ -106,10 +138,18 @@ const MicGainLogic = (() => {
     return true;
   }
 
+  // 区間レコードを1件取り込む。画面の統計はこの経路だけを通す。
+  // 重み（区間長）をレコードから取るので、呼ぶ側は間隔を知らなくてよい
+  function addStatsRecord(stats, rec) {
+    if (!rec) return false;
+    return addStatsSample(stats, rec.rawDb, recordDurationSec(rec));
+  }
+
   // 記録された行から Leq を出す。記録が無ければ null
   function statsLeq(stats) {
     if (!stats.n) return null;
-    return powerToDb(stats.powerSum / stats.n);
+    const w = stats.weightSec > 0 ? stats.weightSec : stats.n;
+    return powerToDb(stats.powerSum / w);
   }
 
   function formatDbCell(db) {
@@ -944,7 +984,10 @@ const MicGainLogic = (() => {
     dbToPower,
     powerToDb,
     createStats,
+    recordDurationSec,
+    statsWeightOf,
     addStatsSample,
+    addStatsRecord,
     statsLeq,
     formatDbCell,
     formatStats,

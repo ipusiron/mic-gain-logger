@@ -111,8 +111,10 @@ test('統計: 平均はエネルギー平均（Leq）。算術平均ではない
   const stats = createStats();
   assert.equal(addStatsSample(stats, NaN), false);
   assert.equal(addStatsSample(stats, Infinity), false);
-  assert.deepEqual(stats,
-    { powerSum: 0, n: 0, finiteN: 0, silentN: 0, minDb: Infinity, maxDb: -Infinity });
+  assert.deepEqual(stats, {
+    powerSum: 0, weightSec: 0, n: 0, finiteN: 0, silentN: 0,
+    minDb: Infinity, maxDb: -Infinity
+  });
 
   assert.equal(addStatsSample(stats, -20), true);
   assert.equal(addStatsSample(stats, -40), true);
