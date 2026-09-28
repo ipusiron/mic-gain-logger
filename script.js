@@ -303,10 +303,10 @@
   function renderEngineMode() {
     if (engineMode === ENGINE_WORKLET) {
       engineModeEl.className = 'engine-mode ok';
-      engineModeEl.textContent = '計測エンジン: 高精度モード（AudioWorklet・オーディオクロック基準）';
+      engineModeEl.textContent = '計測エンジン：高精度モード（AudioWorklet・オーディオクロック基準）';
     } else if (engineMode === ENGINE_FALLBACK) {
       engineModeEl.className = 'engine-mode warn';
-      engineModeEl.textContent = '計測エンジン: 簡易モード（欠測の可能性あり）';
+      engineModeEl.textContent = '計測エンジン：簡易モード（欠測の可能性あり）';
     } else {
       engineModeEl.className = 'engine-mode';
       engineModeEl.textContent = '';
@@ -783,7 +783,7 @@
       } else if (err.name === 'NotFoundError') {
         setStatus('マイクが見つかりません。デバイスを確認してください', 'err');
       } else {
-        setStatus(`エラー: ${err.message || err}`, 'err');
+        setStatus(`エラー：${err.message || err}`, 'err');
       }
       
       running = false;

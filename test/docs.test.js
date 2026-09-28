@@ -169,3 +169,68 @@ test('ハッシュチェーンの限界を README が書いている', () => {
   assert.ok(readme.includes('改ざんを防ぐ」ものではありません'), 'ハッシュチェーンの限界が書かれていない');
   assert.ok(readme.includes(logic.HASH_ALGO_LABEL), `README に ${logic.HASH_ALGO_LABEL} が無い`);
 });
+
+// ---- 画面内のヘルプと実装の照合 ----
+//
+// ⚠ README だけ直しても、利用者がその場で読むのは画面のほうである。
+// 「説明と注意事項」とヘルプモーダルは CSV v2 になったあとも2列のまま残っていた。
+
+function helpItem(label) {
+  const i = html.indexOf('<strong>' + label + '</strong>');
+  assert.notEqual(i, -1, `ヘルプに「${label}」の項目が無い`);
+  const end = html.indexOf('</li>', i);
+  assert.notEqual(end, -1, `「${label}」の項目が閉じていない`);
+  return html.slice(i, end);
+}
+
+test('画面内のヘルプが CSV を2列だと言っていない', () => {
+  assert.ok(
+    !html.includes('タイムスタンプと音量（dBFS）が出力されます'),
+    '「説明と注意事項」が2列のまま'
+  );
+  assert.ok(
+    !html.includes('タイムスタンプと音量（dBFS）のペアで出力'),
+    'ヘルプの「データの取り扱い」が2列のまま'
+  );
+});
+
+test('ヘルプの CSV の説明が7列とメタ行に触れている', () => {
+  const item = helpItem('CSV形式：');
+  for (const c of logic.CSV_COLUMNS) {
+    assert.ok(item.includes(c), `ヘルプが列 ${c} を書いていない`);
+  }
+  assert.match(item, /メタ行/, 'ヘルプがメタ行に触れていない');
+  assert.match(html, /CSVには7列/, '「説明と注意事項」が7列だと書いていない');
+});
+
+test('キャンバスの説明が実装の横軸と合っている', () => {
+  const m = html.match(/id="levelCanvas"[^>]*title="([^"]+)"/);
+  assert.ok(m, 'キャンバスの title が無い');
+  assert.ok(!m[1].includes('経過時間の秒数'), '横軸を「経過時間の秒数」と書いている');
+  assert.ok(
+    m[1].includes('-' + logic.GRAPH_WINDOW_SEC + 's'),
+    `横軸の左端（-${logic.GRAPH_WINDOW_SEC}s）が書かれていない`
+  );
+  assert.ok(m[1].includes('0s'), '横軸の右端（0s＝いま）が書かれていない');
+});
+
+test('ヘルプの表示下限が「記録される値は動かない」と書いている', () => {
+  // 表示下限は表示のための設定である。記録するのは rawDb（生値）のほう
+  assert.match(helpItem('表示下限：'), /記録される値は動きません/);
+});
+
+test('ヘルプの簡易モードが file:// に触れている', () => {
+  // ブラウザーの未対応より、file:// で直接開いたときのほうが遭遇しやすい
+  assert.match(helpItem('計測エンジンの表示：'), /file:\/\//);
+});
+
+test('画面へ出す文言の区切りに半角コロンを使っていない', () => {
+  // index.html のヘルプは全角「：」で書いてある。script.js だけ半角で割れていた
+  const lines = script.split('\n').filter(l => /setStatus\(|textContent = /.test(l));
+  for (const l of lines) {
+    assert.ok(
+      !/[ぁ-んァ-ヶ一-龥][^\n]*: /.test(l),
+      `半角コロンが残っている: ${l.trim()}`
+    );
+  }
+});
