@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Mic Gain Logger - Day041</title>
   <meta name="description" content="Web Audio API を使ったマイク音量ロガー（録音なし／リアルタイム表示／CSV出力）" />
-  <link rel="stylesheet" href="./style.css?v=2.0" />
+  <link rel="stylesheet" href="./style.css?v=3.0" />
 </head>
 <body>
   <header class="app-header">
@@ -154,7 +154,7 @@
   <!-- ヘルプモーダル -->
   <div id="helpModal" class="modal" aria-hidden="true">
     <div class="modal-backdrop"></div>
-    <div class="modal-content" role="dialog" aria-labelledby="helpModalTitle">
+    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle">
       <div class="modal-header">
         <h2 id="helpModalTitle">ヘルプ - Mic Gain Logger</h2>
         <button class="modal-close" aria-label="閉じる">&times;</button>
@@ -221,7 +221,7 @@
           <h3>📱 モバイル利用について</h3>
           <ul>
             <li><strong>レスポンシブ対応：</strong>スマートフォンとタブレットに最適化</li>
-            <li><strong>タッチ操作：</strong>すべてのボタンは44px以上のタッチターゲット</li>
+            <li><strong>タッチ操作：</strong>主要な操作ボタンは44px以上、プリセットなど補助的なボタンは24px以上（WCAG 2.2 の 2.5.8 に準拠）</li>
             <li><strong>設定の折りたたみ：</strong>「設定を表示/隠す」で画面を有効活用</li>
             <li><strong>バッテリー考慮：</strong>不要時は停止してバッテリー消費を抑制</li>
           </ul>
@@ -240,7 +240,7 @@
     </div>
   </div>
 
-  <script src="./logic.js?v=2.0"></script>
-  <script src="./script.js?v=2.0"></script>
+  <script src="./logic.js?v=3.0"></script>
+  <script src="./script.js?v=3.0"></script>
 </body>
 </html>

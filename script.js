@@ -273,6 +273,8 @@
   function resetStats() {
     stats = createStats();
     renderStats(emptyStatsText());
+    // 稼働時間だけ残ると「何をリセットしたのか」が読めない
+    uptimeEl.textContent = '00:00:00';
   }
 
   function setStatus(text, kind='ok') {
@@ -839,7 +841,7 @@
           await audioCtx.close();
         }
       } catch (e) {
-        console.log('AudioContext close error:', e);
+        console.warn('AudioContext を閉じられませんでした', e);
       }
       audioCtx = null;
     }
@@ -1032,6 +1034,8 @@
     helpBtn.addEventListener('click', () => {
       helpModal.classList.add('show');
       helpModal.setAttribute('aria-hidden', 'false');
+      // aria-modal だけでは足りない。フォーカスを中へ移さないと背後を読み続ける
+      modalClose.focus();
       document.body.style.overflow = 'hidden';
     });
     

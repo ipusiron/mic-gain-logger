@@ -200,11 +200,6 @@ body.light .theme-toggle .icon-moon{display:block;}
     margin: 0 12px;
   }
   
-  /* モバイルでの actions エリアのボタン配置調整 */
-  .actions {
-    justify-content: flex-start;
-  }
-  
   /* ヘルプとテーマボタンをモバイル用エリアに配置 */
   .help-btn,
   .theme-toggle {
@@ -307,7 +302,8 @@ body.light .theme-toggle .icon-moon{display:block;}
   
   .control input[type="number"] {
     padding: 8px;
-    font-size: 14px;
+    /* 16px を下回ると iOS Safari がフォーカス時に自動ズームして版面がずれる */
+    font-size: 16px;
     border-radius: 6px;
     min-height: 36px;
   }
@@ -432,6 +428,8 @@ body.light .theme-toggle .icon-moon{display:block;}
 .control label{display:block; font-size:12px; color:var(--muted); margin-bottom:6px}
 .control input[type="number"],
 .control input[type="range"]{width:100%}
+/* 指定しないとブラウザー既定（約13.3px）になり、iOS Safari の自動ズームを招く */
+.control input[type="number"]{font-size:16px}
 
 /* PC版では折りたたみボタンを非表示。
    ⚠ メディアクエリーは詳細度を上げない。`.controls-toggle{display:flex}`（480px以下）
@@ -459,6 +457,8 @@ body.light .theme-toggle .icon-moon{display:block;}
   border:1px solid var(--border);
   border-radius:6px;
   padding:4px 8px;
+  /* WCAG 2.2 の 2.5.8（最小 24x24 CSS px）。実測が 30.1x22.97px で高さが足りなかった */
+  min-height:24px;
   font-size:11px;
   cursor:pointer;
   transition:all 0.2s;
@@ -530,11 +530,8 @@ footer .footer{
   cursor: help;
 }
 
-[title]:hover {
-  position: relative;
-}
-
-/* カスタムツールチップのスタイル（ブラウザー標準のものを使用） */
+/* ツールチップはブラウザー標準に任せる（カスタム実装はしていない）。
+   かつて [title]:hover { position: relative } があったが、何の効果も生まない死にコードだった。 */
 button[title]:hover,
 input[title]:hover,
 canvas[title]:hover {
