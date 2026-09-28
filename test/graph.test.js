@@ -212,6 +212,28 @@ test('seriesPointOf: 記録の区間から点を作り、続いていなけれ�
   assert.equal(seriesPointOf(rec(4, -25), first, null).gap, true);
 });
 
+// ⚠⚠ 停止→短時間で再開すると、時間差が区間長の1.5倍に収まり、停止中の空白を
+//    またいで線がつながっていた（第2弾a4）。再開後の最初の行は再開から1区間後に
+//    出るので、許容幅は実質「区間長×0.5」になる。1s→0.5秒、10s→5秒、1m→30秒で、
+//    5s・10s は手で届く。時間差で推し量らず、セッションの切り替わりで切る。
+test('seriesPointOf: セッションが変わったら、間隔が詰まっていても線を切る', () => {
+  const rec = (sec, db, metaId) => ({
+    ts: new Date(Date.UTC(2026, 8, 28, 5, 0, sec)), rawDb: db, db, metaId
+  });
+  // 10秒間隔。前のセッションの最後の行から 14 秒後（＝停止してすぐ再開）
+  const last = seriesPointOf(rec(0, -30, 's1'), null, 10000);
+  const resumed = seriesPointOf(rec(14, -45, 's2'), last, 10000);
+  assert.equal(resumed.gap, true, '停止中の空白をまたいで線がつながっている');
+  // 同じセッションの中なら、これまでどおりつなぐ
+  const next = seriesPointOf(rec(24, -44, 's2'), resumed, 10000);
+  assert.equal(next.gap, false);
+  // セッションの印を点にも持たせる（次の点が比べるため）
+  assert.equal(resumed.sid, 's2');
+  // 印の無いレコード同士（古い形）は、これまでの判定のまま
+  const a = seriesPointOf(rec(0, -30), null, 1000);
+  assert.equal(seriesPointOf(rec(1, -30), a, 1000).gap, false);
+});
+
 test('script.js: キャンバスの色をベタ書きしない（テーマ変数から取る）', () => {
   // 改修前は grid が rgba(255,255,255,0.06)、折れ線が #4da3ff のベタ書きで、
   // ライトテーマでは grid が白地に白（1.00:1）になっていた

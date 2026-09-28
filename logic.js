@@ -397,13 +397,20 @@ const MicGainLogic = (() => {
   //
   // gap は「前の点から続いていない」という印である。描画側で線を切るために使う。
   // 記録を止めて再開したとき、区間が飛んだとき、時刻の跳びがあったときに立つ。
+  //
+  // ⚠ 記録の停止・再開は、時間差ではなくセッションの切り替わり（metaId）で見る。
+  //    時間差だけで推し量っていたころは、停止してすぐ再開すると差が区間長の
+  //    1.5倍に収まり、停止中の空白をまたいで線がつながった（再開後の最初の行は
+  //    再開から1区間後に出るので、許容幅は実質「区間長×0.5」。10秒間隔なら5秒）
   function seriesPointOf(rec, prev, intervalMs) {
     const tMs = rec.ts.getTime();
     const span = (Number.isFinite(intervalMs) && intervalMs > 0) ? intervalMs : 1000;
+    const sid = rec.metaId || null;
     const gap = !prev
       || (tMs - prev.tMs) > span * 1.5
-      || !!rec.clockBreakKind;
-    return { tMs, db: rec.rawDb, gap };
+      || !!rec.clockBreakKind
+      || (prev.sid || null) !== sid;
+    return { tMs, db: rec.rawDb, gap, sid };
   }
 
   function pruneSeries(series, nowMs, windowMs) {

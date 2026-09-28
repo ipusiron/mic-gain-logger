@@ -216,14 +216,15 @@ test('トレーラーのラベルは、行が無ければ出さない', () => {
 
 test('グラフの線を切る判定が、切り替え直後の行を「飛んだ」と誤判定しない', () => {
   // 1秒の区間が閉じた直後。設定は 3 になっているが、この区間は 1 秒で測られている
-  const prev = { tMs: ANCHOR.wallMs + 2000, db: -20, gap: false };
   const rec = recordOf(2, 2 * SR, SR);
+  // 前の点は同じセッションのもの（第2弾a4 から点がセッションの印 sid を持つ）
+  const prev = { tMs: ANCHOR.wallMs + 2000, db: -20, gap: false, sid: rec.metaId || null };
   // ⭐実測の区間長（1秒）で見るので線は切れない
   assert.equal(seriesPointOf(rec, prev, rec.intervalSec * 1000).gap, false);
   // 改修前は画面の設定値（3秒）を渡していた。1.5倍の窓が 4.5 秒に広がるので、
   // こちらでも切れないが、逆向き（長い→短い）では切れてしまう
   const longRec = recordOf(3, 3 * SR, 3 * SR);
-  const prev2 = { tMs: longRec.ts.getTime() - 3000, db: -20, gap: false };
+  const prev2 = { tMs: longRec.ts.getTime() - 3000, db: -20, gap: false, sid: longRec.metaId || null };
   assert.equal(seriesPointOf(longRec, prev2, 1 * 1000).gap, true,
     '前提が崩れている（短い間隔で見ると線が切れるはず）');
   assert.equal(seriesPointOf(longRec, prev2, longRec.intervalSec * 1000).gap, false);
