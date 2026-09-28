@@ -43,7 +43,6 @@
   const uptimeEl = document.getElementById('uptime');
 
   const logIntervalInput = document.getElementById('logInterval');
-  const smoothingInput = document.getElementById('smoothing');
   const floorDbInput = document.getElementById('floorDb');
 
   const engineModeEl = document.getElementById('engineMode');
@@ -707,7 +706,6 @@
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       analyser = audioCtx.createAnalyser();
       analyser.fftSize = 2048;
-      analyser.smoothingTimeConstant = parseFloat(smoothingInput.value) || 0.5;
 
       sourceNode = audioCtx.createMediaStreamSource(mediaStream);
       sourceNode.connect(analyser);
@@ -851,14 +849,6 @@
   // rAF は描画専用。記録はワークレットのオーディオクロックが担う
   function animate() {
     if (!running) return;
-
-    // スムージング更新（動的反映）
-    // ⚠ smoothingTimeConstant は周波数領域にしか作用せず、時間領域のRMSには効かない。
-    //    廃止するか時間重みへ置き換えるかは段階2以降の判断なので、ここでは触らない
-    if (analyser) {
-      const s = parseFloat(smoothingInput.value);
-      if (!Number.isNaN(s)) analyser.smoothingTimeConstant = s;
-    }
 
     const db = computeDb(); // dBFS (負の値、0が最大)
 
