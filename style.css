@@ -10,6 +10,11 @@
   --shadow:0 8px 30px rgba(0,0,0,.4);
   --radius:18px;
   --border:rgba(255,255,255,.15);
+  /* 見出しの色。ベタ書きするとテーマの片方で読めなくなる
+     （改修前は #cfe6ff 固定で、ライトの白いカード上で 1.28:1 だった） */
+  --title:#cfe6ff;
+  /* --accent を面に使うときの文字色。白固定だとダークで 2.24:1 になる */
+  --on-accent:#0b0d10;
   /* キャンバスの描画色。JS がベタ書きするとテーマの片方で見えなくなる
      （改修前はグリッドが rgba(255,255,255,.06) 固定で、ライトでは白地に白だった） */
   --grid:rgba(255,255,255,.18);
@@ -389,7 +394,7 @@ body.light .theme-toggle .icon-moon{display:block;}
 .section-title{
   margin:0 0 10px;
   font-size:18px;
-  color:#cfe6ff;
+  color:var(--title);
 }
 
 .big-value{
@@ -468,7 +473,7 @@ body.light .theme-toggle .icon-moon{display:block;}
 }
 .preset-btn.active{
   background:var(--accent);
-  color:white;
+  color:var(--on-accent);
   border-color:var(--accent);
 }
 
@@ -729,18 +734,23 @@ label[title]:hover {
   font-style: italic;
 }
 
-/* ライトモード */
+/* ライトモード。
+   ⚠ 初回訪問はこちらになる（savedTheme が無いときは light）。
+   いちばん最初に見る画面なので、ここのコントラストがいちばん効く。
+   各値は WCAG 2.2 の相対輝度で計算して選んである（文字は 4.5:1 以上）。 */
 body.light{
   --bg:#f4f7fb;
   --fg:#0b0d10;
   --muted:#576170;
   --card:#ffffff;
-  --accent:#1d6fff;
-  --ok:#0e9f63;
-  --warn:#c98b1c;
-  --err:#d83a3a;
+  --accent:#0b5bd3;   /* 旧 #1d6fff はリンクで 4.10:1 だった → 5.66:1 */
+  --ok:#0a7d4e;       /* 旧 #0e9f63 は 3.41:1 だった → 5.18:1 */
+  --warn:#8a5b00;     /* 旧 #c98b1c は 2.92:1 だった → 5.87:1 */
+  --err:#c32626;      /* 旧 #d83a3a は 4.58:1 → 5.79:1 */
   --shadow:0 8px 28px rgba(16,24,40,.12);
   --border:rgba(0,0,0,.08);
+  --title:#1257b8;    /* 旧 #cfe6ff ベタ書きは 1.28:1 だった → 6.82:1 */
+  --on-accent:#ffffff;
   --grid:rgba(11,13,16,.22);
   --plot:#0b5bd3;
 }
