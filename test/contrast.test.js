@@ -51,6 +51,7 @@ const PAIRS = [
   ['err', 'card', 4.5, 'エラー表示'],
   ['on-accent', 'accent', 4.5, '.preset-btn.active（面の上の文字）'],
   ['plot', 'card', 3.0, 'グラフの線（図形なので3:1）'],
+  ['plot-ultra', 'card', 3.0, '超音波帯の破線と凡例の見本（図形なので3:1。第2弾b3）'],
 ];
 
 test('両テーマのすべての組み合わせがWCAG 2.2の基準を満たす', () => {

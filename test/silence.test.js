@@ -111,7 +111,7 @@ test('CSV: 無音の行が出て、印の行が末尾のトレーラーに付く
   assert.ok(head.includes('# engine=worklet'));
   assert.ok(trailer.includes('# silence=-Infinity'), trailer.join(' / '));
   assert.ok(!head.join('\n').includes('silence'), '起点に無音の印が混ざっている');
-  assert.equal(dataLines[0], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash');
+  assert.equal(dataLines[0], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,band_ultra_dbfs,band_audible_dbfs,band_valid_ratio,hash');
   assert.equal(dataLines.length, 4);   // ヘッダー＋3行
 
   // B列（dbfs）が -Infinity であること。列の増減に強い見方をする

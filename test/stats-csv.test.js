@@ -53,7 +53,7 @@ function msgForDb(seq, db) {
 function recomputeFromCsv(csvText) {
   const lines = csvText.split('\n')
     .filter(l => l.length && !l.startsWith('#'));
-  assert.equal(lines[0], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash', 'ヘッダーが違う');
+  assert.equal(lines[0], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,band_ultra_dbfs,band_audible_dbfs,band_valid_ratio,hash', 'ヘッダーが違う');
   const cellDb = (cell) => {
     if (cell === '' || cell === undefined) return null;
     return cell === '-Infinity' ? -Infinity : Number(cell);

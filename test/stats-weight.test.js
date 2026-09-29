@@ -86,7 +86,7 @@ function weightedLeqFromCsv(csvText) {
   assert.ok(firstLen > 0, 'トレーラーに # intervalSec= が無い');
 
   const data = lines.filter(l => !l.startsWith('#'));
-  assert.equal(data[0], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash', 'ヘッダーが違う');
+  assert.equal(data[0], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,band_ultra_dbfs,band_audible_dbfs,band_valid_ratio,hash', 'ヘッダーが違う');
   const rows = data.slice(1).map(line => {
     const cells = line.split(',');
     return {

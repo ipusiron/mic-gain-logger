@@ -203,8 +203,23 @@ test('テストのコメントが file:// を「鎖を作れない環境」に�
 });
 
 // ---- ⭐ 表の値を、実際に動かして確かめる ----
+//
+// ⚠ 第2弾b2で CSV を v3（10列）にした。README の見本も v3 にし、表は実際に書き出した見本と
+//    README の検証器で採り直した。ここの模型も、README の検証器と同じく hash 列の位置を
+//    列のヘッダー行から読む（v2 の7列目を決め打ちしない）。v2 の CSV も同じ手順で確かめられることは
+//    test/csv-v3.test.js で見ている
+// ⚠ 列のヘッダー行はハッシュの材料に入らない（起点は `#` の行だけ）。列名を入れ替えても鎖は通るので、
+//    README の検証器は、列のヘッダー行が起点の `# format=` の版の列と同じかを先に確かめる（第2弾b2 の点検で追加）。
+//    模型も同じ確かめをする。版ごとの列は、v3 が実装の CSV_COLUMNS、v2 が第2弾a までの見本（fixtures/sample_v2.csv）
 
-const COLUMNS = 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash';
+const { CSV_COLUMNS } = require('../logic.js');
+const COLUMNS = CSV_COLUMNS.join(',');
+const V2_COLUMNS = fs.readFileSync(path.join(__dirname, 'fixtures', 'sample_v2.csv'), 'utf8')
+  .split('\n').find(l => l.startsWith('timestamp,'));
+const KNOWN = {
+  '# format=mic-gain-logger/3': COLUMNS,
+  '# format=mic-gain-logger/2': V2_COLUMNS
+};
 const h = s => crypto.createHash('sha256').update(s, 'utf8').digest('hex').slice(0, 16);
 
 function fencedBlocks() {
@@ -217,21 +232,34 @@ function fencedBlocks() {
 
 // README の見本CSVを、ヘッダー・データ行・トレーラーに切り分ける
 function samplePartsFromReadme() {
-  const block = fencedBlocks().find(b => b.startsWith('# format=mic-gain-logger/2'));
-  assert.ok(block, 'README に見本CSVが無い');
+  const block = fencedBlocks().find(b => b.startsWith('# format=mic-gain-logger/3'));
+  assert.ok(block, 'README に見本CSV（v3）が無い');
   const lines = block.split('\n').filter(l => l.length);
-  const at = lines.indexOf(COLUMNS);
+  const at = lines.findIndex(l => l.startsWith('timestamp,'));
   assert.notEqual(at, -1, '見本CSVに列のヘッダー行が無い');
+  // 見本の列は実装の列と同じ（README の見本が古い版のまま残らないように）
+  assert.equal(lines[at], COLUMNS, '見本CSVの列が実装と違う');
   const rest = lines.slice(at + 1);
   return {
     head: lines.slice(0, at),
+    cols: lines[at],
     data: rest.filter(l => l[0] !== '#'),
-    trailer: rest.filter(l => l[0] === '#')
+    trailer: rest.filter(l => l[0] === '#'),
+    // hash 列の位置は列のヘッダー行から読む（v3 は10列目）
+    hx: lines[at].split(',').indexOf('hash')
   };
 }
 
 const SAMPLE = samplePartsFromReadme();
-const clone = p => ({ head: [...p.head], data: [...p.data], trailer: [...p.trailer] });
+const clone = p => ({ head: [...p.head], cols: p.cols, data: [...p.data], trailer: [...p.trailer], hx: p.hx });
+const swapNames = (cols, a, b) => {
+  const c = cols.split(',');
+  const i = c.indexOf(a);
+  const j = c.indexOf(b);
+  assert.ok(i !== -1 && j !== -1, `列名が無い: ${a} / ${b}`);
+  [c[i], c[j]] = [c[j], c[i]];
+  return c.join(',');
+};
 const setCell = (line, i, v) => {
   const c = line.split(',');
   c[i] = v;
@@ -240,9 +268,13 @@ const setCell = (line, i, v) => {
 
 // README が載せている Python の検証器と同じ手順。実装を写さず、ここで独立に組む
 function verify(p) {
+  // ⚠ 列のヘッダー行はハッシュの材料に入らないので、起点の # format= の版の列と同じかを先に見る。
+  //    知らない版では確かめない
+  const fmt = p.head.find(l => Object.prototype.hasOwnProperty.call(KNOWN, l));
+  if (fmt && p.cols !== KNOWN[fmt]) return '列のヘッダー行が # format= の版の列と合いません';
   const hashCell = l => {
     const c = l.split(',');
-    return c.length > 6 ? c[6] : '';
+    return c.length > p.hx ? c[p.hx] : '';
   };
   // ⚠ 鎖のないCSVを、改変と混同しないよう先に分ける
   if (!p.data.some(l => hashCell(l))) {
@@ -250,9 +282,9 @@ function verify(p) {
   }
   let prev = h(p.head.join('\n'));
   for (let i = 0; i < p.data.length; i++) {
-    const cells = p.data[i].split(',');
-    const want = h(prev + '|' + cells.slice(0, 6).join(','));
-    if (cells[6] !== want) return `${i + 1}行目から合いません（期待 ${want}／実際 ${cells[6]}）`;
+    // 材料は hash 列より左のフィールド
+    const want = h(prev + '|' + p.data[i].split(',').slice(0, p.hx).join(','));
+    if (hashCell(p.data[i]) !== want) return `${i + 1}行目から合いません（期待 ${want}／実際 ${hashCell(p.data[i])}）`;
     prev = want;
   }
   const MARK = '# trailerHash=';
@@ -273,8 +305,8 @@ function rechain(p) {
   let prev = h(p.head.join('\n'));
   const data = p.data.map(l => {
     const cells = l.split(',');
-    cells[6] = h(prev + '|' + cells.slice(0, 6).join(','));
-    prev = cells[6];
+    cells[p.hx] = h(prev + '|' + cells.slice(0, p.hx).join(','));
+    prev = cells[p.hx];
     return cells.join(',');
   });
   const MARK = '# trailerHash=';
@@ -282,7 +314,7 @@ function rechain(p) {
     .filter(l => !l.startsWith(MARK))
     .map(l => (l.startsWith('# rows=') ? `# rows=${data.length}` : l));
   trailer.push(MARK + h(prev + '|' + trailer.join('\n')));
-  return { head: p.head, data, trailer };
+  return { head: p.head, cols: p.cols, data, trailer, hx: p.hx };
 }
 
 // 表の見出しの文言 → 同じ改変を機械で再現する手続き。
@@ -298,20 +330,21 @@ const MUTATIONS = {
     ...p,
     data: p.data.map((l, i) => (i === 1 ? setCell(l, 1, '-30.00') : l))
   }),
-  'dbfsを-42.13から-12.00へ書き換える': p => ({
-    ...p,
-    data: p.data.map(l => l.replace('-42.13', '-12.00'))
-  }),
+  '1行目のdbfsを-19.70から-12.00へ書き換える': p => {
+    // 表の見出しの値が見本と食い違ったら、ここで落とす（見本を差し替えたら見出しも直す）
+    assert.equal(p.data[0].split(',')[1], '-19.70', '見本の1行目の dbfs が表の見出しと違う');
+    return { ...p, data: p.data.map((l, i) => (i === 0 ? setCell(l, 1, '-12.00') : l)) };
+  },
   '無音の行を消す': p => ({ ...p, data: p.data.filter(l => !l.includes('-Infinity')) }),
   '末尾2行を切り落とす': p => ({ ...p, data: p.data.slice(0, 2) }),
   '最後の行を消す': p => ({ ...p, data: p.data.slice(0, -1) }),
   'データ行の時刻を1時間ずらす': p => ({
     ...p,
-    data: p.data.map(l => l.replace('T09:', 'T10:'))
+    data: p.data.map(l => setCell(l, 0, new Date(Date.parse(l.split(',')[0]) + 3600 * 1000).toISOString()))
   }),
   'ヘッダーの# sampleRate=を偽る': p => ({
     ...p,
-    head: p.head.map(l => l.replace('48000', '44100'))
+    head: p.head.map(l => (l.startsWith('# sampleRate=') ? l.replace('48000', '44100') : l))
   }),
   'ヘッダーの# device=を削る': p => ({
     ...p,
@@ -320,6 +353,11 @@ const MUTATIONS = {
   'ヘッダーの# device=を差し替える': p => ({
     ...p,
     head: p.head.map(l => (l.startsWith('# device=') ? '# device=X' : l))
+  }),
+  // 列のヘッダー行はハッシュの材料に入らない。検証器が # format= の版の列と比べるので落ちる
+  '列のヘッダー行のband_ultra_dbfsとband_audible_dbfsを入れ替える': p => ({
+    ...p,
+    cols: swapNames(p.cols, 'band_ultra_dbfs', 'band_audible_dbfs')
   }),
   'トレーラーの# intervalSec=を偽る': p => ({
     ...p,
@@ -337,12 +375,12 @@ const MUTATIONS = {
   'hash列が全行で空（鎖のないCSV）': p => ({
     ...p,
     head: p.head.filter(l => !l.startsWith('# hash=')),
-    data: p.data.map(l => setCell(l, 6, '')),
+    data: p.data.map(l => setCell(l, p.hx, '')),
     trailer: p.trailer.filter(l => !l.startsWith('# trailerHash='))
   }),
   '鎖つきCSVから hash 列だけを消す': p => ({
     ...p,
-    data: p.data.map(l => setCell(l, 6, ''))
+    data: p.data.map(l => setCell(l, p.hx, ''))
   })
 };
 
@@ -384,7 +422,7 @@ test('見本CSVは、そのままなら鎖が通る', () => {
 
 test('⭐ 検証器の出力一覧表が、実際に動かした結果と一致する', () => {
   const rows = tableRows('| 渡したもの | 出力 |');
-  assert.equal(rows.length, 12, '表の行数が変わっている（増やしたなら実測し直すこと）');
+  assert.equal(rows.length, 13, '表の行数が変わっている（増やしたなら実測し直すこと）');
   for (const [label, expected] of rows) {
     const actual = verify(mutationFor(label)(clone(SAMPLE)));
     assert.ok(
@@ -414,6 +452,20 @@ test('⭐ 鎖を張り直すと全部通ってしまう（「分からないこ�
     // ⚠ ここが通ってしまうのが名乗りの根拠である。通らなくなったら名乗りを見直すこと
     assert.match(restitched, /通りました/, `鎖を張り直しても通らない: ${label}`);
   }
+});
+
+test('列のヘッダー行はハッシュの材料に入らない。版の列と比べないと、列名を入れ替えても鎖は通る', () => {
+  const swapped = MUTATIONS['列のヘッダー行のband_ultra_dbfsとband_audible_dbfsを入れ替える'](clone(SAMPLE));
+  assert.equal(verify(swapped), '列のヘッダー行が # format= の版の列と合いません');
+  // 鎖そのものは列名に左右されない。入れ替えたまま README の算法で張り直しても、行のハッシュも
+  // トレーラーのハッシュも元と同じになる（版の列と比べる手順が無ければ通ってしまう）
+  const restitched = rechain(swapped);
+  assert.deepEqual(restitched.data, SAMPLE.data);
+  assert.deepEqual(restitched.trailer, SAMPLE.trailer);
+  assert.ok(
+    readme.includes('列のヘッダー行だけは、ハッシュの材料に入っていません'),
+    'README が、列のヘッダー行が材料に入らないことを書いていない'
+  );
 });
 
 test('鎖のないCSVを、改変と区別している', () => {

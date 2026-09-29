@@ -286,6 +286,10 @@ test('⭐ 起点に「あとから分かる事実」が入らない', () => {
   const full = {
     engine: 'worklet', started: '2026-09-28T05:00:01.000Z', sampleRate: 48000,
     device: 'Fake Mic', processing: 'off', hashAlgo: HASH_ALGO_LABEL,
+    // 第2弾b2で足した、記録開始の時点で決まる4項目
+    nyquistHz: 24000,
+    settingsRaw: 'echoCancellation:false;autoGainControl:false;noiseSuppression:false;sampleRate:48000;channelCount:1',
+    bands: '18000-22000,20-18000', fftSize: 1024,
     // 起点に混ぜてはいけない値を、わざと渡す
     intervalSec: '1+3', silence: '-Infinity', clockBreaks: 2, rows: 4
   };
@@ -294,13 +298,17 @@ test('⭐ 起点に「あとから分かる事実」が入らない', () => {
     assert.equal(seed.indexOf(key), -1, `起点に ${key} が入っている`);
   }
   assert.deepEqual(seed.split('\n'), [
-    '# format=mic-gain-logger/2',
+    '# format=mic-gain-logger/3',
     '# engine=worklet',
     '# started=2026-09-28T05:00:01.000Z',
     '# sampleRate=48000',
+    '# nyquistHz=24000',
     '# device=Fake Mic',
     '# processing=off',
+    '# settingsRaw=' + full.settingsRaw,
     '# weighting=Z',
+    '# bands=18000-22000,20-18000',
+    '# fftSize=1024',
     '# hash=' + HASH_ALGO_LABEL
   ]);
 });

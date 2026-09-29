@@ -196,28 +196,35 @@ test('Excel の手順が dB の算術平均を教えていない', () => {
   );
   // エネルギー平均の式。等間隔のときと、区間長で重み付けするときの2本
   assert.ok(block.includes('SUMPRODUCT(POWER(10,'), '等間隔のときの Leq の式が無い');
-  // ⚠ 作業用の列は H 以降である。C 列は seq で、上書きすると
+  // ⚠ 作業用の列は K 以降である（CSV v3 の10列が A〜J を占める。第2弾b2）。C 列は seq で、上書きすると
   //    境界の行（# sessionStartAt= / # clockBreakAt=）を見つけられなくなる
   assert.ok(
-    block.includes('SUMPRODUCT($H$2:$H$100,POWER(10,'),
+    block.includes('SUMPRODUCT($K$2:$K$100,POWER(10,'),
     '区間長で重み付けした Leq の式が無い'
   );
+  assert.ok(!block.includes('$H$2:$H$100'), 'v2 のときの作業列（H）の式が残っている（H列は band_audible_dbfs）');
   assert.ok(block.includes('`-999`'), '無音の行（-Infinity）の扱いが書かれていない');
+  // ⚠ 欠測の行（dbfs が空欄）は、空のセルが0として扱われて 0 dBFS が足し込まれる。Leq から外す手順が要る
+  assert.ok(block.includes('B列が空欄の行は欠測'), '欠測の行（dbfs が空欄）の扱いが書かれていない');
 });
 
 test('Excel の手順が、seq の列（C）を作業用に潰していない', () => {
   const head = readme.indexOf('### Excel/Google Sheetsでの分析手順');
   const tail = readme.indexOf('## 🌐 技術スタック');
   const block = readme.slice(head, tail);
-  // CSV の列は timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash ＝ A〜G である
-  assert.equal(logic.CSV_COLUMNS.length, 7, 'CSV の列数が変わっている（作業列の位置も見直すこと）');
+  // CSV v3 の列は timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,band_ultra_dbfs,band_audible_dbfs,
+  // band_valid_ratio,hash ＝ A〜J である（第2弾b2。v2 は A〜G の7列だった）
+  assert.equal(logic.CSV_COLUMNS.length, 10, 'CSV の列数が変わっている（作業列の位置も見直すこと）');
   assert.equal(logic.CSV_COLUMNS[2], 'seq', 'C 列が seq でなくなっている');
   assert.ok(
     !/C列に隣の行との差/.test(block) && !/C3に`=\(A3-A2\)\*86400`/.test(block),
     '区間長を C 列（seq）へ書く手順が残っている'
   );
+  // ⚠ H 列は v3 では band_audible_dbfs である。v2 のときの「H列以降」のままだと帯域の値を上書きする
+  assert.ok(!block.includes('作業用の列はH列以降に置く'), 'v2 のときの作業列の位置（H）が残っている');
+  assert.ok(!/H3に`=\(A3-A2\)\*86400`/.test(block), '区間長を H 列（band_audible_dbfs）へ書く手順が残っている');
   assert.ok(
-    block.includes('作業用の列はH列以降に置く'),
+    block.includes('作業用の列はK列以降に置く'),
     '作業用の列の位置が書かれていない'
   );
 });
@@ -406,7 +413,7 @@ test('画面内のヘルプが CSV を2列だと言っていない', () => {
   );
 });
 
-test('ヘルプの CSV の説明が7列とヘッダー・トレーラーに触れている', () => {
+test('ヘルプの CSV の説明が10列とヘッダー・トレーラーに触れている', () => {
   const item = helpItem('CSV形式：');
   for (const c of logic.CSV_COLUMNS) {
     assert.ok(item.includes(c), `ヘルプが列 ${c} を書いていない`);
@@ -415,7 +422,9 @@ test('ヘルプの CSV の説明が7列とヘッダー・トレーラーに触�
   // ⚠ トレーラーはデータ行の「下」に付く。ここを書かないと、
   //    取り込みのときに末尾の `#` 行を見落とす
   assert.match(item, /トレーラー行/, 'ヘルプがトレーラー行に触れていない');
-  assert.match(html, /CSVには7列/, '「説明と注意事項」が7列だと書いていない');
+  // 列の数は実装から取る（第2弾b2で7列→10列）
+  assert.ok(html.includes(`CSVには${logic.CSV_COLUMNS.length}列`), '「説明と注意事項」が列の数を書いていない');
+  assert.ok(!/CSVには7列/.test(html), '「説明と注意事項」が v2 の7列のまま');
   assert.match(html, /下には[^<]*トレーラー行/, '「説明と注意事項」がトレーラー行の位置を書いていない');
 });
 
@@ -444,10 +453,13 @@ test('README の検証手順が実装のハッシュの作り方と合ってい�
   // 行の材料はコンマ区切り、トレーラーの材料は改行区切りである
   assert.equal(logic.hashInput('ab', ['x', 'y']), 'ab|x,y');
   assert.equal(logic.trailerHashInput('ab', ['# p=1', '# q=2']), 'ab|# p=1\n# q=2');
+  // ⚠ 材料は「hash 列より左のフィールド」である。v3（第2弾b2）で9つになったので、数では書かない
+  //    （v2 の CSV は6つのまま。1本の検証器で両方を確かめる）
   assert.ok(
-    readme.includes('その行の6つのフィールドをコンマで連結'),
+    readme.includes('その行の`hash`列より左のフィールドをコンマで連結'),
     'README が行の材料の作り方を書いていない'
   );
+  assert.ok(!readme.includes('その行の6つのフィールドをコンマで連結'), 'v2 のときの「6つのフィールド」が残っている');
   assert.ok(
     readme.includes('ファイルに並んでいる順のまま改行で連結'),
     'README がトレーラーの材料の作り方を書いていない'

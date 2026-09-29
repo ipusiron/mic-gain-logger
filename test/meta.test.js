@@ -204,7 +204,7 @@ test('CSV: 測定条件はヘッダーのメタ行に出る（段階4で確定�
   assert.ok(metaLines.includes('# sampleRate=48000'));
   assert.ok(metaLines.includes('# device=Fake Default Audio Input'));
   assert.ok(metaLines.includes('# processing=off'));
-  // 重み付けは未実装なので Z（平坦）と明記する。A特性は次の弾
+  // 周波数の重み付けはしないので Z（平坦）と明記する。A特性・C特性は README の「将来案に入れないもの」
   assert.ok(metaLines.includes('# weighting=Z'));
   // ⚠ ログ間隔は記録中に変えられるので、起点には出ない（トレーラーへ出る）
   assert.ok(!metaLines.join('\n').includes('intervalSec'), metaLines.join(' / '));
@@ -212,9 +212,10 @@ test('CSV: 測定条件はヘッダーのメタ行に出る（段階4で確定�
 
   // ヘッダー＋2行
   assert.equal(dataLines.length, 3);
-  assert.equal(dataLines[0], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash');
+  assert.equal(dataLines[0], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,band_ultra_dbfs,band_audible_dbfs,band_valid_ratio,hash');
+  // 10列（帯域の3列を足した。第2弾b2）
   for (const line of dataLines.slice(1)) {
-    assert.equal(line.split(',').length, 7);
+    assert.equal(line.split(',').length, 10);
   }
 });
 
