@@ -77,6 +77,15 @@ test('キャッシュ用のクエリが3つのファイルでそろっている'
   assert.notEqual(vers[0], '2.0', 'logic.js を足したのに v2.0 のまま');
 });
 
+test('ワークレットのモジュールにも同じキャッシュ用の版番号を付ける', () => {
+  // 公開前の点検で見つかった（第2弾a7）。版番号が無いと、公開直後に
+  // 古いワークレットと新しい logic.js・script.js が組み合わさることがある
+  const ver = html.match(/\?v=([\d.]+)/)[1];
+  const m = script.match(/addModule\('\.\/worklet\/meter-processor\.js\?v=([\d.]+)'\)/);
+  assert.ok(m, 'addModule に版番号が付いていない');
+  assert.equal(m[1], ver, `ワークレットの版番号 ${m[1]} が index.html の ${ver} と違う`);
+});
+
 test('統計リセットで稼働時間も戻す', () => {
   // 稼働時間だけ残ると「何をリセットしたのか」が読めない
   const m = script.match(/function resetStats\(\)\s*\{([\s\S]*?)\n  \}/);

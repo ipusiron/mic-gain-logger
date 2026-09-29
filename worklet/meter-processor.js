@@ -26,9 +26,24 @@
 //    起点をコンストラクターに置いたままでも 1 行目から valid_ratio=1 だった）。
 //    出力デバイスが無いあいだ currentFrame が進まないためで、実機とは条件が違う。
 
+// ⚠⚠ 起点はさらに「入力に音が載った最初の process()」まで待つ（第2弾a3）。
+//    iPhone の実機で、記録開始直後の区間の有効サンプル率が 74.9% になった。
+//    48kHz・1秒の区間なら、欠けたのは 12032 フレーム＝ちょうど 94 クォンタム
+//    （約251ミリ秒）である。上の穴とは別で、process() は呼ばれているのに、
+//    マイクの経路が動き出すまで入力が空（チャンネルなし）で届く間を数えていた。
+//    ただし、いつまでも音が来ない（マイクが最初から届かない）と1行も出ず、
+//    「記録していない」ことすら残らない。猶予を過ぎたら最初の process() を起点にし、
+//    届かなかったぶんを欠測（count=0）として残す。
+// ⚠ 公開前の点検で、言い切りすぎを直した（第2弾a7）。この修正が塞ぐのは「入力が空で
+//    届く」場合である。ヘッドレスの Chromium＋疑似マイクでは、旧版が8回中3回この穴を
+//    出し、改修版は16回中0回だった。一方、process() そのものが呼ばれずクロックだけ
+//    進んだ場合は、本当に音が届いていないので従来どおり欠測として残す（塞がない）。
+//    iPhone の 74.9% がどちらだったかは分かっていない。改修後の版で実機のCSVを採って確かめる
+
 'use strict';
 
 const MIN_INTERVAL_FRAMES = 128;
+const STARTUP_GRACE_SEC = 1;
 
 function normalizeFrames(value, fallback) {
   const v = Math.round(Number(value));
@@ -45,8 +60,15 @@ class MeterProcessor extends AudioWorkletProcessor {
     this.pendingIntervalFrames = 0;
     this.stopped = false;
     this.seq = 0;
-    // null＝まだ起点が決まっていない（最初の process() で currentFrame を取る）
+    // null＝まだ起点が決まっていない（入力に音が載った最初の process() で取る）
     this.startFrame = null;
+    // 最初に process() が呼ばれたフレーム（猶予を数える起点）
+    this.firstProcessFrame = null;
+    // いま続いているクリップの長さ。区間の境目では切らない（区間をまたぐ連続を
+    // 2つに分けると、4サンプルの連続が「単発」と出る）
+    this.clipRunCur = 0;
+    // 次に来るはずのフレーム。クォンタムが落ちてサンプルが飛んだら、クリップの連続を切る
+    this.nextFrame = null;
     this.resetAccumulator();
 
     this.port.onmessage = (event) => {
@@ -69,6 +91,10 @@ class MeterProcessor extends AudioWorkletProcessor {
     this.count = 0;
     this.peak = 0;
     this.clip = 0;
+    // この区間でクリップが続いた最長のサンプル数（単発と連続を言い分けるため）。
+    // ブロックの境目と区間の境目をまたいで数え（clipRunCur は持ち越す）、
+    // 入力が途切れたとき・サンプルが飛んだときに切る
+    this.clipRunMax = 0;
   }
 
   emitInterval(endFrame) {
@@ -83,6 +109,7 @@ class MeterProcessor extends AudioWorkletProcessor {
       sumSq: this.sumSq,
       peak: this.peak,
       clip: this.clip,
+      clipRun: this.clipRunMax,
       emittedAt: currentTime
     });
     this.startFrame = endFrame;
@@ -96,13 +123,28 @@ class MeterProcessor extends AudioWorkletProcessor {
   process(inputs) {
     if (this.stopped) return false;
 
-    // 1区間めの起点。ここが最初に呼ばれたフレームであり、音が流れ始めた時刻である
-    if (this.startFrame === null) this.startFrame = currentFrame;
-
     const input = inputs[0];
-    const channel = (input && input.length > 0) ? input[0] : null;
+    // 長さ0の配列も「空の入力」として扱う（チャンネルなしと同じ）
+    const channel = (input && input.length > 0 && input[0] && input[0].length > 0)
+      ? input[0] : null;
+
+    // 1区間めの起点。入力に音が載った最初のフレームであり、音が流れ始めた時刻である
+    if (this.startFrame === null) {
+      if (this.firstProcessFrame === null) this.firstProcessFrame = currentFrame;
+      if (channel) {
+        this.startFrame = currentFrame;
+      } else if (currentFrame - this.firstProcessFrame >= Math.round(sampleRate * STARTUP_GRACE_SEC)) {
+        // 猶予を過ぎても音が来ない。最初の process() を起点にし、欠測として残す
+        this.startFrame = this.firstProcessFrame;
+      } else {
+        return true;   // まだ始めない
+      }
+    }
     // 入力が途切れている間もオーディオクロックは進むので、ブロック長は既定の128で数える
     const blockLength = channel ? channel.length : 128;
+    // クォンタムが落ちて（process() が呼ばれず）サンプルが飛んだら、クリップの連続を切る
+    if (this.nextFrame !== null && currentFrame !== this.nextFrame) this.clipRunCur = 0;
+    this.nextFrame = currentFrame + blockLength;
 
     let offset = 0;
     while (offset < blockLength) {
@@ -121,9 +163,18 @@ class MeterProcessor extends AudioWorkletProcessor {
           this.sumSq += x * x;
           const a = x < 0 ? -x : x;
           if (a > this.peak) this.peak = a;
-          if (a >= 1) this.clip++;
+          if (a >= 1) {
+            this.clip++;
+            this.clipRunCur++;
+            if (this.clipRunCur > this.clipRunMax) this.clipRunMax = this.clipRunCur;
+          } else {
+            this.clipRunCur = 0;
+          }
         }
         this.count += take;
+      } else {
+        // 入力が途切れたら、クリップの連続も切る
+        this.clipRunCur = 0;
       }
       offset += take;
     }

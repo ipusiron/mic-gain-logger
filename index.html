@@ -15,7 +15,7 @@
   <!-- favicon を参照していないと、ブラウザーが /favicon.ico を取りにいって
        コンソールに404が残る。SVG 1枚で済ませる（外部への取得は発生しない） -->
   <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="./style.css?v=3.2" />
+  <link rel="stylesheet" href="./style.css?v=3.3" />
 </head>
 <body>
   <header class="app-header">
@@ -33,7 +33,7 @@
       <button id="startBtn" class="btn primary" title="マイクから音量の記録を開始します">記録開始</button>
       <button id="stopBtn" class="btn" disabled title="音量の記録を停止します">停止</button>
       <button id="exportBtn" class="btn" disabled title="記録した音量データをCSVファイルでダウンロードします">CSV書き出し</button>
-      <button id="resetBtn" class="btn" disabled title="統計情報とログデータをすべてクリアします">統計リセット</button>
+      <button id="resetBtn" class="btn" disabled title="ログ・統計・グラフ・注意書きをまとめてクリアします（記録を停止してから押せます）">統計リセット</button>
       <button id="helpBtn" class="help-btn" aria-label="ヘルプ" title="使い方とヘルプを表示します">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"></circle>
@@ -63,11 +63,13 @@
         <h2 class="section-title">現在の音量</h2>
         <div id="bigValue" class="big-value" title="現在のマイク入力音量（dBFS: デシベル フルスケール）">--.- dBFS</div>
 
-        <div class="meter" title="音量レベルメーター（-60dBFS〜0dBFS）">
+        <div class="meter" id="meter" title="音量レベルメーター（表示下限〜0dBFS）">
           <div class="meter-bar" id="meterBar"></div>
-          <div class="meter-scale">
-            <span>-60</span><span>-40</span><span>-20</span><span>0</span>
-          </div>
+        </div>
+        <!-- 目盛りは .meter の外に置く（.meter は overflow:hidden で、中に置くと切られて見えない）。
+             数字は表示下限に合わせて script.js が書き換える -->
+        <div class="meter-scale" id="meterScale" aria-hidden="true">
+          <span>-90</span><span>-60</span><span>-30</span><span>0</span>
         </div>
 
         <div class="controls-wrapper">
@@ -91,14 +93,17 @@
             </div>
             <div class="control">
               <label for="floorDb" title="表示する最小音量レベル">表示下限（dBFS）</label>
-              <input type="number" id="floorDb" min="-120" max="-1" step="1" value="-60" title="この値未満の音量は表示されません（通常-60〜-40dBFS）。表示だけに効き、記録される値は変わりません">
+              <input type="number" id="floorDb" min="-120" max="-1" step="1" value="-90" title="この値未満の音量は表示されません（既定-90dBFS。静かな部屋の暗騒音や、弱い高い音も見えるようにしています）。表示だけに効き、記録される値は変わりません">
             </div>
           </div>
         </div>
 
         <div id="status" class="status ok" aria-live="polite">待機中</div>
         <div id="engineMode" class="engine-mode" aria-live="polite"></div>
-        <div id="recordNotice" class="record-notice" role="status" aria-live="polite"></div>
+        <div id="recordNotice" class="record-notice"></div>
+        <!-- 読み上げは、注意書きの要約が変わったときだけ流す（中身の割合は区間ごとに変わるため、
+             注意書きそのものを読み上げ領域にすると毎区間読み直される） -->
+        <div id="recordNoticeLive" class="sr-only" role="status" aria-live="polite"></div>
       </div>
 
       <div class="grid-item">
@@ -133,8 +138,8 @@
             <div class="stat-label">変動幅</div>
             <div id="rangeDb" class="stat-value">--.- dB</div>
           </div>
-          <div class="stat" title="区間内の最大絶対振幅（真のピーク）のうち、最も大きかったもの。上の「最大」はRMSなので別の値になる。0 dBFSを超えることがある（浮動小数点の音声なので、リサンプリングの跳ね返りで振幅が1.0を超える）。超えていたら確実にクリップしている。簡易モードでは測れないため「--.-」のまま">
-            <div class="stat-label">真のピーク</div>
+          <div class="stat" title="区間内の標本点の最大絶対振幅（サンプルピーク）のうち、最も大きかったもの。上の「最大」はRMSなので別の値になる。ITU-R BS.1770 のトゥルーピーク（標本の間のピーク）とは別物で、トゥルーピークはこれ以上になる。0 dBFSを超えることがある（浮動小数点の音声なので、上流のリサンプリングの跳ね返りで振幅が1.0を超える）。簡易モードでは測れないため「--.-」のまま">
+            <div class="stat-label">サンプルピーク</div>
             <div id="peakDb" class="stat-value">--.- dBFS</div>
           </div>
         </div>
@@ -177,7 +182,7 @@
             <li>音量がリアルタイムで表示・記録されます</li>
             <li><strong>「停止」</strong>で記録を停止（データは保持されます）</li>
             <li><strong>「CSV書き出し」</strong>でデータをダウンロード</li>
-            <li><strong>「統計リセット」</strong>ですべてのデータをクリア</li>
+            <li><strong>「統計リセット」</strong>で、ログ・統計・グラフ・注意書きをまとめてクリア（記録を停止してから押せます）</li>
           </ol>
         </section>
 
@@ -185,7 +190,7 @@
           <h3>⚙️ 設定項目</h3>
           <ul>
             <li><strong>ログ間隔：</strong>記録する間隔（秒単位）。プリセットボタン（1s/3s/5s/10s/1m）で素早く設定可能</li>
-            <li><strong>表示下限：</strong>表示する最小音量レベル（通常-60〜-40dBFS）。表示だけに効き、CSVに記録される値は動きません</li>
+            <li><strong>表示下限：</strong>表示する最小音量レベル（既定-90dBFS）。これより静かな値は下端に張り付いて見えます。表示だけに効き、CSVに記録される値は動きません</li>
           </ul>
           <p><em>※ すべての設定は記録中でも変更可能で即座に反映されます</em></p>
           <p><em>※ スマートフォンでは「設定を表示」ボタンで設定項目を開閉できます</em></p>
@@ -198,8 +203,8 @@
             <li><strong>ログ件数：</strong>CSVに記録されたデータポイント総数</li>
             <li><strong>平均（Leq）：</strong>記録された行のエネルギー平均。⚠<strong>重みは行数ではなく区間長（秒）です。</strong>ログ間隔は記録中に変えられるので、1秒の区間と3秒の区間を同じ重みで平均すると実時間に比例しない値になります（手元の検算では最大9.3dBずれました）。dBは対数なので算術平均にも物理的な意味がなく、無音の行を-999などへ置き換えて平均すると数百dB外れます。無音の行は電力0として数えます</li>
             <li><strong>最大/最小/変動幅：</strong>記録された行のうち、有限値の行での最大・最小とその差。無音（-∞ dBFS）の区間は外します</li>
-            <li><strong>真のピーク：</strong>区間内の最大絶対振幅のうち、最も大きかったもの。上の「最大」はRMSなので別の値になります。0 dBFSを超えることがあり、超えていたら確実にクリップしています。簡易モードでは測れないため「--.-」のままです</li>
-            <li><strong>記録の穴：</strong>統計の下に1行で出ます。<strong>クリップした区間</strong>（|振幅|が1.0以上のサンプルを含む区間。波形が頭打ちになって高調波が広い帯域へ散るため、その区間の値は読めません）と、<strong>有効サンプル率</strong>（届いたサンプル数÷期待サンプル数。1.000未満＝その区間の音の一部が届いていない）の区間数を示します。どちらも0なら「記録の穴なし」と出ます</li>
+            <li><strong>サンプルピーク：</strong>区間内の標本点の最大絶対振幅のうち、最も大きかったもの。上の「最大」はRMSなので別の値になります。ITU-R BS.1770 のトゥルーピーク（標本の間のピーク）とは別物で、トゥルーピークはこれ以上になります。0 dBFSを超えることがあります（上流のリサンプリングの跳ね返りで振幅が1.0を超えるため）。簡易モードでは測れないため「--.-」のままです</li>
+            <li><strong>記録の穴：</strong>統計の下に1行で出ます。<strong>クリップした区間</strong>（|振幅|が1.0に届いたサンプルを含む区間。1〜2サンプルの単発なら区間の値への影響は小さく、3サンプル以上続いていれば波形がつぶれて値は本来の音と違います。注意書きには、記録した全サンプルに対する割合も出ます）と、<strong>有効サンプル率</strong>（届いたサンプル数÷期待サンプル数。1.000未満＝その区間の音の一部が届いていない）の区間数を示します。どちらも0なら「記録の穴なし」と出ます</li>
             <li><strong>リアルタイムグラフ：</strong>時系列での音量推移を可視化</li>
             <li><strong>音量メーター：</strong>現在の音量を色分けで表示（緑→黄→赤）</li>
           </ul>
@@ -254,7 +259,7 @@
     </div>
   </div>
 
-  <script src="./logic.js?v=3.2"></script>
-  <script src="./script.js?v=3.2"></script>
+  <script src="./logic.js?v=3.3"></script>
+  <script src="./script.js?v=3.3"></script>
 </body>
 </html>

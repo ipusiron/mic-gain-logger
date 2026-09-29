@@ -8,8 +8,8 @@ const MicGainLogic = (() => {
   // 値のクランプ
   const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
-  // dBFS 表示→% 変換（-60dBFS=0%, 0dBFS=100%）
-  function dbToPercent(db, floorDb = -60) {
+  // dBFS 表示→% 変換（表示下限=0%, 0dBFS=100%）
+  function dbToPercent(db, floorDb = FLOOR_DB_DEFAULT) {
     const p = (db - floorDb) / (0 - floorDb);
     return clamp(p * 100, 0, 100);
   }
@@ -43,12 +43,32 @@ const MicGainLogic = (() => {
   // 大型表示も「10.0 dBFS」という物理的にありえない正の dBFS を出していた。
   const FLOOR_DB_MIN = -120;
   const FLOOR_DB_MAX = -1;
+  // 表示下限の既定値。
+  // ⚠ 改修前（c7b6bad）は -60 だった。iPhone の実機テスト（2026-09-29）で、21kHz の
+  //    トーン（-65dBFS）が静寂（-76dBFS）と同じく -60 に張り付いて表示され、
+  //    「反応がない」と読まれた（CSVには正しく残っていた）。-90 にする（本人の判断）
+  const FLOOR_DB_DEFAULT = -90;
 
-  // 表示下限の入力値を数値へ（空欄・非数は既定の -60。範囲外は丸める）
+  // 表示下限の入力値を数値へ（空欄・非数は既定値。範囲外は丸める）
   function parseFloorDb(raw) {
     const v = parseFloat(raw);
-    if (Number.isNaN(v)) return -60;
+    if (Number.isNaN(v)) return FLOOR_DB_DEFAULT;
     return clamp(v, FLOOR_DB_MIN, FLOOR_DB_MAX);
+  }
+
+  // メーターの目盛り（4本）。表示下限から作る。
+  // ⚠ 改修前は -60 / -40 / -20 / 0 を HTML に固定で書いていた。表示下限を変えると
+  //    目盛りだけが嘘になる。メーターの幅と同じく「下限〜0」を等分する
+  function meterScaleLabels(floorDb) {
+    const f = Number.isFinite(floorDb) ? floorDb : FLOOR_DB_DEFAULT;
+    // 下限が浅い（-6より浅い）ときは整数に丸めると同じ数字が並ぶので、小数1桁で出す
+    // （公開前の点検で、下限-1〜-2で目盛りが重複することが分かった）
+    const fine = Math.abs(f) < 6;
+    const fmt = (v) => {
+      const r = fine ? Math.round(v * 10) / 10 : Math.round(v);
+      return String(r || 0);   // -0 を 0 にする
+    };
+    return [f, f * 2 / 3, f / 3, 0].map(fmt);
   }
 
   // ログ間隔の入力値を秒へ（下限 0.2 秒）
@@ -85,7 +105,7 @@ const MicGainLogic = (() => {
   //   最大・最小・変動幅 ＝ 有限値の行だけ。無音を入れると最小が -∞ になり、
   //                        変動幅が意味を失うため
   //
-  // 真のピーク・クリップ数・有効サンプル率は、段階1から区間レコードに入って
+  // サンプルピーク・クリップ数・有効サンプル率は、段階1から区間レコードに入って
   // いたのに CSV にしか出ていなかった。どれも記録の信用に直結するので画面へ出す。
   // ピークは統計の項目、クリップと欠測は注意書き（statsWarnings）へ回す。
 
@@ -108,10 +128,13 @@ const MicGainLogic = (() => {
       silentN: 0,
       minDb: Infinity,
       maxDb: -Infinity,
-      peakMaxDb: -Infinity, // 区間の真のピークの最大（RMS とは別物）
+      peakMaxDb: -Infinity, // 区間のサンプルピークの最大（RMS とは別物）
       peakKnownN: 0,        // ピークが分かっている行数（簡易モードでは 0 のまま）
       clipRows: 0,          // クリップを含む区間の数
       clipSamples: 0,       // クリップしたサンプルの延べ数
+      clipRunMax: 0,        // クリップが続いた最長のサンプル数（単発と連続の区別）
+      clipRunKnownN: 0,     // 連続の長さが分かっている行数（簡易モードでは 0 のまま）
+      sampleTotal: 0,       // 記録した全サンプル数（クリップの割合の分母）
       validKnownN: 0,       // 有効サンプル率が分かっている行数
       lowValidRows: 0,      // 有効サンプル率が 1.0 を下回った区間の数
       minValidRatio: Infinity
@@ -164,6 +187,11 @@ const MicGainLogic = (() => {
       stats.clipRows += 1;
       stats.clipSamples += rec.clipCount;
     }
+    if (Number.isFinite(rec.clipRunMax)) {
+      stats.clipRunKnownN += 1;
+      stats.clipRunMax = Math.max(stats.clipRunMax, rec.clipRunMax);
+    }
+    if (Number.isFinite(rec.sampleCount)) stats.sampleTotal += rec.sampleCount;
     if (Number.isFinite(rec.validRatio)) {
       stats.validKnownN += 1;
       stats.minValidRatio = Math.min(stats.minValidRatio, rec.validRatio);
@@ -200,31 +228,74 @@ const MicGainLogic = (() => {
     };
   }
 
+  // クリップがこのサンプル数以上続いたら「連続」と呼ぶ（このツールの区切り）
+  const CLIP_RUN_SUSTAINED = 3;
+
+  // クリップの割合を画面向けに（ごく少ないときは「未満」で言う）
+  function formatShare(share) {
+    const pct = share * 100;
+    if (pct >= 1) return `${pct.toFixed(1)}%`;
+    if (pct >= 0.01) return `${pct.toFixed(2)}%`;
+    return '0.01%未満';
+  }
+
   // 記録の信用を落とす出来事だけを文にする。無ければ空配列。
   //
-  // ⚠ クリップした区間の値は読んではいけない。波形が ±1.0 で頭打ちになり、
-  //    そこで生まれた高調波が広い帯域へ散るので、RMS も帯域ごとの値も本来の
-  //    音とは別物になる。第2弾で帯域を見るときの前提になるため区間の数を出す。
+  // ⚠ クリップは、単発と連続を言い分ける（第2弾a5）。
+  //    波形が ±1.0 で続けて頭打ちになった区間は、RMS も帯域ごとの値も本来の音と
+  //    違う（頭が削れ、そこで生まれた高調波が広い帯域へ散る）。一方、1〜2サンプルだけ
+  //    1.0 に届いた単発は、区間の値への影響が小さい。改修前は1サンプルでも
+  //    「その区間の値は読めません。入力レベルを下げて採り直してください」と出し、
+  //    延べの数を分母なしで出していた。iPhone のブラウザーには入力音量を下げる
+  //    手段が無いので、助言も実行できなかった。
   // 有効サンプル率は欠測の目安である。1.0 を下回った区間は、その区間の音の
   // 一部が届いていない（オーディオスレッドがレンダークォンタムを落とした）。
-  function statsWarnings(stats) {
+  // 注意の項目を、要点（short）と全文（full）の組で返す。
+  // 要点は画面の要約の1行に並べ、全文は開いて読む（第2弾a6）
+  function statsWarningItems(stats) {
     const out = [];
     if (!stats) return out;
     if (stats.clipRows > 0) {
-      out.push(
-        `クリップを${stats.clipRows}区間で検出しました（延べ${stats.clipSamples}サンプル）。`
-        + 'クリップした区間は波形が頭打ちになり高調波が広い帯域へ散るため、'
-        + 'その区間の値は読めません。入力レベルを下げて採り直してください'
-      );
+      const share = stats.sampleTotal > 0
+        ? `＝記録した全サンプルの${formatShare(stats.clipSamples / stats.sampleTotal)}`
+        : '';
+      let text = `クリップを${stats.clipRows}区間で検出しました（延べ${stats.clipSamples}サンプル${share}）。`;
+      if (stats.clipRunKnownN > 0) {
+        text += stats.clipRunMax >= CLIP_RUN_SUSTAINED
+          ? `連続して頭打ちになった箇所があります（最長${stats.clipRunMax}サンプル）。`
+            + 'その区間は波形がつぶれていて、値は本来の音と違います。'
+          : `いずれも単発（連続${CLIP_RUN_SUSTAINED}サンプル未満）で、区間の値への影響は小さいと見られます。`;
+      }
+      // ⚠ 原因は決めつけない。単発でも、接触・操作音のような突発音のほかに、
+      //    大きな音の波の山が 1.0 に触れているだけのこともある（疑似マイクのトーンで
+      //    全サンプルの 0.97% が単発で 1.0 に触れた）
+      text += 'マイクへの接触・端末の操作音・風や息のほか、音が大きすぎて波の山が1.0に届いている場合があります。'
+        + '後者なら端末を音源から離してください';
+      const kind = stats.clipRunKnownN > 0
+        ? (stats.clipRunMax >= CLIP_RUN_SUSTAINED ? '（連続あり）' : '（単発のみ）')
+        : '';
+      out.push({ short: `クリップ${stats.clipRows}区間${kind}`, full: text });
     }
     if (stats.lowValidRows > 0) {
       const pct = (stats.minValidRatio * 100).toFixed(1);
-      out.push(
-        `有効サンプル率が1.0を下回った区間が${stats.lowValidRows}件あります（最小 ${pct}%）。`
-        + 'その区間は音の一部が届いていません（CSVの valid_ratio 列に残ります）'
-      );
+      out.push({
+        short: `有効サンプル率 最小${pct}%`,
+        full: `有効サンプル率が1.0を下回った区間が${stats.lowValidRows}件あります（最小 ${pct}%）。`
+          + 'その区間は音の一部が届いていません（CSVの valid_ratio 列に残ります）'
+      });
     }
     return out;
+  }
+
+  // 全文だけの一覧（既存の呼び方）
+  function statsWarnings(stats) {
+    return statsWarningItems(stats).map(it => it.full);
+  }
+
+  // 要約の1行。件数と要点を並べる（項目が無ければ空）
+  function noticeSummary(items) {
+    if (!items || !items.length) return '';
+    return `記録の注意 ${items.length}件：${items.map(it => it.short).join('／')}`;
   }
 
   // 記録に穴が無いことも、画面に出す。
@@ -382,7 +453,12 @@ const MicGainLogic = (() => {
     for (let v = topDb; v >= floorDb - 1e-9; v -= step) {
       out.push(Math.round(v * 100) / 100);
     }
-    if (!out.length || Math.abs(out[out.length - 1] - floorDb) > 1e-9) out.push(floorDb);
+    if (!out.length || Math.abs(out[out.length - 1] - floorDb) > 1e-9) {
+      // 下限のすぐ手前（刻みの半分以内）の目盛りは間引く。残すとラベルが重なる
+      // （下限 -90・刻み 20 で -80 と -90 が 10dB しか離れず、スマートフォン幅で重なった）
+      if (out.length > 1 && out[out.length - 1] - floorDb <= step / 2) out.pop();
+      out.push(floorDb);
+    }
     return out.map(db => ({ db, label: String(Math.round(db)) }));
   }
 
@@ -397,13 +473,20 @@ const MicGainLogic = (() => {
   //
   // gap は「前の点から続いていない」という印である。描画側で線を切るために使う。
   // 記録を止めて再開したとき、区間が飛んだとき、時刻の跳びがあったときに立つ。
+  //
+  // ⚠ 記録の停止・再開は、時間差ではなくセッションの切り替わり（metaId）で見る。
+  //    時間差だけで推し量っていたころは、停止してすぐ再開すると差が区間長の
+  //    1.5倍に収まり、停止中の空白をまたいで線がつながった（再開後の最初の行は
+  //    再開から1区間後に出るので、許容幅は実質「区間長×0.5」。10秒間隔なら5秒）
   function seriesPointOf(rec, prev, intervalMs) {
     const tMs = rec.ts.getTime();
     const span = (Number.isFinite(intervalMs) && intervalMs > 0) ? intervalMs : 1000;
+    const sid = rec.metaId || null;
     const gap = !prev
       || (tMs - prev.tMs) > span * 1.5
-      || !!rec.clockBreakKind;
-    return { tMs, db: rec.rawDb, gap };
+      || !!rec.clockBreakKind
+      || (prev.sid || null) !== sid;
+    return { tMs, db: rec.rawDb, gap, sid };
   }
 
   function pruneSeries(series, nowMs, windowMs) {
@@ -421,7 +504,8 @@ const MicGainLogic = (() => {
   // 計測の単位は「瞬間」ではなく「区間」である。1区間は次を持つ。
   //   開始・終了時刻（オーディオクロックと、それに対応する壁時計の両方）
   //   代表値 db（区間内のエネルギー平均＝Leq と同じ定義）
-  //   真のピーク peak / peakDb（区間内の最大絶対値。RMS とは別物）
+  //   サンプルピーク peak / peakDb（区間内の標本点の最大絶対値。RMS とは別物。
+  //     ITU-R BS.1770 のトゥルーピーク〈標本の間のピーク〉とも別物で、トゥルーピークはこれ以上になる）
   //   クリップ数 clipCount（|sample| >= 1.0 のサンプル数）
   //   有効サンプル率 validRatio（実際に届いたサンプル数 ÷ 期待サンプル数）
   // CSV の列は段階1では増やさないが、内部の構造だけ先に確定させておく。
@@ -559,6 +643,8 @@ const MicGainLogic = (() => {
       peak: msg.peak,
       peakDb: rmsToDbfs(msg.peak),
       clipCount: msg.clip,
+      // クリップが続いた最長のサンプル数（単発と連続の区別）。CSV の列は増やさない
+      clipRunMax: Number.isFinite(msg.clipRun) ? msg.clipRun : null,
       sampleCount: msg.count,
       expectedSamples: msg.expected,
       validRatio: validRatioOf(msg.count, msg.expected),
@@ -595,6 +681,7 @@ const MicGainLogic = (() => {
       peak: null,
       peakDb: null,
       clipCount: null,
+      clipRunMax: null,
       sampleCount: null,
       expectedSamples: opts.expectedSamples,
       validRatio: null,
@@ -620,7 +707,11 @@ const MicGainLogic = (() => {
   // CSV の列は増やさない（列の確定は段階4の CSV v2）。内部のレコードから
   // 参照できる形で1セッション分を1つだけ持ち、行ごとに複製しない。
 
-  // 主要3項目。どの実装も報告するので、報告が無ければ「不明」として扱う
+  // 主要3項目。報告が無ければ「不明」として扱う。
+  // ⚠ 「どの実装も報告する」わけではない。WebKit（Safari）の MediaTrackSettings には
+  //    autoGainControl と noiseSuppression が無く、getSettings() は echoCancellation しか
+  //    返さない作りになっている（WebKit のソース main で確認、2026-09-29。iPhone の実機の
+  //    CSV ではまだ確かめていない）。Safari ではこの2項目が毎回「不明」になる前提で扱う
   const PROCESSING_KEYS = ['autoGainControl', 'noiseSuppression', 'echoCancellation'];
   // 実装によっては存在しない加工。報告されて有効なときだけ数え、
   // 無ければ「不明」にはしない（大半のブラウザーで不明だらけになるため）
@@ -677,6 +768,122 @@ const MicGainLogic = (() => {
     if (meta.processingActive.length) return PROCESSING_ACTIVE;
     if (meta.processingUnknown.length) return PROCESSING_UNKNOWN;
     return PROCESSING_OFF;
+  }
+
+  // CSV のメタ行 `# processing=` に書く値。
+  //
+  // ⚠⚠ off と書くのは、3項目すべてが「無効」と報告されたときだけである。
+  //    改修前（c7b6bad）は script.js が「有効と報告された項目が無ければ off」と
+  //    書いていた。報告しない項目があっても off になり、Safari のように
+  //    autoGainControl を報告しない環境で「加工なし」と名乗っていた
+  //    （WebKit Bugzilla 204444）。ここで3値のまま文字列にする。
+  //
+  //    off                                       3項目すべて無効と報告された
+  //    active:echoCancellation                   有効と報告された項目
+  //    unknown:autoGainControl                   報告されなかった項目
+  //    active:echoCancellation;unknown:autoGainControl   両方あるとき
+  function processingLabel(meta) {
+    if (!meta) return PROCESSING_UNKNOWN;
+    // どちらかの一覧が無い形は、判定の材料が欠けている。off と推し量らない
+    // （公開前の点検で、unknown の一覧を落とした形を渡すと off に戻ることが分かった）
+    if (!Array.isArray(meta.processingActive) || !Array.isArray(meta.processingUnknown)) {
+      return PROCESSING_UNKNOWN;
+    }
+    const parts = [];
+    const active = meta.processingActive || [];
+    const unknown = meta.processingUnknown || [];
+    if (active.length) parts.push(`${PROCESSING_ACTIVE}:${active.join('+')}`);
+    if (unknown.length) parts.push(`${PROCESSING_UNKNOWN}:${unknown.join('+')}`);
+    return parts.length ? parts.join(';') : PROCESSING_OFF;
+  }
+
+  // CSV のヘッダー（ハッシュチェーンの起点）に載せる測定条件。
+  // ⚠ 記録を始めた瞬間に確定する事実だけを入れる。ログ間隔・無音の有無・中断の回数は
+  //    記録中に変わるので、ここには入れない（トレーラーへ出す）。
+  // 画面の側（script.js）から切り出した。テストから振る舞いを確かめられるようにするため
+  function chainHeaderMeta(input) {
+    const src = input || {};
+    const m = src.sessionMeta || {};
+    const rec = src.firstRec || {};
+    return {
+      engine: rec.engine || src.engineMode || null,
+      // アンカーは中断のたびに取り直すので、記録開始の時刻には使えない。
+      // 1行目の区間の時刻をそのまま載せる
+      started: rec.ts instanceof Date ? rec.ts.toISOString() : null,
+      sampleRate: m.contextSampleRate || null,
+      device: m.deviceLabel || null,
+      // 報告しない項目があれば unknown と書く（改修前は「有効が無ければ off」と決め打ちしていた）
+      processing: processingLabel(src.sessionMeta || null),
+      hashAlgo: src.hashAlgo || null
+    };
+  }
+
+  function deviceLossLabel(reason) {
+    if (reason === DEVICE_LOST_GONE) return '音声トラックが無くなりました';
+    return 'マイクが切断されました';
+  }
+
+  // 記録に関わる注意の項目（要点 short と全文 full）。画面の注意書きは、この一覧だけから作る。
+  // 画面の側（script.js）から切り出した。テストから振る舞いを確かめられるようにするため
+  // （公開前の点検で、画面の条件を反転させてもテストが通ることが分かった）
+  function recordNoticeItems(input) {
+    const src = input || {};
+    const items = [];
+    const loss = src.deviceLoss;
+    if (loss) {
+      const label = deviceLossLabel(loss.reason);
+      items.push({
+        kind: 'deviceLoss',
+        short: `${label}（${loss.rowsKept}行目まで記録）`,
+        full: `${label}。${loss.rowsKept}行目までを記録し、`
+          + 'そのあとは記録していません（ここまでのログは書き出せます）'
+      });
+    } else if (src.deviceMuted) {
+      items.push({
+        kind: 'deviceMuted',
+        short: 'マイクが無音化されている',
+        full: 'マイクが供給元で無音化されています（通話の割り込みなど）。'
+          + 'この間の記録はデジタル無音になります'
+      });
+    }
+    // 記録を始める前（測定条件が無い）には、加工の注意を出さない
+    const meta = src.sessionMeta;
+    if (meta) {
+      const verdict = processingVerdict(meta);
+      if (verdict === PROCESSING_ACTIVE) {
+        const keys = meta.processingActive.join(', ');
+        items.push({
+          kind: 'processingActive',
+          short: `音の加工が有効（${keys}）`,
+          full: `マイク側の音の加工が有効です（${keys}）。`
+            + '利得が自動で動くため、この記録の dBFS は絶対値として扱えません'
+        });
+      } else if (verdict === PROCESSING_UNKNOWN) {
+        // 報告しない項目がある（Safari の autoGainControl・noiseSuppression など）。
+        // 黙っていると「加工なし」と読まれるので、分からないことを出す
+        const keys = (meta.processingUnknown || []).join(', ');
+        items.push({
+          kind: 'processingUnknown',
+          short: `音の加工の状態が不明（${keys}）`,
+          full: `マイク側の音の加工（${keys}）の状態を、`
+            + 'このブラウザーは報告しません。利得が自動で動いていても、この画面とCSVからは分かりません'
+        });
+      }
+    }
+    const breaks = src.clockBreaks || [];
+    if (breaks.length) {
+      const totalSec = breaks.reduce((a, b) => a + b.jumpMs, 0) / 1000;
+      items.push({
+        kind: 'clockBreak',
+        short: `時刻の跳び${breaks.length}回`,
+        full: `時刻の跳びを${breaks.length}回検出（累計 ${totalSec.toFixed(2)} 秒）。`
+          + '以降の時刻は取り直したアンカーで出し、'
+          + '該当区間はCSVのメタ行（# clockBreaks / # clockBreakAt / # clockDriftMs）に残ります'
+      });
+    }
+    // クリップと欠測。ボタンを増やさず、記録の信用に関わる事実をここへ集める
+    for (const it of statsWarningItems(src.stats)) items.push(it);
+    return items;
   }
 
   // ---- マイクの取得の試行 ----
@@ -1174,6 +1381,8 @@ const MicGainLogic = (() => {
     rmsToDbfs,
     rmsOf,
     parseFloorDb,
+    FLOOR_DB_DEFAULT,
+    meterScaleLabels,
     FLOOR_DB_MIN,
     FLOOR_DB_MAX,
     parseIntervalSec,
@@ -1188,6 +1397,9 @@ const MicGainLogic = (() => {
     formatDbCell,
     formatStats,
     statsWarnings,
+    CLIP_RUN_SUSTAINED,
+    statsWarningItems,
+    noticeSummary,
     statsIntegrity,
     emptyStatsText,
     canvasPixelSize,
@@ -1229,6 +1441,9 @@ const MicGainLogic = (() => {
     PROCESSING_UNKNOWN,
     buildSessionMeta,
     processingVerdict,
+    processingLabel,
+    chainHeaderMeta,
+    recordNoticeItems,
     CONNECT_HINT_MS,
     CONNECT_TIMEOUT_MS,
     createAttemptGate,

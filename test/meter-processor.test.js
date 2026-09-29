@@ -128,7 +128,7 @@ test('入力が切れているあいだも区間は進み、届いたサンプ�
   assert.equal(iv[1].endFrame, 5120);
 });
 
-test('真のピークとクリップ数を数える', () => {
+test('サンプルピークとクリップ数を数える', () => {
   const h = createHarness(1280);   // 10 クォンタム。区間が閉じるのは 11 回目の呼び出し
   let n = 0;
   for (let q = 0; q < 11; q++) {
@@ -246,4 +246,163 @@ test('ready のメッセージは、決まっていない起点を名乗らな�
   assert.equal('startFrame' in ready[0], false, 'まだ決まっていない起点を載せている');
   assert.equal(ready[0].sampleRate, SAMPLE_RATE);
   assert.equal(ready[0].intervalFrames, 4800);
+});
+
+
+// ---- 記録開始直後、入力が空のまま process() が呼ばれるとき（第2弾a3）----
+//
+// ⚠⚠ iPhone の実機で、記録開始直後の区間の有効サンプル率が 74.9% になった
+//    （2026-09-29）。48kHz・1秒の区間なら、欠けたのは 12032 フレーム
+//    ＝ちょうど 94 クォンタム（約251ミリ秒）である。第1弾で塞いだのは
+//    「process() が呼ばれるまでの間」だったが、こちらは「process() は呼ばれて
+//    いるのに、マイクの経路が動き出すまで入力が空で届く間」で、別の穴である。
+//    入力に音が載った最初の process() を起点にして塞ぐ。
+
+// 入力を空のまま（チャンネルなしで）1クォンタム進める
+function emptyTick(h, kind) {
+  h.proc.process(kind === 'zero-length' ? [[new Float32Array(0)]] : [[]]);
+  h.state.frame += QUANTUM;
+}
+
+test('⭐記録の頭で入力が空のあいだは区間を始めない（実機の 74.9% と同じ数を、入力が空で届く仕組みで再現する）', () => {
+  // 改修前はこの状況で1行目が 35968/48000 になった
+  assert.equal(((SAMPLE_RATE - 94 * QUANTUM) / SAMPLE_RATE).toFixed(3), '0.749');
+
+  const h = createHarness(SAMPLE_RATE);
+  for (let q = 0; q < 94; q++) emptyTick(h);
+  for (let q = 0; q < Math.ceil(SAMPLE_RATE / QUANTUM) * 3; q++) h.tick(sine(0.1));
+  const iv = h.intervals();
+  assert.ok(iv.length >= 2, `intervals=${iv.length}`);
+  assert.equal(iv[0].count / iv[0].expected, 1, '1行目が見せかけの欠測になっている');
+  // 起点は「入力に音が載った最初の process()」
+  assert.equal(iv[0].startFrame, 94 * QUANTUM);
+  assert.equal(iv[0].endFrame - iv[0].startFrame, SAMPLE_RATE, '区間長が縮んでいる');
+});
+
+test('長さ0の配列で届く入力も、空の入力として扱う', () => {
+  const h = createHarness(SAMPLE_RATE);
+  for (let q = 0; q < 20; q++) emptyTick(h, 'zero-length');
+  for (let q = 0; q < Math.ceil(SAMPLE_RATE / QUANTUM) * 2; q++) h.tick(sine(0.1));
+  const iv = h.intervals();
+  assert.equal(iv[0].startFrame, 20 * QUANTUM);
+  assert.equal(iv[0].count / iv[0].expected, 1);
+});
+
+test('入力がいつまでも来ないときは、猶予（1秒）のあとで区間を始め、欠測として残す', () => {
+  // マイクが最初から届かない場合に1行も出ないと、「記録していない」ことすら残らない。
+  // 猶予を過ぎたら最初の process() を起点にし、届かなかったぶんを count=0 で出す
+  const h = createHarness(SAMPLE_RATE);
+  for (let q = 0; q < Math.ceil(SAMPLE_RATE / QUANTUM) * 3; q++) emptyTick(h);
+  const iv = h.intervals();
+  assert.ok(iv.length >= 2, `intervals=${iv.length}`);
+  assert.equal(iv[0].startFrame, 0, '起点が最初の process() になっていない');
+  assert.equal(iv[0].count, 0);
+  assert.equal(iv[0].count / iv[0].expected, 0, '届いていないのに欠測として残っていない');
+});
+
+test('猶予の途中で音が届けば、その時点を起点にする', () => {
+  const h = createHarness(SAMPLE_RATE);
+  for (let q = 0; q < 200; q++) emptyTick(h);   // 約0.53秒（猶予の1秒より短い）
+  for (let q = 0; q < Math.ceil(SAMPLE_RATE / QUANTUM) * 2; q++) h.tick(sine(0.1));
+  const iv = h.intervals();
+  assert.equal(iv[0].startFrame, 200 * QUANTUM);
+  assert.equal(iv[0].count / iv[0].expected, 1);
+});
+
+
+
+// ---- クリップが何サンプル続いたか（第2弾a5）----
+//
+// 1サンプルだけ振幅1.0に届いた「単発」と、波形が頭打ちになって続く「連続」を
+// 区別できないと、警告文が1サンプルでも「その区間の値は読めません」と言い過ぎる。
+// 区間ごとに、クリップが続いた最長のサンプル数（clipRun）を数える。
+
+test('クリップが続いた最長のサンプル数を数える', () => {
+  const h = createHarness(1280);
+  let n = 0;
+  for (let q = 0; q < 11; q++) {
+    h.tick(() => {
+      n++;
+      if (n >= 10 && n <= 12) return 1.0;   // 3サンプル続く
+      if (n === 20) return -1.2;            // 単発
+      return 0.01;
+    });
+  }
+  const iv = h.intervals()[0];
+  assert.equal(iv.clip, 4);
+  assert.equal(iv.clipRun, 3);
+});
+
+test('ブロックの境目をまたいで続くクリップも、1つの連続として数える', () => {
+  const h = createHarness(1280);
+  let n = 0;
+  for (let q = 0; q < 11; q++) {
+    h.tick(() => {
+      n++;
+      // 1ブロック目の最後の2サンプルと、2ブロック目の最初の2サンプル
+      if (n >= QUANTUM - 1 && n <= QUANTUM + 2) return 1.0;
+      return 0.01;
+    });
+  }
+  assert.equal(h.intervals()[0].clipRun, 4);
+});
+
+test('入力が途切れたブロックは、連続を切る', () => {
+  const h = createHarness(1280);
+  // 1ブロック目の最後の1サンプルがクリップ
+  let n = 0;
+  h.tick(() => { n++; return n === QUANTUM ? 1.0 : 0.01; });
+  // 途切れる
+  h.proc.process([[]]);
+  h.state.frame += QUANTUM;
+  // 途切れのあと、最初の1サンプルがクリップ
+  let m = 0;
+  h.tick(() => { m++; return m === 1 ? 1.0 : 0.01; });
+  for (let q = 0; q < 8; q++) h.tick(() => 0.01);
+  const iv = h.intervals()[0];
+  assert.equal(iv.clip, 2);
+  assert.equal(iv.clipRun, 1, '途切れをはさんだ2サンプルを連続として数えている');
+});
+
+test('クリップが無ければ clipRun は 0', () => {
+  const h = createHarness(1280);
+  for (let q = 0; q < 11; q++) h.tick(sine(0.1));
+  assert.equal(h.intervals()[0].clipRun, 0);
+});
+
+
+// ---- 公開前の点検で見つかったクリップの連続の数え方（第2弾a7）----
+
+test('区間の境目をまたぐクリップの連続も、1つの連続として数える', () => {
+  // ⚠ 点検で見つかった。区間ごとに連続の長さを0へ戻していたので、境目をまたぐ
+  //    4サンプルの連続が2＋2に分かれ、注意書きが「いずれも単発」と出た
+  const h = createHarness(1280);
+  let n = 0;
+  for (let q = 0; q < 21; q++) {
+    h.tick(() => {
+      n++;
+      // 1区間目の最後の2サンプルと、2区間目の最初の2サンプル（n は 1 から数える）
+      if (n >= 1279 && n <= 1282) return 1.0;
+      return 0.01;
+    });
+  }
+  const iv = h.intervals();
+  assert.equal(iv[0].clip + iv[1].clip, 4);
+  // 連続は後ろの区間でまとめて数える（統計は全行の最大を取るので、注意書きは正しくなる）
+  assert.equal(Math.max(iv[0].clipRun, iv[1].clipRun), 4);
+});
+
+test('クォンタムが落ちてサンプルが飛んだら、クリップの連続を切る', () => {
+  // ⚠ 点検で見つかった。process() が呼ばれず currentFrame だけ進んだとき、
+  //    飛ぶ前後のクリップを1つの連続として数えていた
+  const h = createHarness(1280);
+  let n = 0;
+  h.tick(() => { n++; return n >= QUANTUM - 1 ? 1.0 : 0.01; });   // 最後の2サンプル
+  h.tick(() => 0.01, true);                                        // 1クォンタム落ちる
+  let m = 0;
+  h.tick(() => { m++; return m <= 2 ? 1.0 : 0.01; });             // 最初の2サンプル
+  for (let q = 0; q < 8; q++) h.tick(() => 0.01);
+  const iv = h.intervals()[0];
+  assert.equal(iv.clip, 4);
+  assert.equal(iv.clipRun, 2, 'サンプルが飛んだのに連続として数えている');
 });

@@ -52,10 +52,10 @@ test('rmsOf: 既知の列で二乗平均平方根が出る', () => {
   assert.ok(Math.abs(rmsOf([1, 0]) - Math.SQRT1_2) < 1e-15);
 });
 
-test('dbToPercent: 既定の下限 -60 で 0〜100 に収まる', () => {
+test('dbToPercent: 既定の下限 -90 で 0〜100 に収まる（第2弾a6 で -60 から変更）', () => {
   assert.equal(dbToPercent(0), 100);
-  assert.equal(dbToPercent(-60), 0);
-  assert.equal(dbToPercent(-30), 50);
+  assert.equal(dbToPercent(-90), 0);
+  assert.equal(dbToPercent(-45), 50);
   assert.equal(dbToPercent(-120), 0);
   assert.equal(dbToPercent(20), 100);
   assert.equal(dbToPercent(-20, -40), 50);
@@ -77,10 +77,10 @@ test('formatHMS: 00:00:00 から桁あふれまで', () => {
   assert.equal(formatHMS(360000), '100:00:00');
 });
 
-test('parseFloorDb: 非数は -60。範囲は -120〜-1 に丸める', () => {
+test('parseFloorDb: 非数は既定の -90（第2弾a6 で -60 から変更）。範囲は -120〜-1 に丸める', () => {
   assert.equal(parseFloorDb('-60'), -60);
-  assert.equal(parseFloorDb(''), -60);
-  assert.equal(parseFloorDb('abc'), -60);
+  assert.equal(parseFloorDb(''), -90);
+  assert.equal(parseFloorDb('abc'), -90);
   assert.equal(parseFloorDb('-40.5'), -40.5);
   assert.equal(parseFloorDb('-120'), -120);
   assert.equal(parseFloorDb('-1'), -1);
@@ -116,6 +116,8 @@ test('統計: 平均はエネルギー平均（Leq）。算術平均ではない
     minDb: Infinity, maxDb: -Infinity,
     peakMaxDb: -Infinity, peakKnownN: 0,
     clipRows: 0, clipSamples: 0,
+    // 第2弾a5 で足した3項目（クリップの連続の長さと、割合の分母）
+    clipRunMax: 0, clipRunKnownN: 0, sampleTotal: 0,
     validKnownN: 0, lowValidRows: 0, minValidRatio: Infinity
   });
 

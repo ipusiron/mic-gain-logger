@@ -116,6 +116,22 @@ test('dbTickStep / dbTicks: 表示下限と 0 dBFS を必ず含み、本数が�
     ['0', '-10', '-20', '-30', '-40', '-50', '-60']);
 });
 
+test('dbTicks: 表示下限のすぐ手前の目盛りは間引く（ラベルが重ならないように）', () => {
+  // ⚠ 第2弾a6 で表示下限の既定を -90 にしたら、20dB 刻みの最後の目盛り（-80）と
+  //    下限（-90）が 10dB しか離れず、スマートフォン幅（高さ120px）でラベルが重なった
+  assert.deepEqual(dbTicks(-90, 0, dbTickStep(90)).map(t => t.label),
+    ['0', '-20', '-40', '-60', '-90']);
+  // 目盛りどうしの間隔は、刻みの半分より広い
+  for (const floor of [-120, -95, -90, -85, -70, -55, -45, -25]) {
+    const step = dbTickStep(0 - floor);
+    const ticks = dbTicks(floor, 0, step).map(t => t.db);
+    for (let i = 1; i < ticks.length; i++) {
+      assert.ok(ticks[i - 1] - ticks[i] > step / 2,
+        `下限 ${floor}: ${ticks[i - 1]} と ${ticks[i]} が近すぎる（刻み ${step}）`);
+    }
+  }
+});
+
 test('pruneSeries: 窓の外を落とし、左端まで線が届くよう直前の1点は残す', () => {
   const now = 1_700_000_000_000;
   const win = 60_000;
@@ -210,6 +226,28 @@ test('seriesPointOf: 記録の区間から点を作り、続いていなけれ�
   // 間隔が分からないときは1秒とみなす
   assert.equal(seriesPointOf(rec(2, -25), first, null).gap, false);
   assert.equal(seriesPointOf(rec(4, -25), first, null).gap, true);
+});
+
+// ⚠⚠ 停止→短時間で再開すると、時間差が区間長の1.5倍に収まり、停止中の空白を
+//    またいで線がつながっていた（第2弾a4）。再開後の最初の行は再開から1区間後に
+//    出るので、許容幅は実質「区間長×0.5」になる。1s→0.5秒、10s→5秒、1m→30秒で、
+//    5s・10s は手で届く。時間差で推し量らず、セッションの切り替わりで切る。
+test('seriesPointOf: セッションが変わったら、間隔が詰まっていても線を切る', () => {
+  const rec = (sec, db, metaId) => ({
+    ts: new Date(Date.UTC(2026, 8, 28, 5, 0, sec)), rawDb: db, db, metaId
+  });
+  // 10秒間隔。前のセッションの最後の行から 14 秒後（＝停止してすぐ再開）
+  const last = seriesPointOf(rec(0, -30, 's1'), null, 10000);
+  const resumed = seriesPointOf(rec(14, -45, 's2'), last, 10000);
+  assert.equal(resumed.gap, true, '停止中の空白をまたいで線がつながっている');
+  // 同じセッションの中なら、これまでどおりつなぐ
+  const next = seriesPointOf(rec(24, -44, 's2'), resumed, 10000);
+  assert.equal(next.gap, false);
+  // セッションの印を点にも持たせる（次の点が比べるため）
+  assert.equal(resumed.sid, 's2');
+  // 印の無いレコード同士（古い形）は、これまでの判定のまま
+  const a = seriesPointOf(rec(0, -30), null, 1000);
+  assert.equal(seriesPointOf(rec(1, -30), a, 1000).gap, false);
 });
 
 test('script.js: キャンバスの色をベタ書きしない（テーマ変数から取る）', () => {

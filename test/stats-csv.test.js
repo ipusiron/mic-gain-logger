@@ -72,7 +72,7 @@ function recomputeFromCsv(csvText) {
   }
   const leq = powerSum > 0 ? 10 * Math.log10(powerSum / values.length) : -Infinity;
   const fmt = (db) => (db === -Infinity ? '-∞ dBFS' : `${db.toFixed(1)} dBFS`);
-  // 真のピークは peak_dbfs 列（D列）の最大。無音の行も -Infinity として数える
+  // サンプルピークは peak_dbfs 列（D列）の最大。無音の行も -Infinity として数える
   const peaks = rows.map(r => r.peakDb).filter(v => v !== null);
   return {
     avg: values.length ? fmt(leq) : '--.- dBFS',
