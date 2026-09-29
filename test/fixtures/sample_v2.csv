@@ -1,0 +1,18 @@
+# format=mic-gain-logger/2
+# engine=worklet
+# started=2026-09-28T09:00:01.000Z
+# sampleRate=48000
+# device=MacBook Proのマイク
+# processing=off
+# weighting=Z
+# hash=sha-256-chain-16
+timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash
+2026-09-28T09:00:01.000Z,-42.13,1,-38.20,0,1.000,860bfa6a80c255e3
+2026-09-28T09:00:02.000Z,-41.87,2,-37.95,0,1.000,e83b3e62d534ac3e
+2026-09-28T09:00:03.000Z,-Infinity,3,-Infinity,0,1.000,f9703b8cced494c0
+2026-09-28T09:00:04.000Z,-40.02,4,-36.11,0,1.000,5d3651f6e732af66
+# rows=4
+# intervalSec=1@1
+# sessionStartAt=1
+# silence=-Infinity
+# trailerHash=2e628f69d3a57fbf

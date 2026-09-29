@@ -202,12 +202,12 @@ test('CSV のトレーラーに seq つきで出る（列は増えない）', ()
   });
   const lines = csv.split('\n');
   assert.ok(lines.includes('# intervalSec=1@0+3@2'), csv);
-  // 列は7列のまま
+  // ログ間隔は列にしない。列は CSV v3 の10列のまま（帯域の3列を足したのは第2弾b2）
   const headerRow = lines.find(l => l.startsWith('timestamp,'));
-  assert.equal(headerRow.split(',').length, 7, headerRow);
+  assert.equal(headerRow.split(',').length, 10, headerRow);
   for (const l of lines) {
     if (!l.length || l.startsWith('#') || l.startsWith('timestamp,')) continue;
-    assert.equal(l.split(',').length, 7, l);
+    assert.equal(l.split(',').length, 10, l);
   }
 });
 

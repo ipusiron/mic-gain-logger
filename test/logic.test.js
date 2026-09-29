@@ -111,8 +111,13 @@ test('統計: 平均はエネルギー平均（Leq）。算術平均ではない
   const stats = createStats();
   assert.equal(addStatsSample(stats, NaN), false);
   assert.equal(addStatsSample(stats, Infinity), false);
+  // 欠測の区間の dbfs（null）を 0 dBFS として取り込まない（第2弾b2）
+  assert.equal(addStatsSample(stats, null), false);
+  assert.equal(addStatsSample(stats, undefined), false);
   assert.deepEqual(stats, {
     powerSum: 0, weightSec: 0, n: 0, finiteN: 0, silentN: 0,
+    // 第2弾b2 で足した項目（音が1つも届かなかった区間の数）
+    missingN: 0,
     minDb: Infinity, maxDb: -Infinity,
     peakMaxDb: -Infinity, peakKnownN: 0,
     clipRows: 0, clipSamples: 0,
@@ -229,9 +234,10 @@ test('CSV: ヘッダーは timestamp,dbfs、値は小数2桁', () => {
   ];
   // ⚠ 行の位置で見ない。CSV はデータ行のあとにトレーラー行が付く
   const lines = buildCsv(logs).split('\n').filter(l => l.length && l.charAt(0) !== '#');
-  assert.equal(lines[0], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash');
-  assert.equal(lines[1], '2026-09-28T02:55:02.192Z,-20.00,,,,,');
-  assert.equal(lines[2], '2026-09-28T02:55:03.192Z,-20.00,,,,,');
+  assert.equal(lines[0], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,band_ultra_dbfs,band_audible_dbfs,band_valid_ratio,hash');
+  // 値の無い列は空欄（帯域の3列を足して10列。第2弾b2）
+  assert.equal(lines[1], '2026-09-28T02:55:02.192Z,-20.00,,,,,,,,');
+  assert.equal(lines[2], '2026-09-28T02:55:03.192Z,-20.00,,,,,,,,');
   assert.equal(lines.length, 3);
 });
 
@@ -239,9 +245,9 @@ test('CSV: 0件のときはヘッダー・列・トレーラーだけ（末尾�
   // トレーラーは0件でも出す。丸ごと落とされたときに気づけるようにするため
   assert.equal(
     buildCsv([]),
-    '# format=mic-gain-logger/2\n'
+    '# format=mic-gain-logger/3\n'
     + '# weighting=Z\n'
-    + 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash\n'
+    + 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,band_ultra_dbfs,band_audible_dbfs,band_valid_ratio,hash\n'
     + '# rows=0\n'
   );
 });

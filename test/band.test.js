@@ -4,7 +4,8 @@
 //
 // ワークレット（worklet/meter-processor.js）を node:vm の中で動かし、区間ごとに送る帯域の値
 // （帯域ごとの電力の和 bandPower・数えたフレーム数 bandFrames・数えるはずだったフレーム数 bandExpected）と、
-// logic.js の換算（帯域の dBFS・band_valid_ratio）を確かめる。CSV の列（b2）と画面（b3）はまだ無い。
+// logic.js の換算（帯域の dBFS・band_valid_ratio）を確かめる。画面（b3）はまだ無い。
+// CSV の列は第2弾b2で足した（列・ヘッダー・検証は test/csv-v3.test.js）。
 //
 // ここで固めること：
 //  - 帯域の定義は logic.js の BAND_DEFS にだけあり、FFT の長さとビンの割り当ても logic.js が決めて
@@ -823,7 +824,12 @@ test('⭐bands: false なら FFT を計算せず、帯域の値は null。既存
     const rb = buildIntervalRecord(b[i], ANCHOR, -90);
     assert.equal(rb.rawDb, ra.rawDb);
     assert.equal(rb.validRatio, ra.validRatio);
-    assert.deepEqual(csvDataFields(rb), csvDataFields(ra), `区間 ${i} の CSV の値`);
+    // 第1弾からの6列は同じで、帯域の3列（第2弾b2）だけが空欄になる
+    const fa = csvDataFields(ra);
+    const fb = csvDataFields(rb);
+    assert.deepEqual(fb.slice(0, 6), fa.slice(0, 6), `区間 ${i} の CSV の値`);
+    assert.deepEqual(fb.slice(6), ['', '', ''], `区間 ${i} の帯域の列が空欄でない`);
+    assert.ok(fa.slice(6).every(v => v !== ''), `区間 ${i} の帯域の列（比べる側）が空欄`);
     assert.deepEqual(rb.bandDb, { ultra: null, audible: null });
     assert.equal(rb.bandValidRatio, null);
   }
@@ -952,13 +958,20 @@ test('簡易モードの行は、帯域をすべて null にする（測れな�
   assert.equal(fb.bandValidRatio, null);
 });
 
-test('帯域の値は CSV の値（とハッシュの材料）をまだ変えない（列を足すのは b2）', () => {
+test('帯域の値は hash の左の3列に入り（第2弾b2）、第1弾からの6列は変えない', () => {
+  // b1 では「CSV の値を変えない」を縛っていた。b2 で列を足したので、足したところだけが変わることを縛る
   const base = bandMessage({});
   const withBand = bandMessage({ bandPower: [0.01, 0.2], bandFrames: 187, bandExpected: 188 });
-  assert.deepEqual(
-    csvDataFields(buildIntervalRecord(withBand, ANCHOR, -90)),
-    csvDataFields(buildIntervalRecord(base, ANCHOR, -90))
-  );
+  const a = csvDataFields(buildIntervalRecord(withBand, ANCHOR, -90));
+  const b = csvDataFields(buildIntervalRecord(base, ANCHOR, -90));
+  assert.deepEqual(a.slice(0, 6), b.slice(0, 6));
+  // 期待値は電力の和 ÷ フレーム数から素朴に出す（小数2桁・3桁は dbfs・valid_ratio と同じ書式）
+  assert.deepEqual(a.slice(6), [
+    (10 * Math.log10(0.01 / 187)).toFixed(2),
+    (10 * Math.log10(0.2 / 187)).toFixed(2),
+    (187 / 188).toFixed(3)
+  ]);
+  assert.deepEqual(b.slice(6), ['', '', ''], '帯域の値が届いていないのに列が埋まっている');
 });
 
 test('?bands=off の判定：off（大文字小文字を問わない）だけが帯域を止め、それ以外は計算する', () => {

@@ -99,11 +99,23 @@ test('区間レコード: 欠測すると有効サンプル率が下がる', () 
   assert.ok(Math.abs(rec.rawDb + 20) < 1e-9);
 });
 
-test('区間レコード: 1サンプルも届かなければ -Infinity', () => {
-  const rec = buildIntervalRecord(message({ count: 0, sumSq: 0, peak: 0 }), ANCHOR, -60);
-  assert.equal(rec.rawDb, -Infinity);
-  assert.equal(rec.peakDb, -Infinity);
+test('区間レコード: 1サンプルも届かなければ欠測（dbfs・ピーク・クリップは null）で、無音（-Infinity）と分ける', () => {
+  // ⚠ 第2弾b1 まで（公開した版では第2弾a まで）は -Infinity にしていた。デジタル無音と同じ値なので、CSV の上で
+  //    「音が無かった」と「記録していなかった」を区別できなかった（第2弾a の公開前の点検の W#4）
+  const rec = buildIntervalRecord(message({ count: 0, sumSq: 0, peak: 0, clip: 0 }), ANCHOR, -60);
+  assert.equal(rec.missing, true);
+  assert.equal(rec.rawDb, null);
+  assert.equal(rec.db, null);
+  assert.equal(rec.peakDb, null);
+  assert.equal(rec.clipCount, null);
+  assert.equal(rec.silent, false);
   assert.equal(rec.validRatio, 0);
+  // デジタル無音（届いたが振幅が0）は、これまでどおり -Infinity
+  const silent = buildIntervalRecord(message({ sumSq: 0, peak: 0 }), ANCHOR, -60);
+  assert.equal(silent.missing, false);
+  assert.equal(silent.rawDb, -Infinity);
+  assert.equal(silent.peakDb, -Infinity);
+  assert.equal(silent.silent, true);
 });
 
 test('区間レコード: 表示下限は db だけを切り、rawDb は残す（段階2で表示専用へ）', () => {
@@ -151,8 +163,8 @@ test('CSV: 列は増えない。モードだけ先頭の1行に残る', () => {
   // ⚠ 行の位置で見ない。CSV はヘッダー行のあとにトレーラー行が付くので、
   //    末尾からの数え方は壊れる（2026-09-29 に壊れた）
   const plain = buildCsv(logs).split('\n').filter(l => l.length && l.charAt(0) !== '#');
-  assert.equal(plain[0], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash');
-  assert.equal(plain[1], '2026-09-28T02:55:02.000Z,-20.00,,,,,');
+  assert.equal(plain[0], 'timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,band_ultra_dbfs,band_audible_dbfs,band_valid_ratio,hash');
+  assert.equal(plain[1], '2026-09-28T02:55:02.000Z,-20.00,,,,,,,,');
   assert.equal(plain.length, 2, '列のヘッダーと1行だけのはず');
 
   const worklet = buildCsv(logs, { engine: ENGINE_WORKLET });

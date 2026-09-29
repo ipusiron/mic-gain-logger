@@ -105,6 +105,11 @@ const MicGainLogic = (() => {
   //   最大・最小・変動幅 ＝ 有限値の行だけ。無音を入れると最小が -∞ になり、
   //                        変動幅が意味を失うため
   //
+  // ⚠ 音が1つも届かなかった区間（count=0。CSV の dbfs は空欄）は、平均・最大・最小に入れない（第2弾b2）。
+  //    改修前はこの区間の dbfs を -Infinity（デジタル無音）として書き、Leq にも電力0として入れていた。
+  //    測っていない時間を無音として数えると Leq が下がり、「音が無かった」と「記録していなかった」も
+  //    区別できない。区間の数（missingN）と有効サンプル率（0）には数えるので、記録の穴としては画面に出る。
+  //
   // サンプルピーク・クリップ数・有効サンプル率は、段階1から区間レコードに入って
   // いたのに CSV にしか出ていなかった。どれも記録の信用に直結するので画面へ出す。
   // ピークは統計の項目、クリップと欠測は注意書き（statsWarnings）へ回す。
@@ -126,6 +131,7 @@ const MicGainLogic = (() => {
       n: 0,
       finiteN: 0,
       silentN: 0,
+      missingN: 0,          // 音が1つも届かなかった区間の数（n に入れない。第2弾b2）
       minDb: Infinity,
       maxDb: -Infinity,
       peakMaxDb: -Infinity, // 区間のサンプルピークの最大（RMS とは別物）
@@ -156,7 +162,8 @@ const MicGainLogic = (() => {
   // 1区間ぶんを取り込む。取り込んだら true（数値にならないものだけ false）。
   // durationSec は区間長（秒）。省略すると重み1（等重み）になる
   function addStatsSample(stats, db, durationSec) {
-    if (Number.isNaN(db)) return false;
+    // ⚠ null（欠測の区間の dbfs）を数値として通さない。10^(null/10) は 1＝0 dBFS として入ってしまう
+    if (typeof db !== 'number' || Number.isNaN(db)) return false;
     if (db === Infinity) return false;
     const w = statsWeightOf(durationSec);
     stats.powerSum += dbToPower(db) * w;
@@ -176,7 +183,13 @@ const MicGainLogic = (() => {
   // 重み（区間長）と、CSV にしか出ていなかった3値をまとめてここで拾う
   function addStatsRecord(stats, rec) {
     if (!rec) return false;
-    if (!addStatsSample(stats, rec.rawDb, recordDurationSec(rec))) return false;
+    if (rec.missing === true) {
+      // 音が1つも届かなかった区間（第2弾b2）。平均・最大・最小には入れず、区間の数と有効サンプル率だけ数える。
+      // ピーク・クリップは null なので、下の判定を通っても数えられない
+      stats.missingN += 1;
+    } else if (!addStatsSample(stats, rec.rawDb, recordDurationSec(rec))) {
+      return false;
+    }
     // 無音の区間もピークは分かっている（振幅0＝-∞ dBFS）。
     // 簡易モードは瞬時値しか無いので null が来る＝「不明」
     if (typeof rec.peakDb === 'number' && !Number.isNaN(rec.peakDb)) {
@@ -278,10 +291,14 @@ const MicGainLogic = (() => {
     }
     if (stats.lowValidRows > 0) {
       const pct = (stats.minValidRatio * 100).toFixed(1);
+      // 音が1つも届かなかった区間は、無音と取り違えないように別に言う（第2弾b2）
+      const missing = stats.missingN > 0
+        ? `。うち${stats.missingN}区間は音が1つも届かず、CSVの dbfs を空欄にしています（無音とは別で、平均には入れません）`
+        : '';
       out.push({
         short: `有効サンプル率 最小${pct}%`,
         full: `有効サンプル率が1.0を下回った区間が${stats.lowValidRows}件あります（最小 ${pct}%）。`
-          + 'その区間は音の一部が届いていません（CSVの valid_ratio 列に残ります）'
+          + 'その区間は音の一部が届いていません（CSVの valid_ratio 列に残ります）' + missing
       });
     }
     return out;
@@ -308,14 +325,16 @@ const MicGainLogic = (() => {
   // level = 'none'（記録がまだ無い）/ 'ok'（穴なし）/ 'warn'（穴あり）
   //       / 'unknown'（簡易モードの行だけで、測れていない）
   function statsIntegrity(stats) {
-    if (!stats || !stats.n) return { level: 'none', text: '' };
+    // 区間の数には、音が1つも届かなかった区間（平均に入れない。第2弾b2）も入れる
+    const total = stats ? stats.n + (stats.missingN || 0) : 0;
+    if (!total) return { level: 'none', text: '' };
     const known = stats.validKnownN;
-    const unknown = stats.n - known;
+    const unknown = total - known;
     // 簡易モードの行は、クリップ数も有効サンプル率も測れない（瞬時値しか無い）
     if (known === 0) {
       return {
         level: 'unknown',
-        text: `記録の穴は確かめられません（簡易モードの${stats.n}区間だけなので、`
+        text: `記録の穴は確かめられません（簡易モードの${total}区間だけなので、`
           + 'クリップ数も有効サンプル率も測れません）'
       };
     }
@@ -619,7 +638,9 @@ const MicGainLogic = (() => {
   // ワークレットから届いた電力の和を dBFS へ換算する。
   // ⚠ 帯域の値は「その帯域に音のエネルギーがあったか」の記録である。何が鳴っていたかは分からず、
   //    超音波ビーコンの検出でもない。値は dBFS と同じく、端末（マイクと変換器）に依存する相対値である。
-  // CSV の列（第2弾b2）と画面（第2弾b3）はまだ変えない。統計とハッシュチェーンにも入れない。
+  // CSV には hash の左の3列（band_ultra_dbfs・band_audible_dbfs・band_valid_ratio）として出し、
+  // ハッシュの材料にも入る（第2弾b2）。帯域の定義はヘッダーの `# bands=` に出す（bandsLabel）。
+  // 画面（第2弾b3）と統計にはまだ入れない。
 
   // 帯域の定義。範囲は lo 以上 hi 未満（Hz）。可聴帯は、超音波帯の値の高い低いを読むための対比として並べる。
   // ワークレットには bandPlan を通して渡し、同じ値を二重に書かない
@@ -657,6 +678,13 @@ const MicGainLogic = (() => {
       }
     }
     return { binLo, binHi };
+  }
+
+  // ヘッダーの `# bands=` に出す帯域の定義。BAND_DEFS の順（＝CSV の列の順）に `lo-hi` をコンマでつなぐ
+  // （例 `18000-22000,20-18000`）。範囲は lo 以上 hi 未満（Hz）で、実際の感度ではない（可聴帯の実際の下端は約50Hz。
+  // README の「帯域の列」を参照）
+  function bandsLabel(defs) {
+    return (defs || BAND_DEFS).map(d => `${d.lo}-${d.hi}`).join(',');
   }
 
   // ワークレットへ渡す帯域の計画（processorOptions.bandPlan）。
@@ -718,8 +746,12 @@ const MicGainLogic = (() => {
     const sr = msg.sampleRate;
     const startTime = msg.startFrame / sr;
     const endTime = msg.endFrame / sr;
-    const rms = msg.count > 0 ? Math.sqrt(msg.sumSq / msg.count) : 0;
-    const rawDb = rmsToDbfs(rms);
+    // ⚠ 音が1つも届かなかった区間（count=0）は欠測である。dbfs・peak_dbfs・clip を null（CSV では空欄）にする
+    //    （第2弾b2）。改修前は rms=0 として -Infinity（デジタル無音）と同じ値を書いていたので、
+    //    「音が無かった」と「記録していなかった」を CSV の上で区別できなかった。
+    //    デジタル無音（count>0 で sumSq=0）は、これまでどおり -Infinity で残す
+    const missing = !(msg.count > 0);
+    const rawDb = missing ? null : rmsToDbfs(Math.sqrt(msg.sumSq / msg.count));
     const startWall = new Date(audioTimeToWallMs(startTime, anchor));
     const endWall = new Date(audioTimeToWallMs(endTime, anchor));
     const brk = (extra && extra.clockBreak) || null;
@@ -738,21 +770,23 @@ const MicGainLogic = (() => {
       startWall,
       endWall,
       ts: endWall,                       // CSV の timestamp 列（区間の終わり）
-      rawDb,                             // 区間のエネルギー平均（生値）
-      db: clipForDisplay(rawDb, floorDb),
+      rawDb,                             // 区間のエネルギー平均（生値）。欠測なら null
+      db: missing ? null : clipForDisplay(rawDb, floorDb),
       silent: rawDb === -Infinity,       // デジタル無音（振幅が完全に0の区間）
+      missing,                           // 音が1つも届かなかった区間（統計の平均に入れない。第2弾b2）
       peak: msg.peak,
-      peakDb: rmsToDbfs(msg.peak),
-      clipCount: msg.clip,
-      // クリップが続いた最長のサンプル数（単発と連続の区別）。CSV の列は増やさない
-      clipRunMax: Number.isFinite(msg.clipRun) ? msg.clipRun : null,
+      peakDb: missing ? null : rmsToDbfs(msg.peak),
+      clipCount: missing ? null : msg.clip,
+      // クリップが続いた最長のサンプル数（単発と連続の区別）。CSV の列にはしない
+      clipRunMax: (!missing && Number.isFinite(msg.clipRun)) ? msg.clipRun : null,
       sampleCount: msg.count,
       expectedSamples: msg.expected,
       validRatio: validRatioOf(msg.count, msg.expected),
       // その区間を実際に測ったときのログ間隔（画面の設定値ではない）。
       // CSV の列は増やさない。トレーラーで「どの seq からどの間隔か」を示す
       intervalSec: intervalSecOfFrames(msg.endFrame - msg.startFrame, sr),
-      // 帯域（第2弾b1）。CSV の列（b2）・画面（b3）・統計・ハッシュにはまだ入れない
+      // 帯域（第2弾b1）。CSV の列とハッシュの材料には第2弾b2で入れた。画面（b3）・統計にはまだ入れない。
+      // ⚠ 欠測の区間でも空欄にしない。前の区間の終わりで数えたフレームが入ることがある（README の「帯域の列」）
       bandDb: band.bandDb,
       bandFrames: band.bandFrames,
       bandExpected: band.bandExpected,
@@ -787,6 +821,8 @@ const MicGainLogic = (() => {
       rawDb,
       db: clipForDisplay(rawDb, opts.floorDb),
       silent: rawDb === -Infinity,
+      // 簡易モードはサンプル数を数えられないので、欠測かどうかも分からない（validRatio と同じく「不明」）
+      missing: false,
       peak: null,
       peakDb: null,
       clipCount: null,
@@ -817,7 +853,7 @@ const MicGainLogic = (() => {
   // 実際に無効になったかは track.getSettings() の実値でしか分からない。
   // AGC が効いていると入力の利得が勝手に動くので、dBFS の値そのものが
   // 測定値として信用できなくなる。
-  // CSV の列は増やさない（列の確定は段階4の CSV v2）。内部のレコードから
+  // CSV の列にはしない（セッションの条件はヘッダーのメタ行に出す）。内部のレコードから
   // 参照できる形で1セッション分を1つだけ持ち、行ごとに複製しない。
 
   // 主要3項目。報告が無ければ「不明」として扱う。
@@ -871,8 +907,42 @@ const MicGainLogic = (() => {
       requested: Object.freeze(Object.assign({}, src.requested)),
       settings: Object.freeze(Object.assign({}, s)),
       userAgent: src.userAgent || null,
-      timeZone: src.timeZone || null
+      timeZone: src.timeZone || null,
+      // 帯域を計算するか（?bands=off なら false。第2弾b2でヘッダーの `# bands=` に出す）。
+      // 渡されなければ null（分からない）で、ヘッダーに `# bands=` を出さない
+      bandsEnabled: typeof src.bandsEnabled === 'boolean' ? src.bandsEnabled : null
     });
+  }
+
+  // ---- getSettings() の生の値（第2弾b2）----
+  //
+  // `# processing=` は off／active／unknown の解釈である。解釈だけでは、ブラウザーが実際に何を返したかを
+  // あとから読めない（Safari は echoCancellation しか返さない作り）。ヘッダーに生の値を別の行で残し、
+  // 解釈と生の値を分けて持つ。載せるのは音の加工とサンプルレートに関わる項目だけで、この順に並べる。
+  // ⚠⚠ deviceId・groupId は決して入れない。端末を特定できる値である（一覧に無い項目は出さない作りにしてある）
+  const SETTINGS_RAW_KEYS = Object.freeze([
+    'echoCancellation', 'autoGainControl', 'noiseSuppression', 'sampleRate', 'channelCount'
+  ]);
+  const SETTING_UNREPORTED = 'unreported';
+
+  // 1項目の値を文字列へ。報告しない項目（undefined・null）は unreported。
+  // 真偽値と有限の数はそのまま、文字列（echoCancellation の "remote-only" など）は英数字と . _ - だけに寄せる。
+  // `;` `:` `=` や改行を持ち込むと1行1項目の形が崩れるためである。読めない値（NaN・オブジェクトなど）も unreported にする
+  function settingRawValue(v) {
+    if (typeof v === 'boolean') return v ? 'true' : 'false';
+    if (typeof v === 'number') return Number.isFinite(v) ? String(v) : SETTING_UNREPORTED;
+    if (typeof v === 'string') {
+      const s = v.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 32);
+      return s || SETTING_UNREPORTED;
+    }
+    return SETTING_UNREPORTED;
+  }
+
+  // `# settingsRaw=` の値（例 `echoCancellation:false;autoGainControl:unreported;…;channelCount:1`）。
+  // settings は getSettings() の戻り値（セッションのメタの settings）。無ければ null（行を出さない）
+  function settingsRawLabel(settings) {
+    if (!settings || typeof settings !== 'object') return null;
+    return SETTINGS_RAW_KEYS.map(k => `${k}:${settingRawValue(settings[k])}`).join(';');
   }
 
   // 測定値をそのまま信用してよいか
@@ -914,19 +984,41 @@ const MicGainLogic = (() => {
   // ⚠ 記録を始めた瞬間に確定する事実だけを入れる。ログ間隔・無音の有無・中断の回数は
   //    記録中に変わるので、ここには入れない（トレーラーへ出す）。
   // 画面の側（script.js）から切り出した。テストから振る舞いを確かめられるようにするため
+  //
+  // 第2弾b2で足した4項目も、すべて記録を始めた時点で決まる値である。
+  //   nyquistHz    AudioContext のサンプルレートの半分（帯域を計算できる上限）。44.1kHz では 22,050Hz で、
+  //                超音波帯の上端（22kHz）がそのすぐ下になるので、読み手が確かめられるように出す。
+  //                ⚠ 実際に届く音の上限とは限らない。マイクの音声トラックの sampleRate（settingsRaw）が
+  //                これより低いと、実際に届く上限はその半分になる（Chromium の疑似マイクで、音声トラック
+  //                44.1kHz・AudioContext 48kHz のとき 21kHz のトーンが約34dB下がり、23kHz は残らなかった）
+  //   settingsRaw  getSettings() の生の値（settingsRawLabel）。processing（解釈）とは別に持つ
+  //   bands        帯域の定義（bandsLabel）。?bands=off なら 'off'。分からなければ出さない
+  //   fftSize      FFT の長さ。帯域を計算するとき（高精度モードで ?bands=off でない）だけ出す。
+  //                ワークレットへ渡す計画と同じ bandPlan から取る（同じ値を二重に持たない）
   function chainHeaderMeta(input) {
     const src = input || {};
     const m = src.sessionMeta || {};
     const rec = src.firstRec || {};
+    const engine = rec.engine || src.engineMode || null;
+    const sampleRate = m.contextSampleRate || null;
+    const bandsOn = m.bandsEnabled === true;
+    const plan = (bandsOn && engine === ENGINE_WORKLET && sampleRate) ? bandPlan(sampleRate) : null;
+    let bands = null;
+    if (m.bandsEnabled === false) bands = 'off';
+    else if (bandsOn) bands = bandsLabel(BAND_DEFS);
     return {
-      engine: rec.engine || src.engineMode || null,
+      engine,
       // アンカーは中断のたびに取り直すので、記録開始の時刻には使えない。
       // 1行目の区間の時刻をそのまま載せる
       started: rec.ts instanceof Date ? rec.ts.toISOString() : null,
-      sampleRate: m.contextSampleRate || null,
+      sampleRate,
+      nyquistHz: sampleRate ? sampleRate / 2 : null,
       device: m.deviceLabel || null,
       // 報告しない項目があれば unknown と書く（改修前は「有効が無ければ off」と決め打ちしていた）
       processing: processingLabel(src.sessionMeta || null),
+      settingsRaw: src.sessionMeta ? settingsRawLabel(m.settings || {}) : null,
+      bands,
+      fftSize: plan ? plan.fftSize : null,
       hashAlgo: src.hashAlgo || null
     };
   }
@@ -1091,8 +1183,10 @@ const MicGainLogic = (() => {
   }
 
   // ---- CSV ----
-  // 列は 7列（CSV_COLUMNS）で確定。⚠ 列は増やさない。
+  // 列は10列（CSV_COLUMNS。CSV v3）。⚠ 列はむやみに増やさない。
   // 行ごとに残したい印は、回数と位置をヘッダーかトレーラーの行で示す。
+  // 列を足すのは `# format=` の版を上げるときだけである（v3 で帯域の3列を hash の左に足した。第2弾b2）。
+  // 足すときは README（列の表・見本・検証器とその実測表・Excel の手順）とテストをまとめて直す。
 
   // dBFS を1セルへ。無音は数値へ丸めず -Infinity と書く。
   // 数値に見える値を書かないので、集計側が無音を測定値として取り込むことがない。
@@ -1118,7 +1212,7 @@ const MicGainLogic = (() => {
   // 改修前は表示下限でクリップした値を記録していたため、記録中に表示の設定を
   // 変えるとログデータ自体が変質していた。表示下限は表示のための設定なので、
   // 記録には触らせない（db は表示用、rawDb は記録用と役割を分ける）。
-  // CSV v2。
+  // CSV v3（第2弾b2）。
   //
   // A列 timestamp・B列 dbfs は動かさない。README が案内している Excel の手順
   // （=AVERAGE(B:B) など）が A列=時刻・B列=音量を前提にしているためで、
@@ -1126,13 +1220,21 @@ const MicGainLogic = (() => {
   //
   // seq は区間の通し番号である。欠番があれば行が抜けたと分かるので、
   // ハッシュチェーンとは別の手がかりになる。
-  const CSV_COLUMNS = ['timestamp', 'dbfs', 'seq', 'peak_dbfs', 'clip', 'valid_ratio', 'hash'];
+  //
+  // 帯域の3列（第2弾b2）は hash の左に挿す。ハッシュの材料は「hash 列より左のフィールド」のままなので、
+  // 帯域の値も鎖で守られる。帯域の2列の並びは BAND_DEFS の順（`# bands=` の並びと同じ）である。
+  // v2（7列）の CSV は hash が7列目、v3 は10列目になる。README の検証器は列のヘッダー行から hash の位置を読む
+  const CSV_COLUMNS = [
+    'timestamp', 'dbfs', 'seq', 'peak_dbfs', 'clip', 'valid_ratio',
+    'band_ultra_dbfs', 'band_audible_dbfs', 'band_valid_ratio',
+    'hash'
+  ];
 
   // ハッシュチェーン。
   //
   // ⚠⚠ これは「改変を検出する」ものではない。分かれ目は「本人か第三者か」
   // ではなく「ハッシュを再計算するかどうか」である。鎖の作り方は README で
-  // 公開しているので、値を書き換えたあとに計算し直せば検証は通る。実測では
+  // 公開しているので、値を書き換えたあとに計算し直せば検証は通る。第1弾の実測では
   // 39行のスクリプトで、行の削除・入れ替え・書き換え・末尾の切り落とし・
   // 無音行の一括削除・デバイス名の差し替えが、すべて通ってしまった。
   // したがって、意図的な改変には相手が誰であっても耐えない。
@@ -1168,7 +1270,13 @@ const MicGainLogic = (() => {
   }
 
   // 1行ぶんのフィールド（ハッシュ列は除く）。ハッシュはこの並びから計算する。
+  //
+  // ⚠ 音が1つも届かなかった区間（count=0）は、dbfs・peak_dbfs・clip が空欄になる（レコードの値が null。
+  //    第2弾b2）。valid_ratio は 0.000 のまま出す。デジタル無音（-Infinity）とは別の書き方である。
+  // 帯域の3列（第2弾b2）は dbfs・valid_ratio と同じ書式で、値が無ければ空欄にする
+  // （簡易モードの行・?bands=off・数えたフレームが0・その帯域にビンが無い・数えるはずのフレームが0）
   function csvDataFields(r) {
+    const band = r.bandDb || {};
     return [
       r.ts.toISOString(),
       formatOptionalDb(r.rawDb),
@@ -1176,7 +1284,10 @@ const MicGainLogic = (() => {
       formatOptionalDb(r.peakDb),
       Number.isFinite(r.clipCount) ? String(r.clipCount) : '',
       formatRatio(r.validRatio)
-    ];
+    ].concat(
+      BAND_DEFS.map(d => formatOptionalDb(band[d.key])),
+      [formatRatio(r.bandValidRatio)]
+    );
   }
 
   // 1行1項目。改行は値に入れない（入れると行が割れる）。
@@ -1193,17 +1304,25 @@ const MicGainLogic = (() => {
   // 記録が終わってから分かる事実を混ぜると、起点があとから動く。
   // とくに intervalSec は記録中に変えられるので、ここには絶対に入れない
   // （トレーラーへ出す）。
+  // 第2弾b2で足した nyquistHz・settingsRaw・bands・fftSize も、記録を始めた時点で決まる値である
+  // （組み立ては chainHeaderMeta）。帯域の欠測のように記録中に増える値は、入れるならトレーラーへ出す。
   function csvHeaderLines(meta) {
     const m = meta || {};
     const out = [];
     const put = (k, v) => { const line = metaLine(k, v); if (line) out.push(line); };
-    put('format', 'mic-gain-logger/2');
+    put('format', 'mic-gain-logger/3');
     put('engine', m.engine);
     put('started', m.started);
     put('sampleRate', m.sampleRate);
+    put('nyquistHz', m.nyquistHz);
     put('device', m.device);
     put('processing', m.processing);
-    put('weighting', 'Z');   // 周波数重み付けは入れていない（A特性は次の弾）
+    put('settingsRaw', m.settingsRaw);
+    // 周波数の重み付けはしない。A特性・C特性は README の「将来案に入れないもの」にある
+    // （重み付けをしても dBFS は dB SPL にならず、規制値・基準値と比べられるものだと誤読されるため）
+    put('weighting', 'Z');
+    put('bands', m.bands);
+    put('fftSize', m.fftSize);
     put('hash', m.hashAlgo);
     return out;
   }
@@ -1304,9 +1423,9 @@ const MicGainLogic = (() => {
 
   // AudioContext の中断（時刻の跳び）をトレーラー行へ出す。
   //
-  // ⚠ 列は増やさない。clockStatus / clockBreakKind / clockJumpMs はレコードには
-  // 載っているが、CSV の列は段階4で 7列に確定させた。列を足すと README・テスト・
-  // Excel の手順まで波が及ぶので、回数と位置だけを行で示す。
+  // ⚠ 列にはしない。clockStatus / clockBreakKind / clockJumpMs はレコードには
+  // 載っているが、CSV の列には入れていない（段階4で確定した列に、v3 で帯域の3列だけを足した）。
+  // 列を足すと README・テスト・Excel の手順まで波が及ぶので、回数と位置だけを行で示す。
   //
   // これが無いあいだ、画面は「該当区間に印を付けた」と言うのに CSV には何も出ていなかった。
   // clockBreakAt は印が付いた区間の seq で、その行の直前でアンカーを取り直している。
@@ -1553,6 +1672,9 @@ const MicGainLogic = (() => {
     PROCESSING_ACTIVE,
     PROCESSING_UNKNOWN,
     buildSessionMeta,
+    SETTINGS_RAW_KEYS,
+    SETTING_UNREPORTED,
+    settingsRawLabel,
     processingVerdict,
     processingLabel,
     chainHeaderMeta,
@@ -1574,6 +1696,7 @@ const MicGainLogic = (() => {
     fftSizeForRate,
     bandBins,
     bandPlan,
+    bandsLabel,
     bandsEnabledFromQuery,
     formatCsvDb,
     buildCsv,

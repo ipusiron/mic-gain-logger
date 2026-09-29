@@ -489,7 +489,10 @@
       requested: AUDIO_CONSTRAINTS,
       settings,
       userAgent: navigator.userAgent || null,
-      timeZone
+      timeZone,
+      // 帯域を計算するか（CSV のヘッダーの `# bands=` に出す。第2弾b2）。
+      // ワークレットへ渡す processorOptions.bands と同じ判定を通す
+      bandsEnabled: bandsEnabledFromQuery(window.location.search)
     });
   }
 
@@ -726,7 +729,7 @@
 
     // ⚠ キャッシュ用の版番号を index.html とそろえる。付けないと、公開直後に
     //    古いワークレットと新しい logic.js が組み合わさることがある
-    await audioCtx.audioWorklet.addModule('./worklet/meter-processor.js?v=3.5');
+    await audioCtx.audioWorklet.addModule('./worklet/meter-processor.js?v=3.6');
     workletNode = new AudioWorkletNode(audioCtx, 'meter-processor', {
       numberOfInputs: 1,
       numberOfOutputs: 1,
@@ -739,7 +742,7 @@
         // 帯域の集計（第2弾b1）。FFT の長さとビンの割り当ては logic.js の bandPlan が決める。
         // ワークレットは logic.js を読めないので、同じ値を向こうに書かずにここで渡す。
         // ?bands=off なら帯域を計算しない（実機で帯域あり・なしの valid_ratio を比べるため）。
-        // CSV と画面への反映は b2・b3
+        // CSV では帯域の3列が空欄になり、ヘッダーが `# bands=off` になる（第2弾b2）。画面への反映は b3
         bands: bandsEnabledFromQuery(window.location.search),
         bandPlan: bandPlan(audioCtx.sampleRate)
       }
