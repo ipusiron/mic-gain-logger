@@ -34,6 +34,11 @@
 //    ただし、いつまでも音が来ない（マイクが最初から届かない）と1行も出ず、
 //    「記録していない」ことすら残らない。猶予を過ぎたら最初の process() を起点にし、
 //    届かなかったぶんを欠測（count=0）として残す。
+// ⚠ 公開前の点検で、言い切りすぎを直した（第2弾a7）。この修正が塞ぐのは「入力が空で
+//    届く」場合である。ヘッドレスの Chromium＋疑似マイクでは、旧版が8回中3回この穴を
+//    出し、改修版は16回中0回だった。一方、process() そのものが呼ばれずクロックだけ
+//    進んだ場合は、本当に音が届いていないので従来どおり欠測として残す（塞がない）。
+//    iPhone の 74.9% がどちらだったかは分かっていない。改修後の版で実機のCSVを採って確かめる
 
 'use strict';
 
@@ -59,6 +64,11 @@ class MeterProcessor extends AudioWorkletProcessor {
     this.startFrame = null;
     // 最初に process() が呼ばれたフレーム（猶予を数える起点）
     this.firstProcessFrame = null;
+    // いま続いているクリップの長さ。区間の境目では切らない（区間をまたぐ連続を
+    // 2つに分けると、4サンプルの連続が「単発」と出る）
+    this.clipRunCur = 0;
+    // 次に来るはずのフレーム。クォンタムが落ちてサンプルが飛んだら、クリップの連続を切る
+    this.nextFrame = null;
     this.resetAccumulator();
 
     this.port.onmessage = (event) => {
@@ -81,10 +91,10 @@ class MeterProcessor extends AudioWorkletProcessor {
     this.count = 0;
     this.peak = 0;
     this.clip = 0;
-    // クリップが続いた最長のサンプル数（単発と連続を言い分けるため）。
-    // ブロックの境目をまたいで数え、入力が途切れたら切る
+    // この区間でクリップが続いた最長のサンプル数（単発と連続を言い分けるため）。
+    // ブロックの境目と区間の境目をまたいで数え（clipRunCur は持ち越す）、
+    // 入力が途切れたとき・サンプルが飛んだときに切る
     this.clipRunMax = 0;
-    this.clipRunCur = 0;
   }
 
   emitInterval(endFrame) {
@@ -132,6 +142,9 @@ class MeterProcessor extends AudioWorkletProcessor {
     }
     // 入力が途切れている間もオーディオクロックは進むので、ブロック長は既定の128で数える
     const blockLength = channel ? channel.length : 128;
+    // クォンタムが落ちて（process() が呼ばれず）サンプルが飛んだら、クリップの連続を切る
+    if (this.nextFrame !== null && currentFrame !== this.nextFrame) this.clipRunCur = 0;
+    this.nextFrame = currentFrame + blockLength;
 
     let offset = 0;
     while (offset < blockLength) {

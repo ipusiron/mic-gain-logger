@@ -264,7 +264,7 @@ function emptyTick(h, kind) {
   h.state.frame += QUANTUM;
 }
 
-test('⭐記録の頭で入力が空のあいだは区間を始めない（実機の 74.9% の再現）', () => {
+test('⭐記録の頭で入力が空のあいだは区間を始めない（実機の 74.9% と同じ数を、入力が空で届く仕組みで再現する）', () => {
   // 改修前はこの状況で1行目が 35968/48000 になった
   assert.equal(((SAMPLE_RATE - 94 * QUANTUM) / SAMPLE_RATE).toFixed(3), '0.749');
 
@@ -368,4 +368,41 @@ test('クリップが無ければ clipRun は 0', () => {
   const h = createHarness(1280);
   for (let q = 0; q < 11; q++) h.tick(sine(0.1));
   assert.equal(h.intervals()[0].clipRun, 0);
+});
+
+
+// ---- 公開前の点検で見つかったクリップの連続の数え方（第2弾a7）----
+
+test('区間の境目をまたぐクリップの連続も、1つの連続として数える', () => {
+  // ⚠ 点検で見つかった。区間ごとに連続の長さを0へ戻していたので、境目をまたぐ
+  //    4サンプルの連続が2＋2に分かれ、注意書きが「いずれも単発」と出た
+  const h = createHarness(1280);
+  let n = 0;
+  for (let q = 0; q < 21; q++) {
+    h.tick(() => {
+      n++;
+      // 1区間目の最後の2サンプルと、2区間目の最初の2サンプル（n は 1 から数える）
+      if (n >= 1279 && n <= 1282) return 1.0;
+      return 0.01;
+    });
+  }
+  const iv = h.intervals();
+  assert.equal(iv[0].clip + iv[1].clip, 4);
+  // 連続は後ろの区間でまとめて数える（統計は全行の最大を取るので、注意書きは正しくなる）
+  assert.equal(Math.max(iv[0].clipRun, iv[1].clipRun), 4);
+});
+
+test('クォンタムが落ちてサンプルが飛んだら、クリップの連続を切る', () => {
+  // ⚠ 点検で見つかった。process() が呼ばれず currentFrame だけ進んだとき、
+  //    飛ぶ前後のクリップを1つの連続として数えていた
+  const h = createHarness(1280);
+  let n = 0;
+  h.tick(() => { n++; return n >= QUANTUM - 1 ? 1.0 : 0.01; });   // 最後の2サンプル
+  h.tick(() => 0.01, true);                                        // 1クォンタム落ちる
+  let m = 0;
+  h.tick(() => { m++; return m <= 2 ? 1.0 : 0.01; });             // 最初の2サンプル
+  for (let q = 0; q < 8; q++) h.tick(() => 0.01);
+  const iv = h.intervals()[0];
+  assert.equal(iv.clip, 4);
+  assert.equal(iv.clipRun, 2, 'サンプルが飛んだのに連続として数えている');
 });
