@@ -22,28 +22,41 @@
 //    （test/meter-processor.test.js）。欠測ではなく、まだ音が流れていない時間を
 //    区間に数えていたことによる見せかけの穴である。
 //
-// ⚠ ヘッドレスの Chrome ではこの穴を再現できない（疑似マイクで実測したところ、
-//    起点をコンストラクターに置いたままでも 1 行目から valid_ratio=1 だった）。
-//    出力デバイスが無いあいだ currentFrame が進まないためで、実機とは条件が違う。
+// ⚠ 第1弾では「ヘッドレスの Chrome ではこの穴を再現できない（出力デバイスが無いあいだ
+//    currentFrame が進まない）」と書いたが、誤りだった（第2弾a8の調べ）。ヘッドレスでも
+//    currentFrame は進む。再現しなかったのは、手元のサーバーから読み込んでいて
+//    ワークレットの読み込みに遅れが無かったためである。0.979 も a8 の仕組みで説明がつく
+//    （確かめてはいない）。
 
-// ⚠⚠ 起点はさらに「入力に音が載った最初の process()」まで待つ（第2弾a3）。
-//    iPhone の実機で、記録開始直後の区間の有効サンプル率が 74.9% になった。
-//    48kHz・1秒の区間なら、欠けたのは 12032 フレーム＝ちょうど 94 クォンタム
-//    （約251ミリ秒）である。上の穴とは別で、process() は呼ばれているのに、
-//    マイクの経路が動き出すまで入力が空（チャンネルなし）で届く間を数えていた。
+// ⚠⚠ 起点はさらに「入力に音が載った process()」まで待つ（第2弾a3）。
+//    入力が空（チャンネルなし・長さ0）のまま process() が呼ばれる間を、区間に数えないためである。
 //    ただし、いつまでも音が来ない（マイクが最初から届かない）と1行も出ず、
-//    「記録していない」ことすら残らない。猶予を過ぎたら最初の process() を起点にし、
+//    「記録していない」ことすら残らない。猶予（1秒）を過ぎたら区間を始め、
 //    届かなかったぶんを欠測（count=0）として残す。
-// ⚠ 公開前の点検で、言い切りすぎを直した（第2弾a7）。この修正が塞ぐのは「入力が空で
-//    届く」場合である。ヘッドレスの Chromium＋疑似マイクでは、旧版が8回中3回この穴を
-//    出し、改修版は16回中0回だった。一方、process() そのものが呼ばれずクロックだけ
-//    進んだ場合は、本当に音が届いていないので従来どおり欠測として残す（塞がない）。
-//    iPhone の 74.9% がどちらだったかは分かっていない。改修後の版で実機のCSVを採って確かめる
+//    ⚠ 入力が空で届く状況は、Chromium では観測していない（a8の調べで0回）。
+//    iPhone の実機で記録開始直後の区間が 74.9%（12032フレーム＝94クォンタム）になった件の
+//    見立てとして入れたが、下の a8 の仕組みでも同じ形の穴になる。どちらだったかは分かっていない。
+//
+// ⚠⚠ 起点は、currentFrame が前の呼び出しの終わりとつながった呼び出しで決める（第2弾a8）。
+//    Chromium 145（ヘッドレス・疑似マイク）では、ノードを作ったあと最初の process() だけ
+//    currentFrame が 0 で届き、2回目で実際の位置へ飛んだ。ワークレットの読み込み（addModule）に
+//    時間がかかると、その間も AudioContext は進むので、飛ぶ幅が広がる。読み込みを50・200ミリ秒
+//    遅らせると1行目の有効サンプル率は 0.949・0.800 になり、欠けたフレーム数（2432・9600）は
+//    ノードを作った時点の currentFrame と一致した。GitHub Pages から読み込むと6回中4回で
+//    1行目が 1.000 を下回り、手元のサーバーでは6回とも 1.000 だった。
+//    最初の1回はつながりを確かめようがないので、起点に使わない（2.7ミリ秒ぶんを捨てる）。
+//    つながりを確かめられないまま MAX_UNJOINED_CALLS 回を過ぎたら、確かめずに始める
+//    （本当にクォンタムが落ち続けているなら、それは欠測として残すべきものである）。
+// ⚠ a3 のときに「旧版が8回中3回この穴を出し、改修版は16回中0回だった」と書いたが、
+//    旧版を GitHub Pages から、改修版を手元のサーバーから読み込んで比べていた。
+//    読み込みの遅れの差を、版の差と取り違えていた。旧版も手元から読み込めば穴は出ない。
 
 'use strict';
 
 const MIN_INTERVAL_FRAMES = 128;
 const STARTUP_GRACE_SEC = 1;
+// 起点を決める前に、つながりを確かめられない呼び出しを何回まで見送るか（第2弾a8）
+const MAX_UNJOINED_CALLS = 16;
 
 function normalizeFrames(value, fallback) {
   const v = Math.round(Number(value));
@@ -62,8 +75,11 @@ class MeterProcessor extends AudioWorkletProcessor {
     this.seq = 0;
     // null＝まだ起点が決まっていない（入力に音が載った最初の process() で取る）
     this.startFrame = null;
-    // 最初に process() が呼ばれたフレーム（猶予を数える起点）
+    // つながりを確かめられた最初の process() のフレーム（猶予を数える起点）
     this.firstProcessFrame = null;
+    // 起点を決める前の呼び出しで、次に来るはずのフレームと、呼び出しの回数（第2弾a8）
+    this.probeEnd = null;
+    this.probeCalls = 0;
     // いま続いているクリップの長さ。区間の境目では切らない（区間をまたぐ連続を
     // 2つに分けると、4サンプルの連続が「単発」と出る）
     this.clipRunCur = 0;
@@ -130,11 +146,16 @@ class MeterProcessor extends AudioWorkletProcessor {
 
     // 1区間めの起点。入力に音が載った最初のフレームであり、音が流れ始めた時刻である
     if (this.startFrame === null) {
+      // 前の呼び出しの終わりとつながっていない呼び出しは、currentFrame を信じない（a8）
+      const joined = this.probeEnd !== null && currentFrame === this.probeEnd;
+      this.probeEnd = currentFrame + (channel ? channel.length : 128);
+      this.probeCalls++;
+      if (!joined && this.probeCalls <= MAX_UNJOINED_CALLS) return true;
       if (this.firstProcessFrame === null) this.firstProcessFrame = currentFrame;
       if (channel) {
         this.startFrame = currentFrame;
       } else if (currentFrame - this.firstProcessFrame >= Math.round(sampleRate * STARTUP_GRACE_SEC)) {
-        // 猶予を過ぎても音が来ない。最初の process() を起点にし、欠測として残す
+        // 猶予を過ぎても音が来ない。つながりを確かめた最初の process() を起点にし、欠測として残す
         this.startFrame = this.firstProcessFrame;
       } else {
         return true;   // まだ始めない

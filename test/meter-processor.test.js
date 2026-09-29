@@ -16,7 +16,11 @@ const SOURCE = fs.readFileSync(
 const SAMPLE_RATE = 48000;
 const QUANTUM = 128;
 
-function createHarness(intervalFrames, startFrame = 0) {
+// warmUp=true（既定）なら、数え始めるフレームの1ブロック前に空の呼び出しを1回入れる。
+// ⚠ ワークレットは、前の呼び出しの終わりとつながった呼び出しでしか区間を始めない（第2弾a8）。
+//    最初の1回は起点に使わないので、この準備が無いと、どのテストも起点が1ブロックずれる。
+//    最初の1回の扱いそのものは、warmUp=false で確かめる
+function createHarness(intervalFrames, startFrame = 0, { warmUp = true } = {}) {
   const state = { frame: startFrame };
   const messages = [];
   const registered = {};
@@ -41,6 +45,11 @@ function createHarness(intervalFrames, startFrame = 0) {
 
   const proc = new registered['meter-processor']({ processorOptions: { intervalFrames } });
   messages.length = 0; // 'ready' は捨てる
+  if (warmUp) {
+    state.frame = startFrame - QUANTUM;
+    proc.process([[]]);
+    state.frame = startFrame;
+  }
 
   return {
     state,
@@ -195,16 +204,17 @@ test('⭐繋ぐまでに間があっても、1行目の有効サンプル率は 
   assert.equal((1 - (8 * QUANTUM) / SAMPLE_RATE).toFixed(4), '0.9787');
 
   for (const gap of [0, 1, 4, 8, 16, 40]) {
-    const h = createHarness(SAMPLE_RATE);
+    // 実際と同じく、準備の呼び出しは入れない（ノードを作ってから最初の呼び出しまでに間がある）
+    const h = createHarness(SAMPLE_RATE, 0, { warmUp: false });
     h.skip(gap);                                   // 構築〜接続のあいだ
     for (let q = 0; q < Math.ceil(SAMPLE_RATE / QUANTUM) * 3; q++) h.tick(sine(0.1));
     const iv = h.intervals();
     assert.ok(iv.length >= 2, `gap=${gap} intervals=${iv.length}`);
     assert.equal(iv[0].count, iv[0].expected, `gap=${gap} の1行目が欠測になっている`);
     assert.equal(iv[0].count / iv[0].expected, 1, `gap=${gap}`);
-    // 起点は「最初に process() が呼ばれたフレーム」である
-    assert.equal(iv[0].startFrame, gap * QUANTUM, `gap=${gap} の起点`);
-    assert.equal(iv[0].endFrame, gap * QUANTUM + SAMPLE_RATE, `gap=${gap} の終わり`);
+    // 起点は「つながりを確かめられた最初の呼び出し」＝2回目の呼び出しのフレームである（a8）
+    assert.equal(iv[0].startFrame, (gap + 1) * QUANTUM, `gap=${gap} の起点`);
+    assert.equal(iv[0].endFrame, (gap + 1) * QUANTUM + SAMPLE_RATE, `gap=${gap} の終わり`);
     // 区間長は縮まない（短い1区間を作って重みを狂わせない）
     assert.equal(iv[0].endFrame - iv[0].startFrame, SAMPLE_RATE, `gap=${gap} の区間長`);
   }
@@ -214,7 +224,8 @@ test('記録中にクォンタムを落としたときは、いまでも有効�
   // ⚠ 起点を動かしたことで「本当の欠測」まで見えなくなっていないこと
   const h = createHarness(4800);
   h.skip(8);
-  for (let q = 0; q < 38; q++) h.tick(sine(0.1));
+  // 起点は2回目の呼び出し（9クォンタム目）なので、1区間を満たすには39回呼ぶ（a8）
+  for (let q = 0; q < 39; q++) h.tick(sine(0.1));
   for (let q = 0; q < 40; q++) h.tick(sine(0.1), true);   // 落とす
   for (let q = 0; q < 80; q++) h.tick(sine(0.1));
   const ratios = h.intervals().map(m => m.count / m.expected);
@@ -405,4 +416,60 @@ test('クォンタムが落ちてサンプルが飛んだら、クリップの�
   const iv = h.intervals()[0];
   assert.equal(iv.clip, 4);
   assert.equal(iv.clipRun, 2, 'サンプルが飛んだのに連続として数えている');
+});
+
+
+// ---- 最初の process() の currentFrame が古い値で届くとき（第2弾a8）----
+//
+// ⚠⚠ Chromium 145（ヘッドレス・疑似マイク）で観測した。ノードを作ったあと最初の process() だけ
+//    currentFrame が 0 で届き、2回目で実際の位置へ飛ぶ。ワークレットの読み込みが遅いほど
+//    飛ぶ幅が広い。改修前は最初の呼び出しを起点にしていたので、飛んだぶんが1行目の欠測になった
+//    （読み込みを200ミリ秒遅らせると 38400/48000＝0.800）。GitHub Pages から開くと6回中4回出た。
+
+test('⭐最初の呼び出しの currentFrame が古い値でも、1行目は欠測にならない', () => {
+  assert.equal((SAMPLE_RATE - (9728 - QUANTUM)) / SAMPLE_RATE, 0.8);   // 改修前の値
+
+  const h = createHarness(SAMPLE_RATE, 0, { warmUp: false });
+  h.tick(sine(0.1));            // 1回目：currentFrame=0（古い値）
+  h.state.frame = 9728;         // 2回目は実際の位置（読み込みの間に進んでいた）
+  for (let q = 0; q < Math.ceil(SAMPLE_RATE / QUANTUM) * 3; q++) h.tick(sine(0.1));
+  const iv = h.intervals();
+  assert.ok(iv.length >= 2, `intervals=${iv.length}`);
+  assert.equal(iv[0].count / iv[0].expected, 1, '飛んだぶんを欠測に数えている');
+  // 2回目（9728）はまだつながりを確かめられないので、3回目（9856）から数える
+  assert.equal(iv[0].startFrame, 9728 + QUANTUM);
+  assert.equal(iv[0].endFrame - iv[0].startFrame, SAMPLE_RATE, '区間長が縮んでいる');
+});
+
+test('ふつうにつながって呼ばれるときは、捨てるのは最初の1ブロックだけ', () => {
+  const h = createHarness(SAMPLE_RATE, 0, { warmUp: false });
+  for (let q = 0; q < Math.ceil(SAMPLE_RATE / QUANTUM) * 2; q++) h.tick(sine(0.1));
+  const iv = h.intervals();
+  assert.equal(iv[0].startFrame, QUANTUM);
+  assert.equal(iv[0].count / iv[0].expected, 1);
+});
+
+test('入力が空のまま始まり、最初の呼び出しの currentFrame が古いときも、猶予は実際の位置から数える', () => {
+  // 猶予の起点を古い値（0）から数えると、読み込みに1秒以上かかったときに
+  // 音が届く前に区間を始め、しかも起点を 0 に置いてしまう
+  const h = createHarness(SAMPLE_RATE, 0, { warmUp: false });
+  emptyTick(h);                 // 1回目：currentFrame=0（古い値）
+  h.state.frame = 60000;        // 実際には 1.25 秒進んでいた
+  for (let q = 0; q < 100; q++) emptyTick(h);
+  for (let q = 0; q < Math.ceil(SAMPLE_RATE / QUANTUM) * 2; q++) h.tick(sine(0.1));
+  const iv = h.intervals();
+  assert.equal(iv[0].startFrame, 60000 + 100 * QUANTUM, '音が届いた位置を起点にしていない');
+  assert.equal(iv[0].count / iv[0].expected, 1);
+});
+
+test('つながりを確かめられないまま呼び出しが続いても、見送りには上限がある', () => {
+  // 本当にクォンタムが落ち続けているなら、いつまでも始めないのではなく、欠測として残す
+  const h = createHarness(4800, 0, { warmUp: false });
+  for (let q = 0; q < 200; q++) { h.tick(sine(0.1)); h.skip(1); }   // 1回おきに落ちる
+  const iv = h.intervals();
+  assert.ok(iv.length >= 3, `intervals=${iv.length}`);
+  // 17回目の呼び出し（currentFrame = 16 × 256）から始める
+  assert.equal(iv[0].startFrame, 16 * 2 * QUANTUM);
+  const r = iv[1].count / iv[1].expected;
+  assert.ok(r > 0.45 && r < 0.55, `有効サンプル率 ${r}`);
 });

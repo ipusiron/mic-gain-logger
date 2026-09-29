@@ -129,7 +129,10 @@ test('⭐ワークレット本体を通しても、切り替えた直後の区�
   assert.ok(rows.length >= 5, `区間が足りない: ${rows.length}`);
   // seq 0,1,2 は 1 秒で測られている（2 は設定が 3 になったあとに閉じた区間）
   assert.deepEqual(rows.slice(0, 5).map(r => r.intervalSec), [1, 1, 1, 3, 3]);
-  assert.deepEqual(rows.slice(0, 5).map(r => r.endTime - r.startTime), [1, 1, 1, 3, 3]);
+  // 秒の差は浮動小数点の端数を持つ（起点が 0 でなければ 0.9999999999999999 などになる）。
+  // 第2弾a8で起点が2回目の呼び出し（128）へ移り、完全一致では比べられなくなった
+  assert.deepEqual(
+    rows.slice(0, 5).map(r => Math.round((r.endTime - r.startTime) * 1e9) / 1e9), [1, 1, 1, 3, 3]);
   // ⭐改修前のラベルは seq 2 で嘘になっていた
   assert.equal(uiLabels[2], 3, '前提が崩れている（設定はもう 3 のはず）');
   assert.equal(rows[2].intervalSec, 1, '切り替えた直後の区間に新しい間隔が付いている');
