@@ -1397,6 +1397,7 @@ const MicGainLogic = (() => {
     formatDbCell,
     formatStats,
     statsWarnings,
+    CLIP_RUN_SUSTAINED,
     statsWarningItems,
     noticeSummary,
     statsIntegrity,

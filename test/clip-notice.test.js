@@ -16,7 +16,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const {
-  createStats, addStatsRecord, statsWarnings, buildIntervalRecord, buildFallbackRecord
+  createStats, addStatsRecord, statsWarnings, buildIntervalRecord, buildFallbackRecord,
+  CLIP_RUN_SUSTAINED
 } = require('../logic.js');
 
 const root = path.join(__dirname, '..');
@@ -99,6 +100,18 @@ test('簡易モードの行は連続の長さを持たない（測れないこ�
   const s = statsOf([fb]);
   assert.equal(s.clipRunKnownN, 0);
   assert.equal(s.sampleTotal, 0);
+});
+
+test('「連続」の区切りは3サンプルで、README とヘルプも同じ数を書いている', () => {
+  // 公開前の点検で見つかった。区切りをテストで固定していないと、値を変えても
+  // README とヘルプの「3サンプル以上」と食い違ったまま気づけない
+  assert.equal(CLIP_RUN_SUSTAINED, 3);
+  assert.match(readme, /3サンプル以上続いた/);
+  assert.match(html, /3サンプル以上続いていれば/);
+  // 境目の前後で文が変わる
+  const at = (run) => statsWarnings(statsOf([recordOf(0, { peak: 1, clip: run, clipRun: run })]))[0];
+  assert.match(at(2), /単発/);
+  assert.match(at(3), /連続して頭打ち/);
 });
 
 test('「真のピーク」を「サンプルピーク」と呼ぶ（トゥルーピークとは別物）', () => {
