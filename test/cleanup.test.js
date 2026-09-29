@@ -69,10 +69,11 @@ test('モーダルに aria-modal があり、開いたらフォーカスを中�
   assert.match(script, /aria-hidden',\s*'false'\);[\s\S]{0,200}?\.focus\(\)/);
 });
 
-test('キャッシュ用のクエリが3つのファイルでそろっている', () => {
+test('キャッシュ用のクエリが4つのファイル（style・messages・logic・script）でそろっている', () => {
   // logic.js が増えたので、古い index.html がキャッシュに残ると起動しない
+  // 第2弾c3aで画面の文言の辞書（messages.js）を足したので4つになった
   const vers = [...html.matchAll(/\?v=([\d.]+)/g)].map(m => m[1]);
-  assert.equal(vers.length, 3, `?v= が ${vers.length} 個（style/logic/script の3つのはず）`);
+  assert.equal(vers.length, 4, `?v= が ${vers.length} 個（style/messages/logic/script の4つのはず）`);
   assert.equal(new Set(vers).size, 1, `バージョンがそろっていない: ${vers.join(', ')}`);
   assert.notEqual(vers[0], '2.0', 'logic.js を足したのに v2.0 のまま');
 });

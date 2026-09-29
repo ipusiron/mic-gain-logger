@@ -5,6 +5,17 @@
 'use strict';
 
 const MicGainLogic = (() => {
+  // 画面の文言の辞書（第2弾c3a）。ブラウザーでは index.html が先に読む messages.js（グローバルの MicGainMessages）を、
+  // Node（テスト）では require で読む。
+  // 文言を返す関数（注意書き・記録の穴・凡例・キャンバスの説明・超音波帯の現在値・上限の表示）は、
+  // 言語（'ja' / 'en'）を最後の引数で受け取る。省略すると日本語で、これまでの呼び方のまま同じ文言を返す。
+  // ⚠ どの言語で出すかは script.js が決める（?lang= → 保存した選択 → ブラウザーの言語。決め方は messages.js の initialLang）。
+  //    ここでは navigator も localStorage も読まない。文言の中身（日本語も英語も）はここに書かず、辞書に置く
+  const Messages = (typeof MicGainMessages !== 'undefined') ? MicGainMessages : require('./messages.js');
+  function msg(lang, key, params) {
+    return Messages.t((lang === undefined || lang === null) ? Messages.DEFAULT_LANG : lang, key, params);
+  }
+
   // 値のクランプ
   const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
@@ -28,6 +39,20 @@ const MicGainLogic = (() => {
     return 20 * Math.log10(rms);
   }
 
+  // 画面の大きな数字（現在の音量）の窓。AnalyserNodeから毎フレーム読む直近のサンプル数である。
+  // ⚠ 高精度モードのCSVのdbfs（区間全体のエネルギー平均）とは窓が違う（第2弾c0でヘルプ・title・READMEに書いた）。
+  //    ときどき大きくなる音では、エネルギー平均が大きな瞬間に引っぱられるので、
+  //    この窓の値のほうがCSVの値より低く見える時間が長くなる。
+  //    簡易モードのCSVのdbfsは、記録した瞬間にこの窓から読んだ値なので、窓の違いは無い
+  //    （script.jsのanimate()がcomputeDb()の値をそのままrecordFallbackIntervalへ渡している）
+  const METER_WINDOW_SAMPLES = 2048;
+
+  // 大きな数字の窓の長さ（ミリ秒）。サンプルレートで変わる（48kHzで約43ミリ秒）
+  function meterWindowMs(sampleRate) {
+    if (!(sampleRate > 0) || !Number.isFinite(sampleRate)) return null;
+    return METER_WINDOW_SAMPLES / sampleRate * 1000;
+  }
+
   // サンプル列の RMS
   function rmsOf(samples) {
     let sumSq = 0;
@@ -47,12 +72,28 @@ const MicGainLogic = (() => {
   // ⚠ 改修前（c7b6bad）は -60 だった。iPhone の実機テスト（2026-09-29）で、21kHz の
   //    トーン（-65dBFS）が静寂（-76dBFS）と同じく -60 に張り付いて表示され、
   //    「反応がない」と読まれた（CSVには正しく残っていた）。-90 にする（本人の判断）
+  // ⚠ 第2弾c0から、-90は帯域を計算しないとき（?bands=off）の既定である。
+  //    帯域を計算するときの既定はFLOOR_DB_DEFAULT_BANDS（-110）。決め方はfloorDbDefaultFor
   const FLOOR_DB_DEFAULT = -90;
+  // 帯域を計算するとき（?bands=offでないとき）の既定値（第2弾c0）。
+  // ⚠ b4（2026-09-29 本人のiPhone）で、静かな部屋の超音波帯は-93〜-107dBFS（行の中央値）だった。
+  //    既定の-90より下なので、グラフの超音波帯の破線がいつも下端に張り付き、
+  //    22kHzのトーン（静寂より+1.9dB）は画面で見えなかった（CSVには残っていた）。
+  //    -110にする（本人の判断）。数dBの変化は数字（ultraNowText）で読む
+  const FLOOR_DB_DEFAULT_BANDS = -110;
 
-  // 表示下限の入力値を数値へ（空欄・非数は既定値。範囲外は丸める）
-  function parseFloorDb(raw) {
+  // 表示下限の既定を、帯域を計算するかどうかで決める（第2弾c0）。
+  // bandsEnabledはbandsEnabledFromQueryの値。false（?bands=off）なら従来の-90、それ以外は-110
+  function floorDbDefaultFor(bandsEnabled) {
+    return bandsEnabled === false ? FLOOR_DB_DEFAULT : FLOOR_DB_DEFAULT_BANDS;
+  }
+
+  // 表示下限の入力値を数値へ（空欄・非数は既定値。範囲外は丸める）。
+  // fallbackは空欄・非数のときの値（floorDbDefaultForの値を渡す）。省略するとFLOOR_DB_DEFAULT
+  function parseFloorDb(raw, fallback) {
+    const def = Number.isFinite(fallback) ? clamp(fallback, FLOOR_DB_MIN, FLOOR_DB_MAX) : FLOOR_DB_DEFAULT;
     const v = parseFloat(raw);
-    if (Number.isNaN(v)) return FLOOR_DB_DEFAULT;
+    if (Number.isNaN(v)) return def;
     return clamp(v, FLOOR_DB_MIN, FLOOR_DB_MAX);
   }
 
@@ -284,11 +325,11 @@ const MicGainLogic = (() => {
   const CLIP_RUN_SUSTAINED = 3;
 
   // クリップの割合を画面向けに（ごく少ないときは「未満」で言う）
-  function formatShare(share) {
+  function formatShare(share, lang) {
     const pct = share * 100;
     if (pct >= 1) return `${pct.toFixed(1)}%`;
     if (pct >= 0.01) return `${pct.toFixed(2)}%`;
-    return '0.01%未満';
+    return msg(lang, 'share.tiny');
   }
 
   // 記録の信用を落とす出来事だけを文にする。無ければ空配列。
@@ -304,40 +345,37 @@ const MicGainLogic = (() => {
   // 一部が届いていない（オーディオスレッドがレンダークォンタムを落とした）。
   // 注意の項目を、要点（short）と全文（full）の組で返す。
   // 要点は画面の要約の1行に並べ、全文は開いて読む（第2弾a6）
-  function statsWarningItems(stats) {
+  function statsWarningItems(stats, lang) {
     const out = [];
     if (!stats) return out;
     if (stats.clipRows > 0) {
       const share = stats.sampleTotal > 0
-        ? `＝記録した全サンプルの${formatShare(stats.clipSamples / stats.sampleTotal)}`
+        ? msg(lang, 'notice.clip.share', { share: formatShare(stats.clipSamples / stats.sampleTotal, lang) })
         : '';
-      let text = `クリップを${stats.clipRows}区間で検出しました（延べ${stats.clipSamples}サンプル${share}）。`;
+      let text = msg(lang, 'notice.clip.head', { rows: stats.clipRows, samples: stats.clipSamples, share });
       if (stats.clipRunKnownN > 0) {
         text += stats.clipRunMax >= CLIP_RUN_SUSTAINED
-          ? `連続して頭打ちになった箇所があります（最長${stats.clipRunMax}サンプル）。`
-            + 'その区間は波形がつぶれていて、値は本来の音と違います。'
-          : `いずれも単発（連続${CLIP_RUN_SUSTAINED}サンプル未満）で、区間の値への影響は小さいと見られます。`;
+          ? msg(lang, 'notice.clip.sustained', { run: stats.clipRunMax })
+          : msg(lang, 'notice.clip.single', { n: CLIP_RUN_SUSTAINED });
       }
       // ⚠ 原因は決めつけない。単発でも、接触・操作音のような突発音のほかに、
       //    大きな音の波の山が 1.0 に触れているだけのこともある（疑似マイクのトーンで
       //    全サンプルの 0.97% が単発で 1.0 に触れた）
-      text += 'マイクへの接触・端末の操作音・風や息のほか、音が大きすぎて波の山が1.0に届いている場合があります。'
-        + '後者なら端末を音源から離してください';
+      text += msg(lang, 'notice.clip.cause');
       const kind = stats.clipRunKnownN > 0
-        ? (stats.clipRunMax >= CLIP_RUN_SUSTAINED ? '（連続あり）' : '（単発のみ）')
+        ? msg(lang, stats.clipRunMax >= CLIP_RUN_SUSTAINED ? 'notice.clip.kindSustained' : 'notice.clip.kindSingle')
         : '';
-      out.push({ short: `クリップ${stats.clipRows}区間${kind}`, full: text });
+      out.push({ short: msg(lang, 'notice.clip.short', { rows: stats.clipRows, kind }), full: text });
     }
     if (stats.lowValidRows > 0) {
       const pct = (stats.minValidRatio * 100).toFixed(1);
       // 音が1つも届かなかった区間は、無音と取り違えないように別に言う（第2弾b2）
       const missing = stats.missingN > 0
-        ? `。うち${stats.missingN}区間は音が1つも届かず、CSVの dbfs を空欄にしています（無音とは別で、平均には入れません）`
+        ? msg(lang, 'notice.valid.missing', { missing: stats.missingN })
         : '';
       out.push({
-        short: `有効サンプル率 最小${pct}%`,
-        full: `有効サンプル率が1.0を下回った区間が${stats.lowValidRows}件あります（最小 ${pct}%）。`
-          + 'その区間は音の一部が届いていません（CSVの valid_ratio 列に残ります）' + missing
+        short: msg(lang, 'notice.valid.short', { pct }),
+        full: msg(lang, 'notice.valid.full', { rows: stats.lowValidRows, pct }) + missing
       });
     }
     // 帯域の有効率（第2弾b3）。書き方は有効サンプル率の項目にそろえる。
@@ -346,23 +384,25 @@ const MicGainLogic = (() => {
       const pct = (stats.minBandValidRatio * 100).toFixed(1);
       out.push({
         kind: 'bandValid',
-        short: `帯域の有効率 最小${pct}%`,
-        full: `帯域の有効率が1.0を下回った区間が${stats.lowBandValidRows}件あります（最小 ${pct}%）。`
-          + 'その区間の帯域の値には、計算に入らなかった時間があります（CSVのband_valid_ratio列に残ります）'
+        short: msg(lang, 'notice.bandValid.short', { pct }),
+        full: msg(lang, 'notice.bandValid.full', { rows: stats.lowBandValidRows, pct })
       });
     }
     return out;
   }
 
   // 全文だけの一覧（既存の呼び方）
-  function statsWarnings(stats) {
-    return statsWarningItems(stats).map(it => it.full);
+  function statsWarnings(stats, lang) {
+    return statsWarningItems(stats, lang).map(it => it.full);
   }
 
   // 要約の1行。件数と要点を並べる（項目が無ければ空）
-  function noticeSummary(items) {
+  function noticeSummary(items, lang) {
     if (!items || !items.length) return '';
-    return `記録の注意 ${items.length}件：${items.map(it => it.short).join('／')}`;
+    return msg(lang, 'notice.summary', {
+      count: items.length,
+      items: items.map(it => it.short).join(msg(lang, 'notice.summarySep'))
+    });
   }
 
   // 記録に穴が無いことも、画面に出す。
@@ -374,7 +414,7 @@ const MicGainLogic = (() => {
   //
   // level = 'none'（記録がまだ無い）/ 'ok'（穴なし）/ 'warn'（穴あり）
   //       / 'unknown'（簡易モードの行だけで、測れていない）
-  function statsIntegrity(stats) {
+  function statsIntegrity(stats, lang) {
     // 区間の数には、音が1つも届かなかった区間（平均に入れない。第2弾b2）も入れる
     const total = stats ? stats.n + (stats.missingN || 0) : 0;
     if (!total) return { level: 'none', text: '' };
@@ -382,31 +422,29 @@ const MicGainLogic = (() => {
     const unknown = total - known;
     // 簡易モードの行は、クリップ数も有効サンプル率も測れない（瞬時値しか無い）
     if (known === 0) {
-      return {
-        level: 'unknown',
-        text: `記録の穴は確かめられません（簡易モードの${total}区間だけなので、`
-          + 'クリップ数も有効サンプル率も測れません）'
-      };
+      return { level: 'unknown', text: msg(lang, 'integrity.unknown', { total }) };
     }
     // ⚠ 2つの観点は別々に言う。片方に穴があっても、もう片方は
     //    「無かった」と言い切れる（実測でクリップ5区間・欠測0区間の記録が出た）。
     //    改修前はここで「有効サンプル率が1.000未満の区間0件・最小1.000」という、
     //    穴が無いのに穴があるように読める文を出していた
-    const clipPart = stats.clipRows > 0
-      ? `クリップ${stats.clipRows}区間`
-      : 'クリップ0区間';
+    const clipPart = msg(lang, 'integrity.clip', { rows: stats.clipRows });
     const pct = Number.isFinite(stats.minValidRatio)
       ? stats.minValidRatio.toFixed(3)
       : '--';
     const validPart = stats.lowValidRows > 0
-      ? `有効サンプル率が1.000未満の区間${stats.lowValidRows}件・最小${pct}`
-      : `有効サンプル率は${known}区間すべて1.000`;
-    const tail = unknown > 0 ? `／簡易モードの${unknown}区間は測れません` : '';
+      ? msg(lang, 'integrity.validLow', { rows: stats.lowValidRows, min: pct })
+      : msg(lang, 'integrity.validAll', { known });
+    const tail = unknown > 0 ? msg(lang, 'integrity.fallbackTail', { unknown }) : '';
     const clean = stats.clipRows === 0 && stats.lowValidRows === 0;
     return {
       level: clean ? 'ok' : 'warn',
-      text: `${clean ? '記録の穴なし' : '記録に穴あり'}`
-        + `（${clipPart}／${validPart}）${tail}`
+      text: msg(lang, 'integrity.line', {
+        head: msg(lang, clean ? 'integrity.clean' : 'integrity.dirty'),
+        clip: clipPart,
+        valid: validPart,
+        tail
+      })
     };
   }
 
@@ -419,6 +457,66 @@ const MicGainLogic = (() => {
       peak: '--.- dBFS',
       count: '0'
     };
+  }
+
+  // ---- 操作ボタン（第2弾c0）----
+  //
+  // 設計書§3のQ3（本人の決定 2026-09-29）＝開始と停止を1つの場所にまとめ、書き出しとリセットは「その他」へ寄せる。
+  // 改修前は幅430pxで、ヘッダーとボタンが画面の上から242.6px（26%）を使っていた
+  // （ヘッダー → ヘルプとテーマの行 → 記録開始・停止の行 → 書き出し・リセットの行）。
+  //
+  // ・記録開始（#startBtn）と停止（#stopBtn）は同じ場所に置き、そのとき押せるほうだけを見せる。
+  //   見せないほうはhidden属性で隠し、支援技術からも隠す。IDは変えない（テストと測定のスクリプトが使っている）
+  // ・CSV書き出し（#exportBtn）と統計リセット（#resetBtn）は、幅480px以下では「その他」（#moreBtn）で開く場所
+  //   （#moreMenu）へまとめる。481px以上ではこれまでどおり並べる。押せる条件は変えない
+  //   （script.jsのupdateButtonStates。記録中・接続中は押せない）
+  // ・ヘルプとテーマの切り替えは、幅480px以下でも同じ行に置く。改修前はhandleMobileButtonLayoutが
+  //   480pxを境に親要素を付け替えていたが、resizeが届かない経路で不整合が固定される壊れやすい仕組みだったので、
+  //   第2弾c0で廃止し、並びはCSSだけで決める
+
+  // 幅480px以下（「その他」で畳む幅）。style.cssの@media (max-width: 480px)と同じ値
+  const COMPACT_MEDIA_QUERY = '(max-width: 480px)';
+
+  // 記録開始と停止のどちらを見せるか。
+  // 接続中（許可ダイアログを待っているあいだ）は「停止」で取り消せるので、停止を見せる
+  function startStopView(flags) {
+    const f = flags || {};
+    const busy = !!(f.running || f.connecting);
+    return { start: !busy, stop: busy };
+  }
+
+  // 「その他」の開閉。state = { open, compact, modalOpen, itemsEnabled, focusInside, focusOnToggle }
+  // （focusInside＝フォーカスが中身（#moreMenu）にある、focusOnToggle＝フォーカスが「その他」にある）、
+  // event = 'toggle'（「その他」を押した）/ 'escape'（Esc）/ 'outside'（「その他」と中身の外を押した）
+  //       / 'items'（中のボタンの押せる状態が変わった）/ 'layout'（幅が変わった）。
+  // 戻り値 = { open, focusToggle }。focusToggleがtrueなら「その他」へフォーカスを戻す。
+  // ⚠ Escで閉じたら、フォーカスを「その他」に戻す（閉じた中身にフォーカスを残さない）。
+  //    戻すのは、フォーカスが中身か「その他」にあったときだけ。Tabで外（ヘルプ・設定の入力欄など）へ移ったあとの
+  //    Escでは、閉じるだけでフォーカスを動かさない（ほかの場所にある利用者のフォーカスを奪わない。
+  //    第2弾c0の点検で直した。外からでも「その他」へ移していたので、設定の入力欄にいた利用者の画面が先頭まで戻った）。
+  //    幅481px以上では「その他」を出さず中身を並べているので、Escでは何もしない。
+  //    ヘルプを開いているあいだのEscはヘルプを閉じるためのものなので、ここでは受けない。
+  // ⚠ 中のボタンがどちらも押せなくなったら（統計リセットのあと・記録を始めたとき）閉じる。
+  //    押せないボタンにフォーカスが残るので、中にフォーカスがあったときだけ「その他」へ戻す
+  function moreMenuNext(state, event) {
+    const s = state || {};
+    const open = !!s.open;
+    const stay = { open, focusToggle: false };
+    if (event === 'toggle') return { open: !open, focusToggle: false };
+    if (event === 'escape') {
+      if (!open || !s.compact || s.modalOpen) return stay;
+      return { open: false, focusToggle: !!(s.focusInside || s.focusOnToggle) };
+    }
+    if (event === 'outside') return { open: false, focusToggle: false };
+    if (event === 'items') {
+      if (!open || s.itemsEnabled) return stay;
+      return { open: false, focusToggle: !!(s.compact && s.focusInside) };
+    }
+    if (event === 'layout') {
+      if (!open || s.compact) return stay;
+      return { open: false, focusToggle: false };
+    }
+    return stay;
   }
 
   // ---- キャンバスの大きさ ----
@@ -826,10 +924,10 @@ const MicGainLogic = (() => {
     return String(Math.round(hz / 10) / 100);
   }
 
-  // 帯域の範囲の表示（例：'18〜22kHz'）
-  function bandRangeLabel(def) {
+  // 帯域の範囲の表示（例：日本語'18〜22kHz'、英語'18–22 kHz'）
+  function bandRangeLabel(def, lang) {
     if (!def) return '';
-    return `${formatKhz(def.lo)}〜${formatKhz(def.hi)}kHz`;
+    return msg(lang, 'band.range', { lo: formatKhz(def.lo), hi: formatKhz(def.hi) });
   }
 
   function ultraDef() {
@@ -860,15 +958,15 @@ const MicGainLogic = (() => {
 
   // 上限の表示（凡例の下の1行）。metaはセッションのメタ（contextSampleRate・trackSampleRate）。
   // 記録を始める前（metaが無い）は空文字（画面は:emptyで隠す）
-  function upperLimitText(meta) {
+  function upperLimitText(meta, lang) {
     const m = meta || {};
     const u = recordableUpperHz(m.contextSampleRate, m.trackSampleRate);
     if (!u) return '';
-    const head = `この端末で記録できる上限：約${formatKhz(u.hz)}kHz`;
+    const head = msg(lang, 'upper.head', { khz: formatKhz(u.hz) });
     const ctxK = formatKhz(m.contextSampleRate);
-    if (!u.trackKnown) return `${head}（AudioContext ${ctxK}kHzの半分。トラックの値は不明）`;
-    if (m.trackSampleRate === m.contextSampleRate) return `${head}（サンプルレート${ctxK}kHzの半分）`;
-    return `${head}（マイク${formatKhz(m.trackSampleRate)}kHz・AudioContext ${ctxK}kHzの小さいほうの半分）`;
+    if (!u.trackKnown) return msg(lang, 'upper.trackUnknown', { head, ctx: ctxK });
+    if (m.trackSampleRate === m.contextSampleRate) return msg(lang, 'upper.same', { head, ctx: ctxK });
+    return msg(lang, 'upper.min', { head, track: formatKhz(m.trackSampleRate), ctx: ctxK });
   }
 
   // 超音波帯の線を描けるか（第2弾b3の点検で追加）。凡例・見本の線・キャンバスの説明・注意書きが、この1つの判定を使う。
@@ -902,28 +1000,57 @@ const MicGainLogic = (() => {
   }
 
   // 描かないときの理由（凡例とキャンバスの説明で同じ言い方にする）
-  function ultraStoppedReason(state) {
-    if (state === ULTRA_STATE.OFF) return '止めています（?bands=off）';
-    if (state === ULTRA_STATE.FALLBACK) return '簡易モードでは測れません';
-    if (state === ULTRA_STATE.NO_BINS) return 'このサンプルレートでは測れません';
+  function ultraStoppedReason(state, lang) {
+    if (state === ULTRA_STATE.OFF) return msg(lang, 'ultra.reason.off');
+    if (state === ULTRA_STATE.FALLBACK) return msg(lang, 'ultra.reason.fallback');
+    if (state === ULTRA_STATE.NO_BINS) return msg(lang, 'ultra.reason.noBins');
     return '';
   }
 
   // 凡例の超音波帯の項目。線を描かないときは、描かない理由を出す（「破線」とは書かない）
-  function ultraLegendText(state) {
-    const range = bandRangeLabel(ultraDef());
-    if (ultraSwatchShown(state)) return `破線：超音波帯（${range}）`;
-    return `超音波帯（${range}）：${ultraStoppedReason(state)}`;
+  function ultraLegendText(state, lang) {
+    const range = bandRangeLabel(ultraDef(), lang);
+    if (ultraSwatchShown(state)) return msg(lang, 'legend.ultra', { range });
+    return msg(lang, 'legend.ultraStopped', { range, reason: ultraStoppedReason(state, lang) });
   }
 
   // キャンバスの読み上げ用の説明（aria-label）。線の見分け方を言葉でも伝える。
   // 線を描かないときは、無い線があると伝えないように、描かない理由を言う
-  function graphAriaLabel(state) {
-    const range = bandRangeLabel(ultraDef());
+  function graphAriaLabel(state, lang) {
+    const range = bandRangeLabel(ultraDef(), lang);
     const lines = ultraSwatchShown(state)
-      ? `実線は音量（全帯域）、破線は超音波帯（${range}）の値`
-      : `実線は音量（全帯域）。超音波帯（${range}）の線は描きません（${ultraStoppedReason(state)}）`;
-    return `音量推移グラフ。${lines}。横軸は直近${GRAPH_WINDOW_SEC}秒、縦軸はdBFS`;
+      ? msg(lang, 'aria.lines.on', { range })
+      : msg(lang, 'aria.lines.off', { range, reason: ultraStoppedReason(state, lang) });
+    return msg(lang, 'aria.graph', { lines, sec: GRAPH_WINDOW_SEC });
+  }
+
+  // 秒を画面の文言へ（小数3桁まで、末尾の0は付けない。1→'1'、0.2→'0.2'、60→'60'）
+  function formatSecLabel(sec) {
+    if (!Number.isFinite(sec) || !(sec > 0)) return '';
+    return String(Math.round(sec * 1000) / 1000);
+  }
+
+  // 超音波帯の現在値（第2弾c0）。大きな音量の数字の近くに1行で出す。
+  // 値は、最後に記録した区間（ワークレットが最後に送ってきた区間）のband_ultra_dbfsで、CSVに書く値と同じである。
+  // ⚠ 大きな数字（直近METER_WINDOW_SAMPLESサンプル＝48kHzで約43ミリ秒の全帯域のRMS）とは窓も帯域も違う。
+  //    窓が違うことが文言から分かるように、区間の長さ（その区間を実際に測ったログ間隔）を添える
+  //    （例：「超音波帯（直近1秒の区間）：-91.7 dBFS」）。区間がまだ無ければ長さは書かない。
+  // b4（2026-09-29）で本人の決定。静かな部屋の超音波帯は+2dBほどしか動かないことがあり、
+  // -110〜0dBFSの縦軸では高さの約2%にしかならないので、数字で読めるようにする。
+  //   state  ultraBandStateの値（凡例と同じ判定）。線を描かないとき（off・fallback・noBins）は、
+  //          値の代わりに描かない理由を出す（「止めています（?bands=off）」など）
+  //   rec    最後に記録した区間レコード。無ければ（記録前・記録開始直後・統計リセット後）「--.- dBFS」。
+  //          レコードに超音波帯の値が無ければ（数えたフレームが0の区間など）「--.- dBFS（この区間は値なし）」。
+  //          デジタル無音（-Infinity）は測った値なので「-∞ dBFS」
+  // ⚠ 読み上げ領域（aria-live）にはしない。区間ごとに変わる値を毎回読み上げると、ほかの読み上げを妨げる
+  function ultraNowText(state, rec, lang) {
+    const sec = rec ? formatSecLabel(rec.intervalSec) : '';
+    const head = sec ? msg(lang, 'ultraNow.headSec', { sec }) : msg(lang, 'ultraNow.head');
+    if (!ultraSwatchShown(state)) return msg(lang, 'ultraNow.head') + ultraStoppedReason(state, lang);
+    if (!rec) return `${head}--.- dBFS`;
+    const v = ultraDbOf(rec);
+    if (v === null) return `${head}--.- dBFS` + msg(lang, 'ultraNow.noValue');
+    return `${head}${formatDbCell(v)}`;
   }
 
   // 帯域とサンプルレートに関わる注意の項目（セッションのメタだけから決まるもの）。
@@ -933,11 +1060,11 @@ const MicGainLogic = (() => {
   //   bandsFallback       簡易モードで帯域を計算していない（第2弾b3の点検で追加）
   //   ultraUnavailable    AudioContextのサンプルレートが低く、超音波帯にビンが1つも無い（CSVのband_ultra_dbfsは空欄）
   // 後ろの3つは、凡例と同じ判定（ultraBandState）から出す
-  function bandNoticeItems(meta) {
+  function bandNoticeItems(meta, lang) {
     const out = [];
     if (!meta) return out;
     const def = ultraDef();
-    const range = bandRangeLabel(def);
+    const range = bandRangeLabel(def, lang);
     const state = ultraBandState(meta);
     const ctxSr = meta.contextSampleRate;
     const trackSr = meta.trackSampleRate;
@@ -950,36 +1077,32 @@ const MicGainLogic = (() => {
       //    同時に出る「空欄になる」の項目と食い違う。onならAudioContextの半分は超音波帯の下端より上なので、
       //    このとき上限を下げているのはトラックのほうである
       const below = (state === ULTRA_STATE.ON && def && u.hz < def.lo)
-        ? `。超音波帯（${range}）はこの上限より上にあり、その帯域の値は超音波帯の音を表しません`
+        ? msg(lang, 'bandNotice.below', { range })
         : '';
       out.push({
         kind: 'sampleRateMismatch',
-        short: `サンプルレートの変換あり（マイク${tK}kHz／AudioContext ${cK}kHz）`,
-        full: `マイクの音声トラック（${tK}kHz）とAudioContext（${cK}kHz）のサンプルレートが違います。`
-          + `サンプルレートの変換で、上限に近い高い音は低く記録されます（この端末で記録できる上限は約${formatKhz(u.hz)}kHz）`
-          + below
+        short: msg(lang, 'bandNotice.mismatch.short', { track: tK, ctx: cK }),
+        full: msg(lang, 'bandNotice.mismatch.full', { track: tK, ctx: cK, limit: formatKhz(u.hz) }) + below
       });
     }
     if (state === ULTRA_STATE.OFF) {
       out.push({
         kind: 'bandsOff',
-        short: '帯域の計算を停止中（?bands=off）',
-        full: '帯域の計算を止めています（?bands=off）。CSVの帯域の3列は空欄になり、'
-          + 'グラフの超音波帯の線は描かれず、統計の「超音波帯の最大」は「--.-」のままです'
+        short: msg(lang, 'bandNotice.off.short'),
+        full: msg(lang, 'bandNotice.off.full')
       });
     } else if (state === ULTRA_STATE.FALLBACK) {
       out.push({
         kind: 'bandsFallback',
-        short: '帯域を計算していない（簡易モード）',
-        full: '簡易モードでは帯域を計算しません。CSVの帯域の3列は空欄になり、'
-          + 'グラフの超音波帯の線は描かれず、統計の「超音波帯の最大」は「--.-」のままです'
+        short: msg(lang, 'bandNotice.fallback.short'),
+        full: msg(lang, 'bandNotice.fallback.full')
       });
     } else if (state === ULTRA_STATE.NO_BINS) {
+      const ctx = formatKhz(ctxSr);
       out.push({
         kind: 'ultraUnavailable',
-        short: `超音波帯を測れない（サンプルレート${formatKhz(ctxSr)}kHz）`,
-        full: `AudioContextのサンプルレート（${formatKhz(ctxSr)}kHz）では、超音波帯（${range}）の周波数を表せません`
-          + `（表せる上限は約${formatKhz(ctxSr / 2)}kHz）。CSVのband_ultra_dbfsは空欄になり、グラフの超音波帯の線も出ません`
+        short: msg(lang, 'bandNotice.noBins.short', { ctx }),
+        full: msg(lang, 'bandNotice.noBins.full', { ctx, range, half: formatKhz(ctxSr / 2) })
       });
     }
     return out;
@@ -1292,32 +1415,31 @@ const MicGainLogic = (() => {
     };
   }
 
-  function deviceLossLabel(reason) {
-    if (reason === DEVICE_LOST_GONE) return '音声トラックが無くなりました';
-    return 'マイクが切断されました';
+  function deviceLossLabel(reason, lang) {
+    return msg(lang, reason === DEVICE_LOST_GONE ? 'device.gone' : 'device.lost');
   }
 
   // 記録に関わる注意の項目（要点 short と全文 full）。画面の注意書きは、この一覧だけから作る。
   // 画面の側（script.js）から切り出した。テストから振る舞いを確かめられるようにするため
   // （公開前の点検で、画面の条件を反転させてもテストが通ることが分かった）
+  // input.lang は画面の言語（'ja' / 'en'。省略すると日本語）。項目の kind は言語によらない
   function recordNoticeItems(input) {
     const src = input || {};
+    const lang = src.lang;
     const items = [];
     const loss = src.deviceLoss;
     if (loss) {
-      const label = deviceLossLabel(loss.reason);
+      const label = deviceLossLabel(loss.reason, lang);
       items.push({
         kind: 'deviceLoss',
-        short: `${label}（${loss.rowsKept}行目まで記録）`,
-        full: `${label}。${loss.rowsKept}行目までを記録し、`
-          + 'そのあとは記録していません（ここまでのログは書き出せます）'
+        short: msg(lang, 'notice.deviceLoss.short', { label, rows: loss.rowsKept }),
+        full: msg(lang, 'notice.deviceLoss.full', { label, rows: loss.rowsKept })
       });
     } else if (src.deviceMuted) {
       items.push({
         kind: 'deviceMuted',
-        short: 'マイクが無音化されている',
-        full: 'マイクが供給元で無音化されています（通話の割り込みなど）。'
-          + 'この間の記録はデジタル無音になります'
+        short: msg(lang, 'notice.muted.short'),
+        full: msg(lang, 'notice.muted.full')
       });
     }
     // 記録を始める前（測定条件が無い）には、加工の注意を出さない
@@ -1328,9 +1450,8 @@ const MicGainLogic = (() => {
         const keys = meta.processingActive.join(', ');
         items.push({
           kind: 'processingActive',
-          short: `音の加工が有効（${keys}）`,
-          full: `マイク側の音の加工が有効です（${keys}）。`
-            + '利得が自動で動くため、この記録の dBFS は絶対値として扱えません'
+          short: msg(lang, 'notice.processingActive.short', { keys }),
+          full: msg(lang, 'notice.processingActive.full', { keys })
         });
       } else if (verdict === PROCESSING_UNKNOWN) {
         // 報告しない項目がある（Safari の autoGainControl・noiseSuppression など）。
@@ -1338,28 +1459,25 @@ const MicGainLogic = (() => {
         const keys = (meta.processingUnknown || []).join(', ');
         items.push({
           kind: 'processingUnknown',
-          short: `音の加工の状態が不明（${keys}）`,
-          full: `マイク側の音の加工（${keys}）の状態を、`
-            + 'このブラウザーは報告しません。利得が自動で動いていても、この画面とCSVからは分かりません'
+          short: msg(lang, 'notice.processingUnknown.short', { keys }),
+          full: msg(lang, 'notice.processingUnknown.full', { keys })
         });
       }
       // サンプルレートの食い違い・?bands=off・超音波帯を測れないサンプルレート（第2弾b3）。
       // どれも測定条件から決まるので、入力を増やさずセッションのメタから組み立てる
-      for (const it of bandNoticeItems(meta)) items.push(it);
+      for (const it of bandNoticeItems(meta, lang)) items.push(it);
     }
     const breaks = src.clockBreaks || [];
     if (breaks.length) {
       const totalSec = breaks.reduce((a, b) => a + b.jumpMs, 0) / 1000;
       items.push({
         kind: 'clockBreak',
-        short: `時刻の跳び${breaks.length}回`,
-        full: `時刻の跳びを${breaks.length}回検出（累計 ${totalSec.toFixed(2)} 秒）。`
-          + '以降の時刻は取り直したアンカーで出し、'
-          + '該当区間はCSVのメタ行（# clockBreaks / # clockBreakAt / # clockDriftMs）に残ります'
+        short: msg(lang, 'notice.clock.short', { count: breaks.length }),
+        full: msg(lang, 'notice.clock.full', { count: breaks.length, sec: totalSec.toFixed(2) })
       });
     }
     // クリップと欠測、帯域の有効率（第2弾b3）。ボタンを増やさず、記録の信用に関わる事実をここへ集める
-    for (const it of statsWarningItems(src.stats)) items.push(it);
+    for (const it of statsWarningItems(src.stats, lang)) items.push(it);
     return items;
   }
 
@@ -1884,8 +2002,12 @@ const MicGainLogic = (() => {
     formatHMS,
     rmsToDbfs,
     rmsOf,
+    METER_WINDOW_SAMPLES,
+    meterWindowMs,
     parseFloorDb,
     FLOOR_DB_DEFAULT,
+    FLOOR_DB_DEFAULT_BANDS,
+    floorDbDefaultFor,
     meterScaleLabels,
     FLOOR_DB_MIN,
     FLOOR_DB_MAX,
@@ -1908,6 +2030,9 @@ const MicGainLogic = (() => {
     noticeSummary,
     statsIntegrity,
     emptyStatsText,
+    COMPACT_MEDIA_QUERY,
+    startStopView,
+    moreMenuNext,
     canvasPixelSize,
     GRAPH_WINDOW_SEC,
     GRAPH_TOP_DB,
@@ -1984,6 +2109,8 @@ const MicGainLogic = (() => {
     ultraSwatchShown,
     ultraLegendText,
     graphAriaLabel,
+    formatSecLabel,
+    ultraNowText,
     bandNoticeItems,
     formatCsvDb,
     buildCsv,

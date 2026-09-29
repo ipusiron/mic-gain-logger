@@ -21,6 +21,10 @@ const root = path.join(__dirname, '..');
 const script = fs.readFileSync(path.join(root, 'script.js'), 'utf8');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+// 第2弾c1bでREADMEを入口にし、詳しい説明をdocs/へ分けた。READMEとdocs/を合わせたものが、分ける前のREADMEにあたる
+const docsText = name => fs.readFileSync(path.join(root, 'docs', name), 'utf8');
+const readmeAndDocs = [readme, ...fs.readdirSync(path.join(root, 'docs')).filter(n => n.endsWith('.md')).map(docsText)].join('\n');
+const features = docsText('features.md');
 
 // ⚠ コメントを外してから照合する。公開前の点検で、`// series = [];` のように
 //    コメントアウトしても正規表現が一致してテストが通ることが分かった
@@ -103,9 +107,12 @@ test('ボタンの説明とヘルプが、実際に捨てるものを言って�
   assert.match(html, /「統計リセット」<\/strong>[^<]*グラフ[^<]*停止/);
 });
 
-test('README も、記録を止めてから押すこととグラフも消えることを書いている', () => {
-  const line = readme.split('\n').find(l => l.includes('統計とログデータは累積され続ける'));
+test('docs/features.md も、記録を止めてから押すこととグラフも消えることを書いている', () => {
+  const line = features.split('\n').find(l => l.includes('統計とログデータは累積され続ける'));
   assert.ok(line, '累積の説明の行が無い');
+  // README の使い方にも、止めてから押すことと、グラフまで消すことを書いている
+  const usage = readme.split('\n').find(l => l.startsWith('- 「統計リセット」は'));
+  assert.ok(usage && /止めて/.test(usage) && /グラフ/.test(usage), 'READMEの使い方に統計リセットの説明が無い');
   assert.match(line, /停止/);
   assert.match(line, /グラフ/);
 });

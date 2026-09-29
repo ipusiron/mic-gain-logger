@@ -23,6 +23,10 @@ const {
 const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+// 第2弾c1bでREADMEを入口にし、詳しい説明をdocs/へ分けた。READMEとdocs/を合わせたものが、分ける前のREADMEにあたる
+const docsText = name => fs.readFileSync(path.join(root, 'docs', name), 'utf8');
+const readmeAndDocs = [readme, ...fs.readdirSync(path.join(root, 'docs')).filter(n => n.endsWith('.md')).map(docsText)].join('\n');
+const features = docsText('features.md');
 
 const SR = 48000;
 const ANCHOR = { epoch: 0, audioTime: 0, wallMs: Date.UTC(2026, 8, 29, 0, 0, 0) };
@@ -102,11 +106,11 @@ test('簡易モードの行は連続の長さを持たない（測れないこ�
   assert.equal(s.sampleTotal, 0);
 });
 
-test('「連続」の区切りは3サンプルで、README とヘルプも同じ数を書いている', () => {
+test('「連続」の区切りは3サンプルで、docs/features.md とヘルプも同じ数を書いている', () => {
   // 公開前の点検で見つかった。区切りをテストで固定していないと、値を変えても
   // README とヘルプの「3サンプル以上」と食い違ったまま気づけない
   assert.equal(CLIP_RUN_SUSTAINED, 3);
-  assert.match(readme, /3サンプル以上続いた/);
+  assert.match(features, /3サンプル以上続いた/);
   assert.match(html, /3サンプル以上続いていれば/);
   // 境目の前後で文が変わる
   const at = (run) => statsWarnings(statsOf([recordOf(0, { peak: 1, clip: run, clipRun: run })]))[0];
@@ -116,10 +120,11 @@ test('「連続」の区切りは3サンプルで、README とヘルプも同じ
 
 test('「真のピーク」を「サンプルピーク」と呼ぶ（トゥルーピークとは別物）', () => {
   assert.doesNotMatch(html, /真のピーク/, 'index.html に「真のピーク」が残っている');
-  assert.match(html, /<div class="stat-label">サンプルピーク<\/div>/);
+  // 第2弾c3aで見出しに辞書のキー（data-i18n）を付けたので、属性を許して見る
+  assert.match(html, /<div class="stat-label"[^>]*>サンプルピーク<\/div>/);
   // 別物であることを説明に書く
-  const m = html.match(/<div class="stat"[^>]*title="([^"]*)"[^>]*>\s*<div class="stat-label">サンプルピーク/);
+  const m = html.match(/<div class="stat"[^>]*\stitle="([^"]*)"[^>]*>\s*<div class="stat-label"[^>]*>サンプルピーク/);
   assert.ok(m, 'サンプルピークの枠に title が無い');
   assert.match(m[1], /トゥルーピーク/);
-  assert.doesNotMatch(readme, /真のピーク/, 'README に「真のピーク」が残っている');
+  assert.doesNotMatch(readmeAndDocs, /真のピーク/, 'README・docs/ に「真のピーク」が残っている');
 });

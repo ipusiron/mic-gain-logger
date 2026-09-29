@@ -11,6 +11,14 @@ const path = require('node:path');
 
 const root = path.join(__dirname, '..');
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+// 第2弾c1bでREADMEを入口にし、詳しい説明をdocs/へ分けた。READMEとdocs/を合わせたものが、分ける前のREADMEにあたる
+const docsText = name => fs.readFileSync(path.join(root, 'docs', name), 'utf8');
+const readmeAndDocs = [readme, ...fs.readdirSync(path.join(root, 'docs')).filter(n => n.endsWith('.md')).map(docsText)].join('\n');
+const csvDoc = docsText('csv.md');
+const useCases = docsText('use-cases.md');
+const roadmap = docsText('roadmap.md');
+const troubleshooting = docsText('troubleshooting.md');
+const measurement = docsText('measurement.md');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const script = fs.readFileSync(path.join(root, 'script.js'), 'utf8');
 const logic = require('../logic.js');
@@ -21,12 +29,13 @@ const logic = require('../logic.js');
 // （このシリーズの決まり。全ファイル・全ディレクトリーに1行の説明を付ける）。
 const ENTRY = /^([\s│]*)([├└])── (\S+)(?:\s+# ?(.*?))?\s*$/;
 
+// ⚠ 第2弾c1で、シリーズ標準の見出し「## 📁 ディレクトリー構造」へ名前を変え、後半の固定位置へ移した
 function readTreeBlock() {
-  const head = readme.indexOf('## \u{1f4c2} ディレクトリー構成');
-  assert.notEqual(head, -1, 'ディレクトリー構成の見出しが無い');
+  const head = readme.indexOf('## \u{1f4c1} ディレクトリー構造');
+  assert.notEqual(head, -1, 'ディレクトリー構造の見出しが無い');
   const open = readme.indexOf('```', head);
   const close = readme.indexOf('```', open + 3);
-  assert.ok(open !== -1 && close !== -1, 'ディレクトリー構成のコードブロックが無い');
+  assert.ok(open !== -1 && close !== -1, 'ディレクトリー構造のコードブロックが無い');
   return readme.slice(open + 3, close).split('\n');
 }
 
@@ -123,22 +132,22 @@ test('フロントマターの説明が「調査員・探偵・法執行機関�
 });
 
 test('想定ターゲット層が「調査員・探偵・法執行機関」を利用者に置いていない', () => {
-  const head = readme.indexOf('## 👥 想定ターゲット層');
-  const tail = readme.indexOf('### 🎯 想定する使い方');
+  // 第2弾c1bでdocs/use-cases.mdへ移した（そこではH2）
+  const head = useCases.indexOf('## 👥 想定ターゲット層');
+  const tail = useCases.indexOf('## 🎯 想定する使い方');
   assert.ok(head !== -1 && tail > head, '想定ターゲット層の節が見つからない');
-  const block = readme.slice(head, tail);
+  const block = useCases.slice(head, tail);
   for (const s of ['調査員', '探偵', '法執行']) {
     assert.ok(!block.includes(s), `想定ターゲット層に ${s} が残っている`);
   }
 });
 
 test('将来案が、入れないと決めた案を「いずれ入る」ものとして並べていない', () => {
-  const head = readme.indexOf('## 💡 将来的な追加アイデア');
-  const tail = readme.indexOf('## 📊 CSVデータの活用方法');
-  assert.ok(head !== -1 && tail > head, '将来案の節が見つからない');
-  const block = readme.slice(head, tail);
+  // 第2弾c1bでdocs/roadmap.mdへ移した（1つのファイルがまるごと将来案の節にあたる。小見出しはH2）
+  assert.ok(roadmap.startsWith('# 💡 将来的な追加アイデア\n'), '将来案の資料が見つからない');
+  const block = roadmap;
 
-  const cut = block.indexOf('### 将来案に入れないもの');
+  const cut = block.indexOf('## 将来案に入れないもの');
   assert.notEqual(cut, -1, '「将来案に入れないもの」の見出しが無い');
   const plan = block.slice(0, cut);
   for (const s of ['A特性', 'キャリブレーション', 'ステルスモード', 'L10']) {
@@ -166,29 +175,35 @@ test('将来案が、入れないと決めた案を「いずれ入る」もの�
   for (const s of ['第2弾の予定', '第2弾の帯域の値で測り直します', 'その診断は第3弾で扱います']) {
     assert.ok(!block.includes(s), `将来案の節に古い書き方「${s}」が残っている`);
   }
-  assert.ok(block.includes('### 第2弾で入れたもの') && block.includes('### 第3弾の案'));
-  assert.ok(!readme.includes('同じ版を`?bands=off`で開いたときと比べて確かめる予定です'), '実機の関門を「予定」のまま書いている');
+  assert.ok(block.includes('## 第2弾で入れたもの') && block.includes('## 第3弾の案'));
+  assert.ok(!readmeAndDocs.includes('同じ版を`?bands=off`で開いたときと比べて確かめる予定です'), '実機の関門を「予定」のまま書いている');
 });
 
 test('廃止したスムージングの置き換え（時間重み）の約束が残り、記録の側だけ狭まっている', () => {
   // 時間重みは第1弾でスライダーを外したときの約束である。消してはいけない。
   // ただし「記録にも反映」は言い過ぎだった。区間 Leq は区間の完全な要約なので、
   // 時間重みをかけても区間の平均は変わらない。記録に足せるのは LFmax / LSmax
-  assert.ok(readme.includes('時間重み'), '時間重みの約束が消えている');
+  // 第2弾c1bで、将来案はdocs/roadmap.md、スムージングを置かない理由はdocs/measurement.mdへ移した
+  for (const [where, text] of [['docs/roadmap.md', roadmap], ['docs/measurement.md', measurement]]) {
+    assert.ok(text.includes('時間重み'), `${where}から時間重みの約束が消えている`);
+    assert.ok(text.includes('LFmax'), `${where}に記録に足せる範囲（LFmax／LSmax）が書かれていない`);
+  }
   assert.ok(
-    !readme.includes('表示と記録の両方に反映される形'),
+    !readmeAndDocs.includes('表示と記録の両方に反映される形'),
     '記録にも反映すると約束したままになっている'
   );
-  assert.ok(readme.includes('LFmax'), '記録に足せる範囲（LFmax／LSmax）が書かれていない');
 });
 
 test('Excel の手順が dB の算術平均を教えていない', () => {
   // `=AVERAGE(B:B)` は第1弾が画面で捨てた計算である。
   // しかも `-Infinity` の行はセルの上では文字列なので、警告も出ずに集計から外れる
-  const head = readme.indexOf('### Excel/Google Sheetsでの分析手順');
-  const tail = readme.indexOf('## 🌐 技術スタック');
+  // 第2弾c1bでdocs/csv.mdへ移した（そこではH2）
+  const head = csvDoc.indexOf('## Excel/Google Sheetsでの分析手順');
+  // ⚠ 第2弾c1でExcelの節の後ろにCSVのレシピの節を足したため、次の「### 推奨分析手法」までを見る
+  //    （レシピの節にも # sessionStartAt= などが出るので、H2まで見るとExcelの節から消しても通ってしまう）
+  const tail = csvDoc.indexOf('## 推奨分析手法');
   assert.ok(head !== -1 && tail > head, 'Excel の手順が見つからない');
-  const block = readme.slice(head, tail);
+  const block = csvDoc.slice(head, tail);
 
   for (const line of block.split('\n')) {
     if (!line.includes('=AVERAGE(')) continue;
@@ -216,9 +231,12 @@ test('Excel の手順が dB の算術平均を教えていない', () => {
 });
 
 test('Excel の手順が、seq の列（C）を作業用に潰していない', () => {
-  const head = readme.indexOf('### Excel/Google Sheetsでの分析手順');
-  const tail = readme.indexOf('## 🌐 技術スタック');
-  const block = readme.slice(head, tail);
+  // 第2弾c1bでdocs/csv.mdへ移した（そこではH2）
+  const head = csvDoc.indexOf('## Excel/Google Sheetsでの分析手順');
+  // ⚠ 第2弾c1でExcelの節の後ろにCSVのレシピの節を足したため、次の「### 推奨分析手法」までを見る
+  //    （レシピの節にも # sessionStartAt= などが出るので、H2まで見るとExcelの節から消しても通ってしまう）
+  const tail = csvDoc.indexOf('## 推奨分析手法');
+  const block = csvDoc.slice(head, tail);
   // CSV v3 の列は timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,band_ultra_dbfs,band_audible_dbfs,
   // band_valid_ratio,hash ＝ A〜J である（第2弾b2。v2 は A〜G の7列だった）
   assert.equal(logic.CSV_COLUMNS.length, 10, 'CSV の列数が変わっている（作業列の位置も見直すこと）');
@@ -237,9 +255,12 @@ test('Excel の手順が、seq の列（C）を作業用に潰していない', 
 });
 
 test('Excel の手順が、セッションの境界とアンカーの取り直しを重みから外している', () => {
-  const head = readme.indexOf('### Excel/Google Sheetsでの分析手順');
-  const tail = readme.indexOf('## 🌐 技術スタック');
-  const block = readme.slice(head, tail);
+  // 第2弾c1bでdocs/csv.mdへ移した（そこではH2）
+  const head = csvDoc.indexOf('## Excel/Google Sheetsでの分析手順');
+  // ⚠ 第2弾c1でExcelの節の後ろにCSVのレシピの節を足したため、次の「### 推奨分析手法」までを見る
+  //    （レシピの節にも # sessionStartAt= などが出るので、H2まで見るとExcelの節から消しても通ってしまう）
+  const tail = csvDoc.indexOf('## 推奨分析手法');
+  const block = csvDoc.slice(head, tail);
   assert.ok(block.includes('# sessionStartAt='), '境界の行の見つけ方（# sessionStartAt=）が無い');
   assert.ok(block.includes('# clockBreakAt='), 'アンカーの取り直した行の扱いが無い');
   // 実装がその行を出していること（README だけ直しても意味がない）
@@ -251,24 +272,25 @@ test('Excel の手順が、セッションの境界とアンカーの取り直�
   assert.ok(trailer.includes('# sessionStartAt=0,1'), trailer.join(' / '));
 });
 
-test('トラブルシューティングが、第1弾で直した不具合の回避策を載せていない', () => {
-  const head = readme.indexOf('### よくある問題と解決方法');
-  const tail = readme.indexOf('### ブラウザー対応状況');
-  assert.ok(head !== -1 && tail > head, 'トラブルシューティングの節が見つからない');
-  const block = readme.slice(head, tail);
+test('トラブルシューティングが、直した不具合の回避策を載せず、いまの作りで書いている', () => {
+  // 第2弾c1bでdocs/troubleshooting.mdへ移した（1つのファイルがまるごとトラブルシューティングの節にあたる）
+  assert.ok(troubleshooting.startsWith('# 🔧 トラブルシューティング\n'), 'トラブルシューティングの資料が見つからない');
+  const block = troubleshooting;
 
   // ⚠ ズームで拡大するのは、非整数の幅で RangeError を踏む側の操作だった
   assert.ok(!block.includes('ブラウザーのズーム機能で拡大'), 'ズームで拡大する回避策が残っている');
   assert.ok(!block.includes('ブラウザーのキャッシュをクリア'), 'キャッシュクリアの回避策が残っている');
-  // 直したこと自体は、正体つきで残す（同じ症状が出たら別の原因である）
-  assert.ok(block.includes('RangeError'), '直した不具合の正体が書かれていない');
-  assert.ok(block.includes('第1弾で直した'), '第1弾で直したことが書かれていない');
+  // 同じ症状が出たら別の原因だと分かるように、いまの作り（非整数の幅を整数に直すので RangeError にならない）を正体つきで書く。
+  // 第2弾c1bで「第1弾で直した」という過去の版の説明はやめた（本人の指示 2026-09-29「今の版で正しいことを書けば良いだけ」）
+  assert.ok(block.includes('`RangeError: Invalid array length`にはならない'), 'RangeErrorにならない作りが書かれていない');
+  assert.ok(block.includes('`test/canvas.test.js`が確かめている'), '確かめているテストが書かれていない');
+  assert.ok(!block.includes('第1弾で直した'), '過去の版の説明（第1弾で直した）が残っている');
 });
 
 // ---- README の記述と実装の照合 ----
 
 test('廃止した TECHNICAL.md を README が参照していない', () => {
-  assert.ok(!readme.includes('TECHNICAL.md'), 'README が TECHNICAL.md を参照している');
+  assert.ok(!readmeAndDocs.includes('TECHNICAL.md'), 'README・docs/ が TECHNICAL.md を参照している');
   assert.ok(!fs.existsSync(path.join(root, 'TECHNICAL.md')), 'TECHNICAL.md が残っている');
 });
 
@@ -278,9 +300,10 @@ test('README の CSV の列が実装と一致する', () => {
   assert.ok(Array.isArray(cols) && cols.length, 'logic.js が CSV_COLUMNS を公開していない');
   assert.equal(cols[0], 'timestamp');
   assert.equal(cols[1], 'dbfs');
-  assert.ok(readme.includes(cols.join(',')), `README に列の並び ${cols.join(',')} が無い`);
+  // 第2弾c1bで、列の説明はdocs/csv.mdへ移した
+  assert.ok(csvDoc.includes(cols.join(',')), `docs/csv.md に列の並び ${cols.join(',')} が無い`);
   for (const c of cols) {
-    assert.ok(readme.includes('`' + c + '`'), `README が列 ${c} を説明していない`);
+    assert.ok(csvDoc.includes('`' + c + '`'), `docs/csv.md が列 ${c} を説明していない`);
   }
 });
 
@@ -299,10 +322,10 @@ test('記録中は CSV を書き出せない（README の手順がこれを前�
     /exportBtn\.disabled\s*=\s*running\s*\|\|/,
     '書き出しボタンの無効化が running を見ていない'
   );
-  assert.ok(
-    readme.includes('記録中は書き出しボタンが押せない'),
-    'README が「記録中は書き出せない」と書いていない'
-  );
+  // 第2弾c1bで、シナリオ1はdocs/use-cases.mdへ移した。READMEの使い方にも同じことを書いている
+  for (const [where, text] of [['README', readme], ['docs/use-cases.md', useCases]]) {
+    assert.ok(text.includes('記録中は書き出しボタンが押せない'), `${where} が「記録中は書き出せない」と書いていない`);
+  }
 });
 
 test('撤回した法的な誤りが README に残っていない', () => {
@@ -316,19 +339,19 @@ test('撤回した法的な誤りが README に残っていない', () => {
     '探偵業務における適正な調査方法の義務付け'
   ];
   for (const s of withdrawn) {
-    assert.ok(!readme.includes(s), `撤回したはずの記述が残っている: ${s}`);
+    assert.ok(!readmeAndDocs.includes(s), `撤回したはずの記述が残っている: ${s}`);
   }
   // 過去の版との違いは README に書かない（本人の指示 2026-09-29「過去の版をわざわざ見る人はいないので、
   // 訂正の差異の説明は不要。今の版で正しいことを書けば良いだけ」）
-  assert.ok(!readme.includes('過去の版にあった誤りの訂正'), '過去の版との違いを説明する節が残っている');
+  assert.ok(!readmeAndDocs.includes('過去の版にあった誤りの訂正'), '過去の版との違いを説明する節が残っている');
 });
 
 test('dBFS を端末に依存しない値として説明していない', () => {
   assert.ok(
-    !readme.includes('使用デバイスに関係なく一貫した音量比較'),
+    !readmeAndDocs.includes('使用デバイスに関係なく一貫した音量比較'),
     'dBFS が端末に依存しないという誤りが残っている'
   );
-  assert.ok(readme.includes('同じ音を別の端末で測れば、別のdBFS値が出ます'), 'dBFS の限界を書いていない');
+  assert.ok(measurement.includes('同じ音を別の端末で測れば、別のdBFS値が出ます'), 'docs/measurement.md が dBFS の限界を書いていない');
 });
 
 test('モバイルの検証範囲を、実際より広く書いていない', () => {
@@ -343,8 +366,9 @@ test('モバイルの検証範囲を、実際より広く書いていない', ()
     readme.includes('実機で確かめたのは、iPhone 18 Pro Max（iOS Safari）の1台だけです'),
     '実機で確かめた範囲（1台だけ）を書いていない'
   );
+  // 第2弾c1bの点検で、ブラウザー対応状況をである調の箇条書きにした。確かめていない範囲は「確かめていないこと」の項目に書く
   assert.ok(
-    readme.includes('Androidの実機と、実機での画面ロック中・バックグラウンドの挙動は確かめていません'),
+    table.split('\n').some(l => l.startsWith('- **確かめていないこと**：Androidの実機と、実機での画面ロック中・バックグラウンドの挙動。')),
     '実機で確かめていない範囲を書いていない'
   );
 });
@@ -354,10 +378,10 @@ test('シナリオ例が「画面ロック相当で実測確認」と言い切�
   // 同じ README の対応表が「モバイルはエミュレーションのみ」と書いているので、
   // シナリオ側が「実測で確認した」と言い切ると食い違う。
   // 未確認である旨は「ブラウザー対応状況」の1か所へ集約し、他はそこを指す
-  const head = readme.indexOf('## 📋 具体的なシナリオ例');
-  const tail = readme.indexOf('## 📂 ディレクトリー構成');
-  assert.ok(head !== -1 && tail > head, 'シナリオ例の節が見つからない');
-  const scenarios = readme.slice(head, tail);
+  // 第2弾c1bでdocs/use-cases.mdへ移した（そこではH2で、ファイルの最後の節）
+  const head = useCases.indexOf('## 📋 具体的なシナリオ例');
+  assert.ok(head !== -1, 'シナリオ例の節が見つからない');
+  const scenarios = useCases.slice(head);
 
   assert.ok(
     !scenarios.includes('確認済みの動作環境'),
@@ -392,10 +416,10 @@ test('シナリオ例が「画面ロック相当で実測確認」と言い切�
 
 test('ハッシュチェーンの限界を README が書いている', () => {
   assert.ok(
-    readme.includes('意図的な改変には、相手が誰であっても耐えません'),
+    csvDoc.includes('意図的な改変には、相手が誰であっても耐えません'),
     'ハッシュチェーンの限界が書かれていない'
   );
-  assert.ok(readme.includes(logic.HASH_ALGO_LABEL), `README に ${logic.HASH_ALGO_LABEL} が無い`);
+  assert.ok(csvDoc.includes(logic.HASH_ALGO_LABEL), `docs/csv.md に ${logic.HASH_ALGO_LABEL} が無い`);
 });
 
 // ---- 画面内のヘルプと実装の照合 ----
@@ -440,20 +464,21 @@ test('ヘルプの CSV の説明が10列とヘッダー・トレーラーに触�
 test('README が CSV の4つの部分を説明している', () => {
   // ⚠ 起点とトレーラーの区別が README から消えると、受け取った側は
   //    検証の手順を組めない（`#` の行をまとめて起点にしてしまう）
-  assert.ok(readme.includes('# trailerHash='), 'README がトレーラーのハッシュに触れていない');
-  assert.ok(readme.includes('# rows='), 'README が行数のトレーラー行に触れていない');
+  // 第2弾c1bで、CSVの形式と検証の手順はdocs/csv.mdへ移した
+  assert.ok(csvDoc.includes('# trailerHash='), 'docs/csv.md がトレーラーのハッシュに触れていない');
+  assert.ok(csvDoc.includes('# rows='), 'docs/csv.md が行数のトレーラー行に触れていない');
   assert.ok(
-    readme.includes('同じセッションを2回書き出すと同じ行のハッシュが変わります'),
+    csvDoc.includes('同じセッションを2回書き出すと同じ行のハッシュが変わります'),
     'README が「起点にあとから分かる事実を入れるとどうなるか」を書いていない'
   );
   // 起点の説明が「#で始まる行すべて」に戻っていないこと
   assert.ok(
-    !readme.includes('起点はメタ行そのもの'),
+    !readmeAndDocs.includes('起点はメタ行そのもの'),
     '起点を「メタ行そのもの」と書いた古い説明が残っている'
   );
   // 列のヘッダーより上だけが起点である、と言っている
   assert.ok(
-    readme.includes('その上にある`#`の行が起点'),
+    csvDoc.includes('その上にある`#`の行が起点'),
     'README が起点の範囲（列のヘッダーより上）を書いていない'
   );
 });
@@ -465,12 +490,12 @@ test('README の検証手順が実装のハッシュの作り方と合ってい�
   // ⚠ 材料は「hash 列より左のフィールド」である。v3（第2弾b2）で9つになったので、数では書かない
   //    （v2 の CSV は6つのまま。1本の検証器で両方を確かめる）
   assert.ok(
-    readme.includes('その行の`hash`列より左のフィールドをコンマで連結'),
+    csvDoc.includes('その行の`hash`列より左のフィールドをコンマで連結'),
     'README が行の材料の作り方を書いていない'
   );
-  assert.ok(!readme.includes('その行の6つのフィールドをコンマで連結'), 'v2 のときの「6つのフィールド」が残っている');
+  assert.ok(!readmeAndDocs.includes('その行の6つのフィールドをコンマで連結'), 'v2 のときの「6つのフィールド」が残っている');
   assert.ok(
-    readme.includes('ファイルに並んでいる順のまま改行で連結'),
+    csvDoc.includes('ファイルに並んでいる順のまま改行で連結'),
     'README がトレーラーの材料の作り方を書いていない'
   );
 });
@@ -499,8 +524,9 @@ test('ヘルプの簡易モードが file:// に触れている', () => {
 test('ヘルプの「統計と表示」が、画面に出している値をすべて説明している', () => {
   // ⚠ 第2弾で足した3値（サンプルピーク・クリップ数・有効サンプル率）が
   //    ヘルプの一覧に無かった。画面に出ているものは、画面で説明する
-  const head = html.indexOf('<h3>📊 統計と表示</h3>');
-  const tail = html.indexOf('<h3>💾 データの取り扱い</h3>');
+  // 第2弾c3aで見出しに辞書のキー（data-i18n）を付けたので、属性を許して探す
+  const head = html.search(/<h3[^>]*>📊 統計と表示<\/h3>/);
+  const tail = html.search(/<h3[^>]*>💾 データの取り扱い<\/h3>/);
   assert.ok(head !== -1 && tail > head, 'ヘルプの「統計と表示」が見つからない');
   const block = html.slice(head, tail);
   for (const label of ['稼働時間', 'ログ件数', '平均（Leq）', '最大/最小/変動幅', 'サンプルピーク', '記録の穴']) {
@@ -514,6 +540,13 @@ test('ヘルプの「統計と表示」が、画面に出している値をす�
 test('ヘルプが「平均（Leq）の重みは区間長」と書いている', () => {
   // ⚠ README:92 にはあったが、画面だけ見た読者は Excel で等重みの式を組む
   assert.match(helpItem('平均（Leq）：'), /重みは行数ではなく区間長/);
+  // READMEの「✨ 主な機能」の要約と docs/features.md も同じことを書く（第2弾c1bの点検で、READMEの要約を
+  // 「dBの算術平均で、重みは行数」に書き換えても落ちないと指摘された）
+  const summary = readme.split('\n').find(l => l.startsWith('- **統計**：'));
+  assert.ok(summary, 'READMEの主な機能に「統計」の項目が無い');
+  assert.ok(summary.includes('平均はエネルギー平均で、重みは行数ではなく区間長（秒）である'), 'READMEの主な機能の統計の要約が違う');
+  assert.ok(!/算術平均で|重みは行数である/.test(summary));
+  assert.ok(docsText('features.md').includes('平均の重みは行数ではなく区間長（秒）である'), 'docs/features.md に重みの説明が無い');
 });
 
 test('ヘルプの「CSVから同じ値が出る」が、成り立つ条件つきになっている', () => {
@@ -523,8 +556,8 @@ test('ヘルプの「CSVから同じ値が出る」が、成り立つ条件つ�
     !html.includes('画面の値とCSVから計算し直した値は一致します'),
     '無条件に一致すると言い切ったままになっている'
   );
-  const head = html.indexOf('<h3>📊 統計と表示</h3>');
-  const tail = html.indexOf('<h3>💾 データの取り扱い</h3>');
+  const head = html.search(/<h3[^>]*>📊 統計と表示<\/h3>/);
+  const tail = html.search(/<h3[^>]*>💾 データの取り扱い<\/h3>/);
   const block = html.slice(head, tail);
   assert.ok(block.includes('sessionStartAt'), '境界の行の見つけ方が画面に無い');
   assert.ok(block.includes('clockBreakAt'), 'アンカーを取り直した行の扱いが画面に無い');

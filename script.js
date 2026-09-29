@@ -5,8 +5,9 @@
 (() => {
   // 純粋ロジックは logic.js（DOM非依存）から取る
   const {
-    clamp, dbToPercent, formatHMS, rmsToDbfs, rmsOf,
-    parseFloorDb, parseIntervalSec, canvasPixelSize, meterScaleLabels,
+    clamp, dbToPercent, formatHMS, rmsToDbfs, rmsOf, METER_WINDOW_SAMPLES,
+    parseFloorDb, floorDbDefaultFor, parseIntervalSec, canvasPixelSize, meterScaleLabels,
+    COMPACT_MEDIA_QUERY, startStopView, moreMenuNext,
     GRAPH_WINDOW_SEC, GRAPH_TOP_DB, graphArea, timeToX, dbToY,
     timeTickStepSec, timeTicks, dbTickStep, dbTicks, pruneSeries, seriesPointOf,
     GRAPH_LINE_STYLES, graphLinePoints,
@@ -22,21 +23,33 @@
     readTrackState, isTrackLost, markDeviceLoss,
     buildIntervalRecord, buildFallbackRecord,
     bandPlan, bandsEnabledFromQuery,
-    upperLimitText, ultraBandState, ultraSwatchShown, ultraLegendText, graphAriaLabel,
+    upperLimitText, ultraBandState, ultraSwatchShown, ultraLegendText, graphAriaLabel, ultraNowText,
     buildCsv, csvFileName,
     csvTrailerLines, createHashChain, HASH_ALGO_LABEL
   } = MicGainLogic; // logic.js（classic script のグローバル束縛）
+  // 画面の文言の辞書と、言語の決め方（messages.js。第2弾c3a）。
+  // ⚠ 画面に出る文言はここに書かず、辞書のキーで引く（test/i18n.test.js が、コメントの外の日本語の文字列を見ている）
+  const {
+    t, initialLang, searchWithLang, richSegments, richPlainText, I18N_ATTRS, LANG_STORAGE_KEY
+  } = MicGainMessages;
 
   // UI要素取得
   const startBtn = document.getElementById('startBtn');
   const stopBtn = document.getElementById('stopBtn');
   const exportBtn = document.getElementById('exportBtn');
   const resetBtn = document.getElementById('resetBtn');
+  // 「その他」と、その中身（CSV書き出し・統計リセット）。幅480px以下でだけ畳む（第2弾c0）
+  const moreBtn = document.getElementById('moreBtn');
+  const moreMenuEl = document.getElementById('moreMenu');
   const themeToggle = document.getElementById('themeToggle');
+  // 表示の言語の切り替え（第2弾c3a）。ヘッダーの右上
+  const langToggle = document.getElementById('langToggle');
   const helpBtn = document.getElementById('helpBtn');
   const helpModal = document.getElementById('helpModal');
 
   const bigValue = document.getElementById('bigValue');
+  // 超音波帯の現在値（第2弾c0）。大きな数字のすぐ下の1行
+  const ultraNowEl = document.getElementById('ultraNow');
   const meterEl = document.getElementById('meter');
   const meterBar = document.getElementById('meterBar');
   const meterScaleEl = document.getElementById('meterScale');
@@ -65,6 +78,82 @@
   const legendUltraEl = document.getElementById('legendUltra');
   const legendUltraTextEl = document.getElementById('legendUltraText');
   const upperLimitEl = document.getElementById('upperLimit');
+
+  // ---- 表示の言語（第2弾c3a）----
+  //
+  // 初期言語は ?lang=ja|en → 保存した選択（localStorage）→ ブラウザーの言語（navigator.languages の先頭が日本語なら日本語、
+  // それ以外は英語）。決め方は messages.js の initialLang で、ここは材料を集めて渡すだけ。
+  // ⚠ 言語は表示だけを変える。記録（logs）・統計（stats）・グラフの点（series）・ハッシュチェーン・CSV には触らない。
+  //    CSV の中身と書き出すファイル名は、言語によらず同じ（logic.js の buildCsv・csvFileName は辞書を使わない）
+  // ⚠ localStorage は使えない環境（プライベートブラウズ・保存の拒否）がある。読めなければ null、書けなければ黙って続ける
+  function readSavedLang() {
+    try { return localStorage.getItem(LANG_STORAGE_KEY); } catch { return null; }
+  }
+  function saveLang(value) {
+    try { localStorage.setItem(LANG_STORAGE_KEY, value); } catch { /* 保存できなくても、開いているあいだの切り替えはできる */ }
+  }
+  let lang = initialLang({
+    search: window.location.search,
+    saved: readSavedLang(),
+    languages: (navigator.languages && navigator.languages.length) ? navigator.languages : [navigator.language]
+  });
+
+  // いまの言語で辞書を引く
+  function tr(key, params) {
+    return t(lang, key, params);
+  }
+
+  // 辞書のキーで文字を入れる。キー（と置き換える値）を要素に残し、言語を切り替えたら applyStaticText が同じキーで入れ直す。
+  // keyが空なら、文字もキーも消す
+  function setMessage(el, key, params) {
+    if (!el) return;
+    if (!key) {
+      el.removeAttribute('data-i18n');
+      el.removeAttribute('data-i18n-params');
+      el.textContent = '';
+      return;
+    }
+    el.setAttribute('data-i18n', key);
+    if (params) el.setAttribute('data-i18n-params', JSON.stringify(params));
+    else el.removeAttribute('data-i18n-params');
+    el.textContent = tr(key, params);
+  }
+
+  function paramsOf(el) {
+    const raw = el.getAttribute('data-i18n-params');
+    if (!raw) return undefined;
+    try { return JSON.parse(raw); } catch { return undefined; }
+  }
+
+  // <strong>・<code>・<em> を含む文言（ヘルプ・説明と注意事項）を要素にする。
+  // 分け方は messages.js の richSegments が決め、ここは要素を作るだけ（innerHTML は使わない）
+  function renderRich(el, value) {
+    el.replaceChildren(...richSegments(value).map(seg => {
+      if (!seg.tag) return document.createTextNode(seg.text);
+      const node = document.createElement(seg.tag);
+      node.textContent = seg.text;
+      return node;
+    }));
+  }
+
+  // index.html の data-i18n（文字）・data-i18n-rich（タグを含む文字）・data-i18n-<属性名>（title・aria-label など）を、
+  // いまの言語で入れ直す。非表示の要素（ヘルプ・「その他」の中身・閉じた説明）も同じく入れ直す。変わったところだけ書く
+  function applyStaticText() {
+    for (const el of document.querySelectorAll('[data-i18n]')) {
+      const text = tr(el.getAttribute('data-i18n'), paramsOf(el));
+      if (el.textContent !== text) el.textContent = text;
+    }
+    for (const el of document.querySelectorAll('[data-i18n-rich]')) {
+      const value = tr(el.getAttribute('data-i18n-rich'));
+      if (el.textContent !== richPlainText(value)) renderRich(el, value);
+    }
+    for (const attr of I18N_ATTRS) {
+      for (const el of document.querySelectorAll(`[data-i18n-${attr}]`)) {
+        const value = tr(el.getAttribute(`data-i18n-${attr}`));
+        if (el.getAttribute(attr) !== value) el.setAttribute(attr, value);
+      }
+    }
+  }
 
   // 帯域を計算するか（?bands=offならfalse）。ページを開いたときのURLで決まり、開いているあいだ変わらない。
   // 凡例は記録を始める前から出すので、セッションのメタ（bandsEnabled）を待たずにここで読む
@@ -166,7 +255,7 @@
   //
   // 改修前はここに3つの不具合が同居していた。
   //  (1) rect.width が非整数のとき `new Array(WIDTH)` が RangeError を投げ、
-  //      呼び出し元の drawSeries() と handleMobileButtonLayout() まで止まった
+  //      呼び出し元のdrawSeries()とhandleMobileButtonLayout()（第2弾c0で廃止）まで止まった
   //  (2) canvas.style.width/height へ px を焼き込み、CSS のレスポンシブ規則を
   //      インラインスタイルで無効化していた（狭めたあと二度と広がらない）
   //  (3) (2) の結果、481〜915px でキャンバスが 800px のまま横へはみ出した
@@ -211,8 +300,11 @@
   const logs = []; // { ts: Date, db: number }
 
   // 設定
+  // 表示下限の既定は、帯域を計算するかどうかで決まる（第2弾c0。帯域あり-110、?bands=offは従来の-90）。
+  // 決め方はlogic.jsのfloorDbDefaultFor。空欄・非数のときもこの値に戻す
+  const floorDbDefault = floorDbDefaultFor(bandsOnPage);
   function getFloorDb() {
-    return parseFloorDb(floorDbInput.value);
+    return parseFloorDb(floorDbInput.value, floorDbDefault);
   }
 
   // メーターの目盛りと説明を、表示下限に合わせる。
@@ -225,11 +317,12 @@
       const spans = meterScaleEl.querySelectorAll('span');
       labels.forEach((t, i) => { if (spans[i]) spans[i].textContent = t; });
     }
-    if (meterEl) meterEl.title = `音量レベルメーター（${labels[0]}dBFS〜0dBFS）`;
+    if (meterEl) meterEl.title = tr('meter.title', { floor: labels[0] });
   }
 
-  // 音量計算
-  const buffer = new Float32Array(2048);
+  // 音量計算。大きな数字は直近METER_WINDOW_SAMPLES（2048）サンプルの全帯域のRMSである。
+  // ⚠ CSVのdbfs（区間全体のエネルギー平均）とは窓が違う（ヘルプ・title・READMEに書いた。第2弾c0）
+  const buffer = new Float32Array(METER_WINDOW_SAMPLES);
   function computeDb() {
     analyser.getFloatTimeDomainData(buffer);
     return rmsToDbfs(rmsOf(buffer));
@@ -382,10 +475,22 @@
   function renderBandInfo() {
     const state = ultraBandState(sessionMeta, bandsOnPage);
     if (legendUltraEl) legendUltraEl.classList.toggle('stopped', !ultraSwatchShown(state));
-    if (legendUltraTextEl) legendUltraTextEl.textContent = ultraLegendText(state);
+    if (legendUltraTextEl) legendUltraTextEl.textContent = ultraLegendText(state, lang);
     // 上限は記録を始めてから分かる（リセットで測定条件を捨てたら消す）
-    if (upperLimitEl) upperLimitEl.textContent = upperLimitText(sessionMeta);
-    canvas.setAttribute('aria-label', graphAriaLabel(state));
+    if (upperLimitEl) upperLimitEl.textContent = upperLimitText(sessionMeta, lang);
+    canvas.setAttribute('aria-label', graphAriaLabel(state, lang));
+    // 超音波帯の現在値も同じ判定で出す（線を描かないときは、値の代わりに理由を出す）
+    renderUltraNow();
+  }
+
+  // 超音波帯の現在値（第2弾c0）。最後に記録した区間（lastRecord）のband_ultra_dbfsを、
+  // 凡例と同じ判定（ultraBandState）とともにlogic.jsのultraNowTextへ渡し、文言を入れるだけ。
+  // ⚠ 読み上げ領域（aria-live）にはしない。区間ごとに変わる値を読み上げ続けないため
+  let lastRecord = null;
+  function renderUltraNow() {
+    if (!ultraNowEl) return;
+    const text = ultraNowText(ultraBandState(sessionMeta, bandsOnPage), lastRecord, lang);
+    if (ultraNowEl.textContent !== text) ultraNowEl.textContent = text;
   }
 
   // 記録に穴があるかないかを、必ず1行で言い切る。
@@ -394,7 +499,7 @@
   //    いない」を区別できない）
   function renderIntegrity() {
     if (!integrityEl) return;
-    const v = statsIntegrity(stats);
+    const v = statsIntegrity(stats, lang);
     integrityEl.className = 'integrity-note' + (v.level === 'none' ? '' : ' ' + v.level);
     integrityEl.textContent = v.text;
   }
@@ -411,7 +516,7 @@
     renderIntegrity();
     // クリップ・欠測が出たら、その区間で注意書きへ反映する。
     // 区間の数が増えれば文字列も変わるので、増えたぶんもここで拾える
-    const text = statsWarnings(stats).join('\n');
+    const text = statsWarnings(stats, lang).join('\n');
     if (text !== statsNoticeText) {
       statsNoticeText = text;
       renderRecordNotice();
@@ -431,19 +536,20 @@
     renderRecordNotice();
   }
 
-  function setStatus(text, kind='ok') {
+  // 状態の1行。文言は辞書のキーで渡す（言語を切り替えたら、applyStaticText が同じキーで入れ直す）
+  function setStatus(key, kind='ok', params) {
     statusEl.className = `status ${kind}`;
-    statusEl.textContent = text;
+    setMessage(statusEl, key, params);
   }
 
   // 計測エンジンの表示（どちらのモードで動いているかを画面に残す）
   function renderEngineMode() {
     if (engineMode === ENGINE_WORKLET) {
       engineModeEl.className = 'engine-mode ok';
-      engineModeEl.textContent = '計測エンジン：高精度モード（AudioWorklet・オーディオクロック基準）';
+      engineModeEl.textContent = tr('engine.worklet');
     } else if (engineMode === ENGINE_FALLBACK) {
       engineModeEl.className = 'engine-mode warn';
-      engineModeEl.textContent = '計測エンジン：簡易モード（欠測の可能性あり）';
+      engineModeEl.textContent = tr('engine.fallback');
     } else {
       engineModeEl.className = 'engine-mode';
       engineModeEl.textContent = '';
@@ -464,7 +570,7 @@
   //    中身は限界を正しく書くためのものなので、削らずに出し方を変える
   function renderRecordNotice() {
     if (!recordNoticeEl) return;
-    const parts = recordNoticeItems({ deviceLoss, deviceMuted, sessionMeta, clockBreaks, stats });
+    const parts = recordNoticeItems({ deviceLoss, deviceMuted, sessionMeta, clockBreaks, stats, lang });
     const kind = deviceLoss ? ' err' : (parts.length ? ' warn' : '');
     recordNoticeEl.className = 'record-notice' + kind;
     if (!parts.length) {
@@ -479,7 +585,7 @@
     ensureNoticeDom();
     if (noticeDetails.parentNode !== recordNoticeEl) recordNoticeEl.replaceChildren(noticeDetails);
     // 要約の1行（summary）と全文（開いたときの箇条）。変わったところだけ textContent で差し替える
-    const summaryText = '⚠ ' + noticeSummary(parts);
+    const summaryText = '⚠ ' + noticeSummary(parts, lang);
     if (noticeSummaryEl.textContent !== summaryText) noticeSummaryEl.textContent = summaryText;
     while (noticeList.children.length > parts.length) noticeList.lastElementChild.remove();
     parts.forEach((it, i) => {
@@ -557,7 +663,7 @@
     if (!running || deviceLoss) return;
     deviceLoss = markDeviceLoss(logs, { reason, atWallMs: Date.now() });
     stop();
-    setStatus('マイクが切断されました。記録を停止しました', 'err');
+    setStatus('status.deviceLost', 'err');
     renderRecordNotice();
   }
 
@@ -641,12 +747,12 @@
     if (!audioCtx) return;
     if (audioCtx.state === 'suspended') {
       if (!ctxSuspendedSince) ctxSuspendedSince = Date.now();
-      if (running) setStatus('計測が中断しています（画面のロックなど）', 'warn');
+      if (running) setStatus('status.suspended', 'warn');
     } else if (audioCtx.state === 'running') {
       if (ctxSuspendedSince) {
         ctxSuspendedSince = 0;
         probeClock(CLOCK_BREAK_SUSPEND);
-        if (running) setStatus('計測中（中断から復帰しました）', 'warn');
+        if (running) setStatus('status.resumed', 'warn');
       }
     }
   }
@@ -711,6 +817,9 @@
     //    表示用の db を使うと、表示下限を変えただけで統計が動いてしまう
     //    （addStatsRecord が rawDb を読む）
     updateStats(rec);
+    // 超音波帯の現在値は、記録した区間そのもの（CSVに書く値）から出す（第2弾c0）
+    lastRecord = rec;
+    renderUltraNow();
     // 件数は行が増えたら必ず出す。無音だけの区間が続いても 0 のままにしない
     countEl.textContent = String(logs.length);
   }
@@ -780,7 +889,7 @@
 
     // ⚠ キャッシュ用の版番号を index.html とそろえる。付けないと、公開直後に
     //    古いワークレットと新しい logic.js が組み合わさることがある
-    await audioCtx.audioWorklet.addModule('./worklet/meter-processor.js?v=3.7');
+    await audioCtx.audioWorklet.addModule('./worklet/meter-processor.js?v=3.10');
     workletNode = new AudioWorkletNode(audioCtx, 'meter-processor', {
       numberOfInputs: 1,
       numberOfOutputs: 1,
@@ -834,14 +943,13 @@
     clearConnectHint();
   }
 
-  // 取得の取り消し。UI を待機状態へ戻す
-  function cancelConnect(message, kind) {
+  // 取得の取り消し。UI を待機状態へ戻す（文言は辞書のキーで渡す）
+  function cancelConnect(key, kind, params) {
     attemptGate.cancel();
     finishConnecting();
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
+    setRunButtons(true);
     updateButtonStates();
-    setStatus(message, kind || 'warn');
+    setStatus(key, kind || 'warn', params);
   }
 
   async function start() {
@@ -850,10 +958,9 @@
     // この試行の世代番号。取り消されたら以降の処理をすべて捨てる
     const token = attemptGate.begin();
     connecting = true;
-    startBtn.disabled = true;
-    stopBtn.disabled = false;   // 接続中も「停止」で取り消せる
+    setRunButtons(false);       // 接続中も「停止」で取り消せる
     updateButtonStates();       // 接続中はリセットさせない
-    setStatus('マイクに接続中…', 'warn');
+    setStatus('status.connecting', 'warn');
 
     // 前回のクリーンアップが完了していることを確認
     if (audioCtx || mediaStream) {
@@ -866,21 +973,21 @@
     // 停止直後の場合、警告を表示
     const timeSinceStop = Date.now() - lastStopTime;
     if (lastStopTime > 0 && timeSinceStop < 2000) {
-      setStatus('マイク接続の準備中...少しお待ちください', 'warn');
+      setStatus('status.preparing', 'warn');
       // 少し待ってから再試行
       await new Promise(resolve => setTimeout(resolve, 500));
     }
     if (!attemptGate.isCurrent(token)) return;
 
     try {
-      setStatus('マイクに接続中…', 'warn');
+      setStatus('status.connecting', 'warn');
 
       // 許可ダイアログを放置されたときの案内。これが無いと
       // 「マイクに接続中…」のまま何が起きているのか分からない
       clearConnectHint();
       connectHintId = setTimeout(() => {
         if (attemptGate.isCurrent(token)) {
-          setStatus('マイクの許可ダイアログに応答してください（「停止」で取り消せます）', 'warn');
+          setStatus('status.promptHint', 'warn');
         }
       }, CONNECT_HINT_MS);
 
@@ -899,11 +1006,7 @@
       }
       if (outcome.timedOut) {
         discardStream(attempt);
-        cancelConnect(
-          `マイクを${Math.round(CONNECT_TIMEOUT_MS / 1000)}秒以内に取得できませんでした。`
-          + '許可ダイアログに応答してから、もう一度お試しください',
-          'err'
-        );
+        cancelConnect('status.timeout', 'err', { sec: Math.round(CONNECT_TIMEOUT_MS / 1000) });
         return;
       }
       if (outcome.error) throw outcome.error;
@@ -919,7 +1022,7 @@
       // 新しいAudioContextを作成
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 2048;
+      analyser.fftSize = METER_WINDOW_SAMPLES;
 
       sourceNode = audioCtx.createMediaStreamSource(mediaStream);
       sourceNode.connect(analyser);
@@ -934,12 +1037,14 @@
       try {
         if (await setupWorklet()) engineMode = ENGINE_WORKLET;
       } catch (workletErr) {
-        console.warn('AudioWorklet を読み込めないため簡易モードで動かします', workletErr);
+        console.warn('AudioWorklet could not be loaded; running in fallback mode', workletErr);
         workletNode = null;
       }
       // 測定条件を1セッションぶん記録する（CSV の列は増やさない）。
       // 要求した制約ではなく、track.getSettings() の実値を残すのが要点である
       sessionMeta = captureSessionMeta();
+      // 超音波帯の現在値は、このセッションの最初の区間が届くまで「--.- dBFS」にする（前のセッションの値を残さない）
+      lastRecord = null;
       // 記録できる上限は、このセッションのサンプルレートで決まる（第2弾b3）
       renderBandInfo();
 
@@ -961,27 +1066,27 @@
       lastLogTime = startedAt;
       running = true;
       graphFrozenMs = null;
-      stopBtn.disabled = false;
+      setRunButtons(false);
       updateButtonStates(); // ボタン状態を更新（記録中はCSV書き出し無効）
 
-      setStatus('計測中', 'ok');
+      setStatus('status.measuring', 'ok');
       animate();
     } catch (err) {
       console.error(err);
       
       // パーミッション関連のエラーの場合、特別なメッセージを表示
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setStatus('マイクへのアクセスが拒否されました。ブラウザーのURL欄のマイクアイコンを確認してください', 'err');
+        setStatus('status.denied', 'err');
       } else if (err.name === 'NotFoundError') {
-        setStatus('マイクが見つかりません。デバイスを確認してください', 'err');
+        setStatus('status.notFound', 'err');
       } else {
-        setStatus(`エラー：${err.message || err}`, 'err');
+        // メッセージはブラウザーから来る文字列なので、辞書に入れずにそのまま出す
+        setStatus('status.error', 'err', { message: String(err.message || err) });
       }
       
       running = false;
       finishConnecting();
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
+      setRunButtons(true);
       updateButtonStates(); // エラー時にもボタン状態を更新
       await cleanup();
     }
@@ -990,14 +1095,14 @@
   async function stop() {
     // 接続中なら、記録の停止ではなく取得の取り消しとして扱う
     if (connecting) {
-      cancelConnect('マイクの取得を取り消しました');
+      cancelConnect('status.canceled');
       return;
     }
     if (!running) return;
     running = false;
     lastStopTime = Date.now();  // 停止時刻を記録
     graphFrozenMs = lastStopTime; // 停止中のグラフは、止めた時刻を右端にして描く
-    setStatus('停止しました', 'warn');
+    setStatus('status.stopped', 'warn');
     if (rafId) {
       cancelAnimationFrame(rafId);
       rafId = null;
@@ -1008,8 +1113,7 @@
       await cleanup();
     }, 100);
     
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
+    setRunButtons(true);
     updateButtonStates(); // 停止時にボタン状態を更新
   }
 
@@ -1062,7 +1166,7 @@
           await audioCtx.close();
         }
       } catch (e) {
-        console.warn('AudioContext を閉じられませんでした', e);
+        console.warn('Could not close the AudioContext', e);
       }
       audioCtx = null;
     }
@@ -1162,7 +1266,7 @@
 
   async function exportCSV() {
     if (!logs.length) {
-      setStatus('書き出すログがありません', 'warn');
+      setStatus('status.noLogs', 'warn');
       return;
     }
     // A列 timestamp・B列 dbfs は動かさない（READMEのExcel手順がこれを前提にしている）
@@ -1183,7 +1287,7 @@
     const meta = hashes
       ? hashChain.meta
       : Object.assign({}, hashChain.meta, { hashAlgo: null });
-    for (const e of hashChain.errors) console.warn('ハッシュチェーン', e);
+    for (const e of hashChain.errors) console.warn('Hash chain', e);
 
     const csv = buildCsv(logs, {
       meta,
@@ -1202,7 +1306,7 @@
     a.remove();
     URL.revokeObjectURL(url);
 
-    setStatus(`CSVを書き出しました（${logs.length}件）`, 'ok');
+    setStatus('status.exported', 'ok', { count: logs.length });
   }
 
   // 記録の母集団をまとめて捨てる。
@@ -1235,24 +1339,113 @@
     deviceMuted = false;
     sessionMeta = null;
     startedAt = 0;
+    // 超音波帯の現在値も最初の状態に戻す（renderBandInfoが描き直す。第2弾c0）
+    lastRecord = null;
     closeNotice();
     renderRecordNotice();
     // 上限の表示も、捨てた測定条件から出ているので消す
     renderBandInfo();
     updateButtonStates();
-    setStatus('統計・ログ・グラフをリセットしました', 'ok');
+    setStatus('status.reset', 'ok');
   }
 
   // ボタン状態の管理
   function updateButtonStates() {
+    // ⚠ Chromiumは押せなくなったボタンからその場でフォーカスを外す（統計リセットを押した直後など）。
+    //    「その他」の中にフォーカスがあったかは、押せる状態を変える前に見ておく（第2弾c0）
+    const menuHadFocus = !!moreMenuEl && moreMenuEl.contains(document.activeElement);
+
     // CSV書き出しボタンは記録停止中かつログが存在する場合のみ有効
     exportBtn.disabled = running || logs.length === 0;
 
     // リセットも記録を止めてから（接続中も押させない）。ログが無ければ押せない
     resetBtn.disabled = running || connecting || logs.length === 0;
+
+    // 記録開始と停止は同じ場所に置き、押せるほうだけを見せる（第2弾c0）
+    renderStartStop();
+    // 「その他」の中身がどちらも押せなくなったら閉じる（統計リセットのあと・記録を始めたとき）
+    applyMoreMenu('items', { focusInside: menuHadFocus });
+  }
+
+  // 記録開始と停止の押せる状態（第2弾c0で1か所にまとめた）。2つはいつも逆になる
+  // （記録前・停止後は記録開始だけ、接続中・記録中は停止だけが押せる）。
+  // ⚠ Chromiumは、フォーカスのあるボタンをdisabledにした瞬間にフォーカスを外す（document.activeElementがbodyになる。
+  //    手元のChromiumで確かめた）。出し分けのあとで「押したボタンにフォーカスがあったか」を見ても分からないので、
+  //    押せる状態を変える前に覚えておく（renderStartStopが使う）
+  let runFocusPending = false;
+  function setRunButtons(startEnabled) {
+    const focused = document.activeElement;
+    if (focused === startBtn || focused === stopBtn) runFocusPending = true;
+    startBtn.disabled = !startEnabled;
+    stopBtn.disabled = !!startEnabled;
+  }
+
+  // 記録開始と停止の出し分け（第2弾c0）。どちらを見せるかはlogic.jsのstartStopViewが決める
+  // （接続中は「停止」で取り消せるので、停止を見せる）。見せないほうはhiddenで支援技術からも隠す。
+  // ⚠ 押したボタンが隠れると、フォーカスが行き場を失う。同じ場所に出たほうへ移し、キーボードで続けて操作できるようにする
+  //    （フォーカスが記録開始か停止にあったときだけ。ほかの場所にある利用者のフォーカスは奪わない）
+  function renderStartStop() {
+    const view = startStopView({ running, connecting });
+    const focused = document.activeElement;
+    const hadFocus = runFocusPending || focused === startBtn || focused === stopBtn;
+    runFocusPending = false;
+    startBtn.hidden = !view.start;
+    stopBtn.hidden = !view.stop;
+    const shown = view.stop ? stopBtn : startBtn;
+    if (hadFocus && focused !== shown && !shown.disabled) shown.focus();
+  }
+
+  // 「その他」の開閉（第2弾c0）。開いているかはaria-expandedだけで持ち、CSSも同じ属性で中身を出し入れする。
+  // 判定はlogic.jsのmoreMenuNext（Escで閉じたら、フォーカスが中身か「その他」にあったときだけ「その他」へ戻す・
+  // 幅481px以上では何もしない など）
+  const compactQuery = (typeof window.matchMedia === 'function') ? window.matchMedia(COMPACT_MEDIA_QUERY) : null;
+  function moreMenuOpen() {
+    return !!moreBtn && moreBtn.getAttribute('aria-expanded') === 'true';
+  }
+  // seen.focusInsideを渡すと、いまのフォーカスの代わりにそれを使う（押せる状態を変える前に見た値）
+  function applyMoreMenu(event, seen) {
+    if (!moreBtn || !moreMenuEl) return;
+    const next = moreMenuNext({
+      open: moreMenuOpen(),
+      compact: !!(compactQuery && compactQuery.matches),
+      modalOpen: !!(helpModal && helpModal.classList.contains('show')),
+      itemsEnabled: !exportBtn.disabled || !resetBtn.disabled,
+      focusInside: (seen && typeof seen.focusInside === 'boolean')
+        ? seen.focusInside
+        : moreMenuEl.contains(document.activeElement),
+      // Escで「その他」へフォーカスを戻すのは、フォーカスが中身か「その他」にあるときだけ（外にあるフォーカスは奪わない）
+      focusOnToggle: document.activeElement === moreBtn
+    }, event);
+    if (moreMenuOpen() !== next.open) moreBtn.setAttribute('aria-expanded', String(next.open));
+    if (next.focusToggle) moreBtn.focus();
+  }
+
+  function setupMoreMenu() {
+    if (!moreBtn || !moreMenuEl) return;
+    moreBtn.addEventListener('click', () => applyMoreMenu('toggle'));
+    // ⚠ 捕獲（capture）で受ける。ヘルプのEsc（バブリング）より先に呼ばれるので、ヘルプが開いているかを
+    //    閉じられる前に見られる（ヘルプを閉じるEscで「その他」まで閉じて、フォーカスを奪わない）
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') applyMoreMenu('escape');
+    }, true);
+    // 「その他」と中身の外を押したら閉じる。⚠ pointerdownではなくclickで受ける。
+    //    押した瞬間に閉じると中身の行が消えて下の画面が上がり、指の下の要素が入れ替わって別のものを押してしまう
+    //    ⚠ 利用者の操作でないclick（isTrustedがfalse）では閉じない。CSV書き出しはダウンロードのために
+    //    リンクを作ってclick()を呼ぶので、それで閉じると、押した書き出しボタンが隠れてフォーカスを失う
+    document.addEventListener('click', (e) => {
+      if (!e.isTrusted) return;
+      if (moreBtn.contains(e.target) || moreMenuEl.contains(e.target)) return;
+      applyMoreMenu('outside');
+    });
+    // 幅481px以上へ広げたら閉じておく（中身は並んで見えている。狭めたときに開いたまま出てこないように）
+    if (compactQuery && typeof compactQuery.addEventListener === 'function') {
+      compactQuery.addEventListener('change', () => applyMoreMenu('layout'));
+    }
   }
 
   // テーマ切り替え
+  // ⚠ localStorage が使えない環境（保存の拒否など）では、読み書きが例外を投げる。ここで止まると
+  //    初期化の残り（ボタンの状態など）まで動かなくなるので、読めなければ既定（ライト）で続ける（第2弾c3a）
   let isDarkMode = false;
   
   function toggleTheme() {
@@ -1262,12 +1455,13 @@
     } else {
       document.body.classList.add('light');
     }
-    localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+    try { localStorage.setItem('theme', isDarkMode ? 'dark' : 'light'); } catch { /* 保存できなくても切り替えはできる */ }
     drawSeries();
   }
   
   function applyTheme() {
-    const savedTheme = localStorage.getItem('theme');
+    let savedTheme = null;
+    try { savedTheme = localStorage.getItem('theme'); } catch { savedTheme = null; }
     isDarkMode = savedTheme === 'dark';
     if (isDarkMode) {
       document.body.classList.remove('light');
@@ -1398,65 +1592,71 @@
       
       if (isCollapsed) {
         controls.classList.remove('collapsed');
-        toggleText.textContent = '設定を隠す';
+        setMessage(toggleText, 'controls.hide');
         toggleIcon.textContent = '▲';
       } else {
         controls.classList.add('collapsed');
-        toggleText.textContent = '設定を表示';
+        setMessage(toggleText, 'controls.show');
         toggleIcon.textContent = '▼';
       }
     });
   }
   
-  // モバイル用ボタン配置機能
-  function setupMobileButtonLayout() {
-    handleMobileButtonLayout();
-  }
-  
-  function handleMobileButtonLayout() {
-    const helpBtn = document.getElementById('helpBtn');
-    const themeToggle = document.getElementById('themeToggle');
-    const mobileControls = document.getElementById('mobileControls');
-    const actions = document.querySelector('.actions');
-    
-    if (!helpBtn || !themeToggle || !mobileControls || !actions) return;
-    
-    const isMobile = window.innerWidth <= 480;
-    
-    if (isMobile) {
-      // モバイルの場合：ヘルプとテーマボタンを mobile-controls エリアに移動
-      if (!mobileControls.contains(helpBtn)) {
-        mobileControls.appendChild(helpBtn);
-        mobileControls.appendChild(themeToggle);
-      }
-    } else {
-      // デスクトップの場合：ヘルプとテーマボタンを actions エリアに戻す
-      if (!actions.contains(helpBtn)) {
-        actions.appendChild(helpBtn);
-        actions.appendChild(themeToggle);
-      }
-    }
-  }
+  // ⚠ 幅480pxでヘルプとテーマのボタンの親要素を付け替える仕組み（handleMobileButtonLayout）は、
+  //    第2弾c0で廃止した。resizeが届かない経路で不整合が固定される壊れやすい仕組みだったので、
+  //    どの幅でも同じ.actionsに置き、並びはstyle.cssだけで決める
+
+  // 「その他」の開閉（第2弾c0）
+  setupMoreMenu();
 
   // ヘルプモーダル機能を初期化
   setupHelpModal();
   
   // コントロール折りたたみ機能を初期化
   setupControlsToggle();
-  
-  // モバイル用ボタン配置の初期化
-  setupMobileButtonLayout();
 
   // リサイズ対応
   window.addEventListener('resize', () => {
     resizeCanvas();
     drawSeries();
-    handleMobileButtonLayout();
   });
+
+  // 表示の言語を反映する（第2弾c3a）。HTML の文言と、logic.js で組み立てる文言（言語を引数で渡す）の両方を描き直す。
+  // ⚠ 記録・統計・グラフの点・ハッシュチェーンには触らない（描き直すのは表示だけ）
+  function applyLanguage() {
+    document.documentElement.lang = lang;
+    applyStaticText();
+    renderMeterScale();
+    renderEngineMode();
+    renderBandInfo();
+    renderIntegrity();
+    // 注意書きの元の文字列も新しい言語にそろえておく（次の区間で同じ中身を描き直さないため）
+    statsNoticeText = statsWarnings(stats, lang).join('\n');
+    renderRecordNotice();
+  }
+
+  // 言語の切り替えボタン。選んだ言語は保存し、URL に ?lang= があれば書き換える（再読み込みで戻らないように）
+  function switchLanguage() {
+    lang = lang === 'ja' ? 'en' : 'ja';
+    saveLang(lang);
+    const search = searchWithLang(window.location.search, lang);
+    if (search !== window.location.search) {
+      try { history.replaceState(history.state, '', search + window.location.hash); } catch { /* 書き換えられなくても表示は切り替える */ }
+    }
+    applyLanguage();
+  }
+  if (langToggle) langToggle.addEventListener('click', switchLanguage);
+
+  // HTML の日本語を、初期言語で入れ直してから初期の描画に入る
+  document.documentElement.lang = lang;
+  applyStaticText();
 
   // 初期
   renderEngineMode();
   renderBandInfo();
+  // 表示下限の既定を入れてから目盛りを描く（第2弾c0）。defaultValue（value属性）を書き換えるので、
+  // ブラウザーが入力欄の値を復元したとき（利用者が変えた値）は上書きしない
+  floorDbInput.defaultValue = String(floorDbDefault);
   renderMeterScale();
   applyTheme();
   resizeCanvas();
@@ -1466,7 +1666,7 @@
 
   // 権限が拒否された場合のヒント
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    setStatus('このブラウザーはマイク取得に対応していません', 'err');
+    setStatus('status.unsupported', 'err');
     startBtn.disabled = true;
   }
 })();

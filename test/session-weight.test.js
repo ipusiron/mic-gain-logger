@@ -30,7 +30,9 @@ const {
   CSV_COLUMNS
 } = logic;
 
-const readme = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
+// 第2弾c1bで、Excelの手順・セッションの境界・ログ間隔の切り替えの表はdocs/csv.mdへ移した（READMEは入口）。
+// 変数の名前は、分ける前の「READMEの検算値」の読み方のまま残す
+const readme = fs.readFileSync(path.join(__dirname, '..', 'docs', 'csv.md'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 
 const SR = 48000;
@@ -443,7 +445,8 @@ test('⭐置き換えを飛ばすと AVERAGE が無音の行を無視する（RE
     const leq = excelLeqEqual(spec);
     assert.equal(avg.toFixed(4), wantAvg, label);
     assert.equal((avg - leq).toFixed(4), wantGap, label);
-    assert.ok(readme.includes(`${wantAvg}（Leqより**${wantGap}dB高い**）`), `README と違う: ${label}`);
+    // 第2弾c1bで強調（**）を外した（強調は一節に一、二か所まで）。数値は同じものを見る
+    assert.ok(readme.includes(`${wantAvg}（Leqより${wantGap}dB高い）`), `docs/csv.md と違う: ${label}`);
   }
 });
 

@@ -13,6 +13,8 @@
 //
 // ⚠ ボタンは増やさない（style.css の 480px 分岐と handleMobileButtonLayout が
 //    壊れやすいため）。統計欄の項目と、既存の状態表示（#recordNotice）に載せる。
+//    第2弾c0で「その他」（#moreBtn）を1つ足した（設計書§3のQ3、本人の決定）。同時に
+//    handleMobileButtonLayoutは廃止し、並びはstyle.cssだけで決めるようにした（test/mobile-view.test.js）
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -170,19 +172,24 @@ test('クリップと欠測が同時にあれば2件出る', () => {
 
 test('画面: 統計欄にピークの枠があり、script.js が書き込んでいる', () => {
   assert.match(html, /id="peakDb"/, 'index.html にピークの枠が無い');
-  assert.match(html, /<div class="stat-label">サンプルピーク<\/div>/);
+  // 第2弾c3aで見出しに辞書のキー（data-i18n）を付けたので、属性を許して見る
+  assert.match(html, /<div class="stat-label"[^>]*>サンプルピーク<\/div>/);
   assert.match(script, /peakEl\.textContent = text\.peak/, 'script.js がピークを書いていない');
   // ピークの枠には「RMS とは別物である」ことの説明を付ける
-  const m = html.match(/<div class="stat"[^>]*title="([^"]*)"[^>]*>\s*<div class="stat-label">サンプルピーク/);
+  const m = html.match(/<div class="stat"[^>]*\stitle="([^"]*)"[^>]*>\s*<div class="stat-label"[^>]*>サンプルピーク/);
   assert.ok(m, 'ピークの枠に title が無い');
   assert.match(m[1], /RMS/);
 });
 
 test('画面: クリップと欠測は既存の状態表示へ出す（ボタンを増やさない）', () => {
-  // ⚠ 3つ目のボタンを handleMobileButtonLayout へ乗せない、という約束がある
+  // ⚠ 3つ目のボタンをhandleMobileButtonLayoutへ乗せない、という約束があった。
+  //    第2弾c0で、本人の決定（設計書§3のQ3）により「その他」（moreBtn）だけを足した。
+  //    handleMobileButtonLayoutは同時に廃止した。ボタンを足すときは、本人の決定を経てここを直す
+  //    第2弾c3aで、表示の言語の切り替え（langToggle）を足した（日英対応はシリーズの必須項目。TEMPLATE ④）。
+  //    .actionsの行には入れず、ヘッダーの右上に置いた（幅480px以下の1行を崩さないため。test/i18n.test.js）
   const ids = [...html.matchAll(/<button[^>]*id="([^"]+)"/g)].map(m => m[1]).sort();
   assert.deepEqual(ids, [
-    'controlsToggle', 'exportBtn', 'helpBtn', 'resetBtn',
+    'controlsToggle', 'exportBtn', 'helpBtn', 'langToggle', 'moreBtn', 'resetBtn',
     'startBtn', 'stopBtn', 'themeToggle'
   ]);
   // 注意書きは #recordNotice にまとめる
@@ -208,7 +215,8 @@ test('画面: 注意書きは件数ではなく文字列で比べて組み直す
   //    クリップしているのに「クリップを1区間で検出しました」と出た
   const upd = script.slice(script.indexOf('function updateStats'), script.indexOf('function resetStats'));
   assert.ok(!/statsWarnings\(stats\)\.length/.test(upd), '注意書きを件数で比べている');
-  assert.match(upd, /statsWarnings\(stats\)\.join\(/, '注意書きを文字列にしていない');
+  // 第2弾c3aから、画面の言語（lang）で組み立てる
+  assert.match(upd, /statsWarnings\(stats, lang\)\.join\(/, '注意書きを文字列にしていない');
 
   // 区間が増えても警告は1本のまま。文字列だけが変わる
   const one = statsOf([recordOf(0, { peak: 1, clip: 7 })]);
@@ -320,10 +328,12 @@ test('穴の有無: モードが混ざったら、測れない区間の数を添
 
 test('穴の有無: 画面に出す場所と配線がある', () => {
   assert.match(html, /id="integrityNote"/, '穴の有無を出す要素が無い');
-  // ⚠ ボタンは増やさない（style.css の 480px 分岐が壊れやすい）
+  // ⚠ ボタンは増やさない（style.cssの480px分岐が壊れやすい）。
+  //    第2弾c0で「その他」の1つだけ足した（本人の決定。上の「ボタンを増やさない」のテストを参照）
+  //    第2弾c3aで言語の切り替え（langToggle）を足した（ヘッダーの右上。.actionsの行には入れていない）
   const buttons = (html.match(/<button/g) || []).length;
-  assert.equal(buttons, 13, `ボタンの数が変わっている: ${buttons}`);
-  assert.match(script, /statsIntegrity\(stats\)/, 'script.js が穴の有無を出していない');
+  assert.equal(buttons, 15, `ボタンの数が変わっている: ${buttons}`);
+  assert.match(script, /statsIntegrity\(stats, lang\)/, 'script.js が穴の有無を出していない');
   assert.match(script, /renderIntegrity\(\)/, '穴の有無を出し直す関数が無い');
   // 行が増えるたびに出し直す（0区間→1区間で文言が変わる）
   const upd = script.slice(script.indexOf('function updateStats'));

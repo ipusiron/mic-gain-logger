@@ -11,6 +11,8 @@
 // ⭐ 表の値は実際に動かして確かめてから書く。ここでは README から見本CSVと
 // 2つの表を切り出し、検証器の手順と鎖の張り直しをこのファイルで独立に組んで、
 // 表のセルと突き合わせる。
+// 第2弾c1bで、見本CSV・検証器・2つの表・名乗りの説明はdocs/csv.mdへ移した（READMEは入口）。
+// 古い名乗りが残っていないかは、READMEとdocs/の全体で見る。
 // （初期の版は「2行目と3行目を入れ替える」を `1行目から合いません` と
 //   書いていたが、実測は `2行目から` だった。手で書くとこうなる）
 
@@ -22,6 +24,10 @@ const crypto = require('node:crypto');
 
 const root = path.join(__dirname, '..');
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+// 第2弾c1bでREADMEを入口にし、詳しい説明をdocs/へ分けた。READMEとdocs/を合わせたものが、分ける前のREADMEにあたる
+const docsText = name => fs.readFileSync(path.join(root, 'docs', name), 'utf8');
+const readmeAndDocs = [readme, ...fs.readdirSync(path.join(root, 'docs')).filter(n => n.endsWith('.md')).map(docsText)].join('\n');
+const csvDoc = docsText('csv.md');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const logicSrc = fs.readFileSync(path.join(root, 'logic.js'), 'utf8');
 const scriptSrc = fs.readFileSync(path.join(root, 'script.js'), 'utf8');
@@ -39,25 +45,25 @@ test('README が「第三者の改変を検出できる」と書いていない'
     '手を離れたあとの第三者'
   ];
   for (const s of banned) {
-    assert.ok(!readme.includes(s), `主体で限定した古い名乗りが残っている: ${s}`);
+    assert.ok(!readmeAndDocs.includes(s), `主体で限定した古い名乗りが残っている: ${s}`);
   }
 });
 
 test('README の限界の説明が、主体ではなく再計算で書かれている', () => {
   assert.ok(
-    !readme.includes('ログを作った本人はチェーンごと作り直せる'),
+    !readmeAndDocs.includes('ログを作った本人はチェーンごと作り直せる'),
     '限界を「作った本人」に限った説明が残っている'
   );
   assert.ok(
-    readme.includes('意図的な改変には、相手が誰であっても耐えません'),
+    csvDoc.includes('意図的な改変には、相手が誰であっても耐えません'),
     '「相手が誰であっても耐えない」と書いていない'
   );
   assert.ok(
-    readme.includes('分かれ目は「本人か第三者か」ではなく'),
+    csvDoc.includes('分かれ目は「本人か第三者か」ではなく'),
     '分かれ目が主体でないことを書いていない'
   );
   assert.ok(
-    readme.includes('ハッシュを再計算するかどうか'),
+    csvDoc.includes('ハッシュを再計算するかどうか'),
     '分かれ目が再計算であることを書いていない'
   );
 });
@@ -65,22 +71,22 @@ test('README の限界の説明が、主体ではなく再計算で書かれて�
 test('README が、名乗りの代わりに何の役に立つのかを書いている', () => {
   // 下げるだけで終わらせない。この範囲でなら役に立つ、と書く
   assert.ok(
-    readme.includes('うっかりの破損・部分的な欠落・順序の入れ替わり'),
+    csvDoc.includes('うっかりの破損・部分的な欠落・順序の入れ替わり'),
     '分かる範囲が書かれていない'
   );
-  assert.ok(readme.includes('消したことに気づいていない相手'), '役に立つ場面が書かれていない');
+  assert.ok(csvDoc.includes('消したことに気づいていない相手'), '役に立つ場面が書かれていない');
   assert.ok(
-    readme.includes('記録が正しいことの証明にはなりません'),
+    csvDoc.includes('記録が正しいことの証明にはなりません'),
     '証明に使えないことを書いていない'
   );
 });
 
 test('README が、限界を変えられない理由を書いている', () => {
-  assert.ok(readme.includes('秘密鍵で署名する'), '署名という手が書かれていない');
-  assert.ok(readme.includes('外部のタイムスタンプ機関'), 'タイムスタンプ機関が書かれていない');
-  assert.ok(readme.includes('どちらも本ツールでは採りません'), '採らないと書いていない');
+  assert.ok(csvDoc.includes('秘密鍵で署名する'), '署名という手が書かれていない');
+  assert.ok(csvDoc.includes('外部のタイムスタンプ機関'), 'タイムスタンプ機関が書かれていない');
+  assert.ok(csvDoc.includes('どちらも本ツールでは採りません'), '採らないと書いていない');
   // ⚠ 外部へ預けるのは、端末内で完結するという作りを壊す
-  assert.ok(readme.includes("connect-src 'none'"), '採らない理由が書かれていない');
+  assert.ok(csvDoc.includes("connect-src 'none'"), '採らない理由が書かれていない');
 });
 
 // ---- README を直したのに、コードのコメントと画面が残る事故を止める ----
@@ -154,15 +160,15 @@ test('README が「file:// ではハッシュが計算できない」と書い�
     '`hash`列が空のCSVは`file://`で書き出したもので'
   ];
   for (const s of banned) {
-    assert.ok(!readme.includes(s), `file:// についての誤りが残っている: ${s}`);
+    assert.ok(!readmeAndDocs.includes(s), `file:// についての誤りが残っている: ${s}`);
   }
   assert.ok(
-    readme.includes('`file://`はこれに当てはまりません'),
+    csvDoc.includes('`file://`はこれに当てはまりません'),
     'file:// が例外であることを書いていない'
   );
-  assert.ok(readme.includes('isSecureContext'), '実測した中身が書かれていない');
+  assert.ok(csvDoc.includes('isSecureContext'), '実測した中身が書かれていない');
   assert.ok(
-    readme.includes("Unable to load a worklet's module."),
+    csvDoc.includes("Unable to load a worklet's module."),
     'file:// で実際に落ちるもの（AudioWorklet）が書かれていない'
   );
 });
@@ -226,14 +232,14 @@ function fencedBlocks() {
   const out = [];
   const re = /```[a-z]*\n([\s\S]*?)```/g;
   let m;
-  while ((m = re.exec(readme)) !== null) out.push(m[1]);
+  while ((m = re.exec(csvDoc)) !== null) out.push(m[1]);
   return out;
 }
 
 // README の見本CSVを、ヘッダー・データ行・トレーラーに切り分ける
 function samplePartsFromReadme() {
   const block = fencedBlocks().find(b => b.startsWith('# format=mic-gain-logger/3'));
-  assert.ok(block, 'README に見本CSV（v3）が無い');
+  assert.ok(block, 'docs/csv.md に見本CSV（v3）が無い');
   const lines = block.split('\n').filter(l => l.length);
   const at = lines.findIndex(l => l.startsWith('timestamp,'));
   assert.notEqual(at, -1, '見本CSVに列のヘッダー行が無い');
@@ -387,10 +393,10 @@ const MUTATIONS = {
 const norm = s => s.replace(/\*\*/g, '').replace(/`/g, '').trim();
 
 function tableRows(headerLine) {
-  const i = readme.indexOf(headerLine);
+  const i = csvDoc.indexOf(headerLine);
   assert.notEqual(i, -1, `表が見つからない: ${headerLine}`);
   const rows = [];
-  for (const l of readme.slice(i).split('\n').slice(2)) {
+  for (const l of csvDoc.slice(i).split('\n').slice(2)) {
     if (l[0] !== '|') break;
     rows.push(l.split('|').slice(1, -1).map(norm));
   }
@@ -463,7 +469,7 @@ test('列のヘッダー行はハッシュの材料に入らない。版の列�
   assert.deepEqual(restitched.data, SAMPLE.data);
   assert.deepEqual(restitched.trailer, SAMPLE.trailer);
   assert.ok(
-    readme.includes('列のヘッダー行だけは、ハッシュの材料に入っていません'),
+    csvDoc.includes('列のヘッダー行だけは、ハッシュの材料に入っていません'),
     'README が、列のヘッダー行が材料に入らないことを書いていない'
   );
 });
@@ -473,12 +479,12 @@ test('鎖のないCSVを、改変と区別している', () => {
   const got = verify(chainless);
   assert.ok(!/行目から合いません/.test(got), `鎖のないCSVを改変として報告している: ${got}`);
   assert.match(got, /鎖のないCSV/, `鎖が無いことを言っていない: ${got}`);
-  assert.ok(readme.includes('鎖のないCSVは、改変とは別のものです'), 'README が区別を説明していない');
+  assert.ok(csvDoc.includes('鎖のないCSVは、改変とは別のものです'), 'README が区別を説明していない');
 });
 
 test('README の検証器が、鎖の有無を行ごとの照合より先に見ている', () => {
   const py = fencedBlocks().find(b => b.includes('verify_mic_gain_log.py'));
-  assert.ok(py, 'README に検証器が無い');
+  assert.ok(py, 'docs/csv.md に検証器が無い');
   const guard = py.indexOf('hash列が全行で空です');
   const loop = py.indexOf('for i, line in enumerate(data, 1)');
   assert.notEqual(guard, -1, '鎖のないCSVの判別が無い');
@@ -491,9 +497,46 @@ test('README の検証器が、鎖の有無を行ごとの照合より先に見�
   );
 });
 
+// ---- 検証器のコードそのもの ----
+//
+// 上の表は、この模型（JavaScript）の出力と比べている。模型が正しくても、docs/csv.md に載せた Python の検証器を
+// 書き換えると、読者が動かす検証器と表が食い違う（第2弾c1bの点検で、区切りの "|" を ":" に変えても、
+// hexdigest()[:16] を [:12] に変えても落ちないと指摘された）。そこで、ハッシュの計算を決める行が模型と同じ手順で
+// あることと、ブロック全体の SHA-256 を見る。
+// ⚠ 検証器のコードを変えたら、Python で見本CSVと上の2つの表を採り直してから、VERIFIER_SHA256 を直す（手で書かない）。
+const { HASH_HEX_LEN } = require('../logic.js');
+const VERIFIER_SHA256 = 'a6df905560bdb1f98ab697a2a54be1badf8a0dc7bfa83e6e0c2743267a8e2572';
+const sha256 = s => crypto.createHash('sha256').update(s, 'utf8').digest('hex');
+
+test('docs/csv.md の検証器の、ハッシュの計算を決める行が模型と同じ手順で、ブロック全体も採り直したときのものと同じ', () => {
+  const py = fencedBlocks().find(b => b.includes('verify_mic_gain_log.py'));
+  assert.ok(py, 'docs/csv.md に検証器が無い');
+  const lines = py.split('\n');
+  // 模型（h）と同じ：SHA-256 の16進小文字の先頭 HASH_HEX_LEN 文字、起点は改行で連結、行は "|" の後ろにコンマ区切り、
+  // トレーラーは "|" の後ろに改行区切り。行数はトレーラーの # rows= と比べる
+  assert.equal(h('abc'), crypto.createHash('sha256').update('abc').digest('hex').slice(0, HASH_HEX_LEN));
+  for (const line of [
+    `    return hashlib.sha256(s.encode("utf-8")).hexdigest()[:${HASH_HEX_LEN}]`,
+    'hx = cols[0].split(",").index("hash")      # hash列の位置（v3は10列目、v2は7列目）',
+    'head = lines[:at]                          # 起点。記録開始時に確定するメタ行',
+    'prev = h("\\n".join(head))',
+    '    want = h(prev + "|" + ",".join(line.split(",")[:hx]))   # hash列より左のフィールド',
+    '    if hash_cell(line) != want:',
+    '    prev = want',
+    'mark = "# trailerHash="',
+    'want = h(prev + "|" + "\\n".join(l for l in trailer if not l.startswith(mark)))',
+    'if found[0] != mark + want:',
+    'if ("# rows=%d" % len(data)) not in trailer:'
+  ]) {
+    assert.ok(lines.includes(line), `検証器に「${line.trim()}」が無い（ハッシュの計算を変えたなら、表を採り直す）`);
+  }
+  assert.equal(sha256(py), VERIFIER_SHA256,
+    '検証器のコードが、表を採り直したときのものと違う（変えたなら Python で見本CSVと表を採り直してから定数を直す）');
+});
+
 test('表の値を手で書かないという約束が README に残っている', () => {
   assert.ok(
-    readme.includes('この表の値は、実際に検証器を動かして採ったものです'),
+    csvDoc.includes('この表の値は、実際に検証器を動かして採ったものです'),
     '表を実測で採る約束が書かれていない'
   );
 });
