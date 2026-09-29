@@ -5,7 +5,8 @@
 // 第2弾bでは、区間ごとに 18〜22kHz と 20〜18,000Hz の帯域の値（平均二乗の推定）を記録に足す。
 // その前段として、worklet/meter-processor.js にトップレベル関数で置いた FFT の計算
 // （createFftPlan・fftInPlace・hannWindow・windowPowerSum・powerSpectrumInto・binFrequency）を、
-// ワークレットのソースを node:vm の中で読み込んで確かめる。b0 では process() からまだ呼ばない。
+// ワークレットのソースを node:vm の中で読み込んで確かめる。b0 では process() からまだ呼ばなかった。
+// b1 で区間ごとの帯域の集計（test/band.test.js）から呼び始めた。
 //
 // ここで固めること：
 //  - 素朴な DFT（O(N^2)）と同じ値を返し、パーセバルの等式が成り立つ
@@ -15,7 +16,8 @@
 //  - ⚠ 周期型 Hann 窓では、直流とナイキストの電力の 1/3 が隣のビンへ分かれる（b1 で帯域の下端を決めるときの前提）
 //  - ⚠ fftInPlace と powerSpectrumInto の中で配列もオブジェクトも作らない（オーディオスレッドでのGCを避ける）。
 //    ソースの文字列で、作る代表的な書き方が無いことを見る
-//  - b0 は「置くだけ」で、process() がまだ呼んでいない
+//  - FFT を呼ぶのは帯域の集計だけで、フレームごとに通るメソッドの中でも配列を作らない
+//    （第2弾b1 で「b0 は置くだけ」のテストを書き換えた。理由はそのテストのコメント）
 //
 // 期待値は手で書かず、式から計算する。乱数は種を固定して作る（Math.random は使わない）。
 // ⚠ コンテキストの RangeError・Float64Array はこのファイルのものと別の realm である。
@@ -306,7 +308,8 @@ test('直流は out[0] に、ナイキストは out[n/2] に、2倍にせずそ�
 test('周期型 Hann 窓では、直流は out[0] に 2/3・out[1] に 1/3、ナイキストは out[n/2] に 2/3・out[n/2-1] に 1/3 と分かれる', () => {
   // ⚠ 矩形窓なら直流は out[0] だけに入る（上のテスト）が、Hann 窓を掛けると隣のビンへ広がる。
   //    48kHz・n=1024 ではビン1の中心は 46.875Hz で、20〜18,000Hz の帯域の内側にある。
-  //    b1 で帯域をビン1から数えると、マイクの直流オフセットの 1/3 がその帯域の値に入る。
+  //    帯域はビン1から数えるので、平均を引かずに窓を掛けると、マイクの直流オフセットの 1/3 がその帯域の値に入る。
+  //    b1 ではフレームごとに平均を引いてから窓を掛けるので、直流は入らない（第2弾b1。test/band.test.js）。
   //    帯域の割り当てがこの分かれ方を忘れないように縛る。
   assert.ok(binFrequency(1, SAMPLE_RATE, 1024) >= 20, 'ビン1が 20Hz より下にある（前提が変わった）');
   // 期待値は窓そのものの DFT（素朴な DFT）から作る。直流 a に窓を掛けた列の DFT は a・W_k なので
@@ -343,7 +346,7 @@ test('周期型 Hann 窓では、直流は out[0] に 2/3・out[1] に 1/3、ナ
 });
 
 test('作業用の配列を使い回しても前の呼び出しの値が混ざらず、frame も書き換えない', () => {
-  // b1 では re・im・out をコンストラクターで一度だけ作り、区間ごとに使い回す
+  // b1 では re・im・out をコンストラクターで一度だけ作り、フレームごと（N/4 サンプルごと）に使い回す
   const n = 256;
   const r = rng(0x2e05e);
   const plan = createFftPlan(n);
@@ -626,17 +629,58 @@ test('⭐fftInPlace と powerSpectrumInto のパラメーターと本体に、�
 });
 
 
-// ---- b0 は「置くだけ」----
+// ---- b1 で帯域の集計から呼ぶ ----
+//
+// ⚠ 第2弾b0 では、ここで「b0 は置くだけで、process() はまだ FFT を呼んでいない」を縛っていた。
+//    b1 で区間ごとの帯域の集計に使い始めたので、b1 の実態に合わせて書き換えた（第2弾b1）。
+//    置くだけの約束のままでは、呼び始めた時点で必ず落ちる。代わりに、呼び方の約束を縛る。
+//    - 計画・窓・作業用の配列を作る関数（createFftPlan・hannWindow・windowPowerSum）は、
+//      コンストラクターから呼ぶ setupBands の中だけで呼ぶ。最初の遅さを済ませる powerSpectrumInto もそこで呼ぶ
+//    - process() は FFT の関数を直に呼ばず、feedBands を通す。フレームごとの計算は analyzeBandFrame
+//    - フレームごとに通るメソッド（feedBands・analyzeBandFrame・addBandFrame）と process() のパラメーターと
+//      本体に、配列やオブジェクトを作る書き方（上の allocations() が拾うもの）が無い。
+//      呼んでよいのは、同じ約束を守るこれらのメソッドと powerSpectrumInto だけ。
+//      ⚠ process() から呼ぶ emitInterval は、区間ごとに1回（既定で1秒に1回）メッセージを作って送る。
+//      第1弾からの作りで、b1 で帯域の電力の和の配列（bandPowerList）も区間ごとに1つ作るようにした。
+//      フレームごとではないので、ここでは中身を見ない
+//    ビンの割り当ては logic.js の bandPlan が行ってビンの番号を渡すので、クラスは binFrequency を使わない。
 
-test('b0 は置くだけで、process() はまだ FFT を呼んでいない', () => {
+test('b1 では FFT を帯域の集計から呼び、フレームごとに通るメソッドの中では配列もオブジェクトも作らない', () => {
+  const cls = braceBody(CODE, CODE.indexOf('class MeterProcessor'));
   const proc = methodBody('MeterProcessor', 'process');
   assert.ok(proc.includes('emitInterval'), 'process() の本体を切り出せていない');
+  assert.match(proc, /\bthis\.feedBands\s*\(/, 'process() が帯域の集計（feedBands）を呼んでいない');
   for (const name of FFT_FUNCTIONS) {
-    assert.ok(!new RegExp(`\\b${name}\\b`).test(proc), `process() が ${name} を呼んでいる（b1 の仕事）`);
+    assert.ok(!new RegExp(`\\b${name}\\b`).test(proc), `process() が ${name} を直に呼んでいる（feedBands を通す）`);
   }
-  // クラスのどこからも、まだ呼んでいない（b1 でコンストラクターと process() から呼ぶときに書き換える）
-  const cls = braceBody(CODE, CODE.indexOf('class MeterProcessor'));
-  for (const name of FFT_FUNCTIONS) {
-    assert.ok(!new RegExp(`\\b${name}\\b`).test(cls), `MeterProcessor が ${name} を使っている（b1 の仕事）`);
+
+  // 配列を作る準備は setupBands の中だけ
+  const setup = methodBody('MeterProcessor', 'setupBands');
+  for (const name of ['createFftPlan', 'hannWindow', 'windowPowerSum', 'powerSpectrumInto']) {
+    assert.match(setup, new RegExp(`\\b${name}\\s*\\(`), `setupBands が ${name} を呼んでいない`);
+  }
+  const outside = cls.replace(setup, '');
+  assert.notEqual(outside, cls, 'setupBands の本体を取り除けていない');
+  for (const name of ['createFftPlan', 'hannWindow', 'windowPowerSum', 'binFrequency']) {
+    assert.ok(!new RegExp(`\\b${name}\\b`).test(outside), `MeterProcessor が setupBands の外で ${name} を使っている`);
+  }
+  assert.match(methodBody('MeterProcessor', 'analyzeBandFrame'), /\bpowerSpectrumInto\s*\(/,
+    'フレームごとの計算（analyzeBandFrame）が powerSpectrumInto を呼んでいない');
+
+  // フレームごとに通るメソッドで、呼んでよいもの（どれも配列を作らないことを、このテストで見ている）
+  const perFrameCalls = new Set([
+    'powerSpectrumInto', 'this.feedBands', 'this.analyzeBandFrame', 'this.addBandFrame', 'this.emitInterval'
+  ]);
+  for (const method of ['process', 'feedBands', 'analyzeBandFrame', 'addBandFrame']) {
+    const m = new RegExp(`\\n\\s*${method}\\s*\\(([^)]*)\\)`).exec(cls);
+    assert.ok(m, `${method}() が見つからない`);
+    assert.deepEqual(paramAllocations(m[1]), [], `${method} のパラメーターで配列を作りうる`);
+    const body = methodBody('MeterProcessor', method);
+    assert.ok(body.trim().length > 0, `${method} の本体を切り出せていない`);
+    const found = allocations(body).filter(s => {
+      const call = /^許可していない呼び出し（(.+?)）/.exec(s);
+      return !(call && perFrameCalls.has(call[1]));
+    });
+    assert.deepEqual(found, [], `${method} の中で配列かオブジェクトを作っている`);
   }
 });

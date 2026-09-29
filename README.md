@@ -288,6 +288,7 @@ mic-gain-logger/
 │   ├── notice-details.test.js     # 第2弾a: 注意書きを「件数と要点の1行＋開くと全文」にする
 │   ├── review-ui.test.js          # 第2弾a: 公開前の点検で見つかった画面の不具合（停止中のグラフ・目盛り・ボタンの高さ）
 │   ├── fft.test.js                # 第2弾b: FFTの土台（素朴なDFTとの一致・片側スペクトルの正規化・配列を作らない約束）
+│   ├── band.test.js               # 第2弾b: 区間ごとの帯域の集計（ビンの割り当て・75%の重なり・途切れ・1行目の帯域の有効率）
 │   ├── dbfs-fixture.test.js       # 既知振幅の正弦波に対するdBFSの計算精度
 │   ├── docs.test.js               # READMEと実装・実ファイルが合っているかの検査（構成図を含む）
 │   └── fixtures/                  # テストの期待値

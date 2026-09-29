@@ -20,6 +20,7 @@
     DEVICE_LOST_ENDED, DEVICE_LOST_GONE,
     readTrackState, isTrackLost, markDeviceLoss,
     buildIntervalRecord, buildFallbackRecord,
+    bandPlan, bandsEnabledFromQuery,
     buildCsv, csvFileName,
     csvTrailerLines, createHashChain, HASH_ALGO_LABEL
   } = MicGainLogic; // logic.js（classic script のグローバル束縛）
@@ -725,7 +726,7 @@
 
     // ⚠ キャッシュ用の版番号を index.html とそろえる。付けないと、公開直後に
     //    古いワークレットと新しい logic.js が組み合わさることがある
-    await audioCtx.audioWorklet.addModule('./worklet/meter-processor.js?v=3.4');
+    await audioCtx.audioWorklet.addModule('./worklet/meter-processor.js?v=3.5');
     workletNode = new AudioWorkletNode(audioCtx, 'meter-processor', {
       numberOfInputs: 1,
       numberOfOutputs: 1,
@@ -734,7 +735,13 @@
       channelCountMode: 'explicit',
       channelInterpretation: 'speakers',
       processorOptions: {
-        intervalFrames: framesForInterval(currentIntervalSec(), audioCtx.sampleRate)
+        intervalFrames: framesForInterval(currentIntervalSec(), audioCtx.sampleRate),
+        // 帯域の集計（第2弾b1）。FFT の長さとビンの割り当ては logic.js の bandPlan が決める。
+        // ワークレットは logic.js を読めないので、同じ値を向こうに書かずにここで渡す。
+        // ?bands=off なら帯域を計算しない（実機で帯域あり・なしの valid_ratio を比べるため）。
+        // CSV と画面への反映は b2・b3
+        bands: bandsEnabledFromQuery(window.location.search),
+        bandPlan: bandPlan(audioCtx.sampleRate)
       }
     });
     workletNode.port.onmessage = (event) => {

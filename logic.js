@@ -612,6 +612,106 @@ const MicGainLogic = (() => {
     return Number.isFinite(db) ? Math.max(db, floorDb) : db;
   }
 
+  // ---- 帯域（第2弾b1）----
+  //
+  // 区間ごとに、帯域ごとの平均二乗（FFT で求めた推定）を記録に足す。FFT はワークレットで計算する。
+  // ここでは帯域の定義・FFT の長さ・ビンの割り当てを決め（script.js が processorOptions で渡す）、
+  // ワークレットから届いた電力の和を dBFS へ換算する。
+  // ⚠ 帯域の値は「その帯域に音のエネルギーがあったか」の記録である。何が鳴っていたかは分からず、
+  //    超音波ビーコンの検出でもない。値は dBFS と同じく、端末（マイクと変換器）に依存する相対値である。
+  // CSV の列（第2弾b2）と画面（第2弾b3）はまだ変えない。統計とハッシュチェーンにも入れない。
+
+  // 帯域の定義。範囲は lo 以上 hi 未満（Hz）。可聴帯は、超音波帯の値の高い低いを読むための対比として並べる。
+  // ワークレットには bandPlan を通して渡し、同じ値を二重に書かない
+  const BAND_DEFS = Object.freeze([
+    Object.freeze({ key: 'ultra', lo: 18000, hi: 22000 }),
+    Object.freeze({ key: 'audible', lo: 20, hi: 18000 })
+  ]);
+
+  // FFT の長さ N。約21.3ミリ秒（48kHz で 1024 サンプル）になる2の累乗で、
+  // N = 2^round(log2(sampleRate × 1024 / 48000))。44.1kHz・48kHz なら 1024、88.2kHz・96kHz なら 2048。
+  // サンプルレートが正の数でなければ null
+  function fftSizeForRate(sampleRate) {
+    if (!(sampleRate > 0) || !Number.isFinite(sampleRate)) return null;
+    const n = Math.pow(2, Math.round(Math.log2(sampleRate * 1024 / 48000)));
+    // ずらし幅 N/4 が 1 以上になる長さに限る（Web Audio のサンプルレートの下限 3000Hz でも 64 になる）
+    return n >= 4 ? n : null;
+  }
+
+  // 帯域 def に入るビン。ビン k の中心周波数 k・sampleRate / N が lo 以上 hi 未満のものである。
+  // k は 1 以上 N/2 以下に限る（直流のビン0は入れない）。1つも無ければ binLo・binHi とも null
+  // （例：サンプルレートが低くて 18kHz 以上を表せない端末の超音波帯）。
+  // ⚠ 18kHz の境目では、境目から約1〜2ビン（48kHz なら約94Hz まで）の音が、Hann 窓の漏れで隣の帯域へ分かれて入る
+  //    （両帯域の和は変わらない）。超音波帯の上端（22kHz）には隣の帯域が無いので、漏れたぶんはどの帯域にも入らない
+  //    （48kHz で 22,000Hz の正弦波は -2.0dB・22,050Hz は -14.6dB、44.1kHz で 22,000Hz は -5.9dB）。
+  //    可聴帯の下端の側も同じで、ビン0はどの帯域にも入れない（約100Hz より下の値は、ワークレットで
+  //    フレームの平均を引くことでも変わる。worklet/meter-processor.js の「帯域の集計」）
+  function bandBins(def, sampleRate, n) {
+    let binLo = null;
+    let binHi = null;
+    for (let k = 1; k <= n / 2; k++) {
+      const f = k * sampleRate / n;
+      if (f >= def.lo && f < def.hi) {
+        if (binLo === null) binLo = k;
+        binHi = k;
+      }
+    }
+    return { binLo, binHi };
+  }
+
+  // ワークレットへ渡す帯域の計画（processorOptions.bandPlan）。
+  // ワークレットは logic.js を読めないので、N とビンの番号はここで決めて渡す（CLAUDE.md の約束）。
+  // サンプルレートが正の数でなければ null（ワークレットは帯域を計算しない）
+  function bandPlan(sampleRate, defs) {
+    const list = defs || BAND_DEFS;
+    const fftSize = fftSizeForRate(sampleRate);
+    if (fftSize === null) return null;
+    return {
+      sampleRate,
+      fftSize,
+      bands: list.map(d => {
+        const bins = bandBins(d, sampleRate, fftSize);
+        return { key: d.key, lo: d.lo, hi: d.hi, binLo: bins.binLo, binHi: bins.binHi };
+      })
+    };
+  }
+
+  // URL の検索部（location.search）から、帯域を計算するかを決める。?bands=off なら false、それ以外は true。
+  // 同じ版で帯域あり・なしの valid_ratio を実機で比べるためのもの（第2弾bの実機の関門）
+  function bandsEnabledFromQuery(search) {
+    let v = null;
+    try {
+      v = new URLSearchParams(typeof search === 'string' ? search : '').get('bands');
+    } catch (e) {
+      v = null;
+    }
+    return !(v !== null && v.trim().toLowerCase() === 'off');
+  }
+
+  // ワークレットからの帯域の値を、区間レコードの項目にする。
+  //   bandDb         帯域ごとの dBFS（キーは BAND_DEFS の key）。電力の和 ÷ 数えたフレーム数を
+  //                  powerToDb と同じ定義で換算する（平均二乗が 0 なら -Infinity）。
+  //                  数えたフレームが 0・その帯域にビンが無い・値が届いていない（帯域を計算していない）ときは null
+  //   bandValidRatio 数えたフレーム数 ÷ 数えるはずだったフレーム数（valid_ratio と同じ考え方）。
+  //                  数えるはずのフレームが 0、または値が届いていないときは null
+  function bandFieldsOf(msg) {
+    const src = msg || {};
+    const frames = numberOrNull(src.bandFrames);
+    const expected = numberOrNull(src.bandExpected);
+    const power = Array.isArray(src.bandPower) ? src.bandPower : null;
+    const bandDb = {};
+    BAND_DEFS.forEach((def, i) => {
+      const p = power ? power[i] : null;
+      bandDb[def.key] = (frames > 0 && Number.isFinite(p) && p >= 0) ? powerToDb(p / frames) : null;
+    });
+    return {
+      bandDb,
+      bandFrames: frames,
+      bandExpected: expected,
+      bandValidRatio: (frames !== null && expected > 0) ? frames / expected : null
+    };
+  }
+
   // ワークレットからの1メッセージを1行分の区間レコードへ
   // extra = { clockBreak: { kind, jumpMs } | null }
   function buildIntervalRecord(msg, anchor, floorDb, extra) {
@@ -623,6 +723,7 @@ const MicGainLogic = (() => {
     const startWall = new Date(audioTimeToWallMs(startTime, anchor));
     const endWall = new Date(audioTimeToWallMs(endTime, anchor));
     const brk = (extra && extra.clockBreak) || null;
+    const band = bandFieldsOf(msg);
     // seq は「1つのCSVの中での通し番号」である。
     // ⚠ ワークレット側のカウンターは記録開始のたびに0から振り直される
     //   （記録開始のたびに新しい AudioWorkletNode を作るため）。ログは累積するので、
@@ -651,6 +752,11 @@ const MicGainLogic = (() => {
       // その区間を実際に測ったときのログ間隔（画面の設定値ではない）。
       // CSV の列は増やさない。トレーラーで「どの seq からどの間隔か」を示す
       intervalSec: intervalSecOfFrames(msg.endFrame - msg.startFrame, sr),
+      // 帯域（第2弾b1）。CSV の列（b2）・画面（b3）・統計・ハッシュにはまだ入れない
+      bandDb: band.bandDb,
+      bandFrames: band.bandFrames,
+      bandExpected: band.bandExpected,
+      bandValidRatio: band.bandValidRatio,
       clockEpoch: anchor.epoch || 0,
       clockStatus: brk ? CLOCK_RESYNC : CLOCK_OK,
       clockBreakKind: brk ? brk.kind : null,
@@ -667,6 +773,9 @@ const MicGainLogic = (() => {
     const rawDb = opts.db;
     const endWall = new Date(opts.endWallMs);
     const brk = opts.clockBreak || null;
+    // 帯域は測れない（手元にあるのは AnalyserNode の瞬時値だけ）。すべて null にする。
+    // 測れないものを「異常なし」として出さない（第2弾b1）
+    const band = bandFieldsOf(null);
     return {
       seq: opts.seq,
       engine: ENGINE_FALLBACK,
@@ -689,6 +798,10 @@ const MicGainLogic = (() => {
       // ただし行を出す条件（nowSec - lastLogTime >= lastIntervalSec）で使った値
       // そのものなので、その区間を測ったときの間隔として貼ってよい
       intervalSec: numberOrNull(opts.intervalSec),
+      bandDb: band.bandDb,
+      bandFrames: band.bandFrames,
+      bandExpected: band.bandExpected,
+      bandValidRatio: band.bandValidRatio,
       clockEpoch: opts.clockEpoch || 0,
       clockStatus: brk ? CLOCK_RESYNC : CLOCK_OK,
       clockBreakKind: brk ? brk.kind : null,
@@ -1457,6 +1570,11 @@ const MicGainLogic = (() => {
     markDeviceLoss,
     buildIntervalRecord,
     buildFallbackRecord,
+    BAND_DEFS,
+    fftSizeForRate,
+    bandBins,
+    bandPlan,
+    bandsEnabledFromQuery,
     formatCsvDb,
     buildCsv,
     CSV_COLUMNS,
