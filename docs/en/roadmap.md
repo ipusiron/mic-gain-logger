@@ -9,7 +9,7 @@ This document covers what Phase 2 added, ideas for Phase 3, further ideas, and w
 > Keep the upper edge of the audible range (18–22 kHz) as a continuous record.  
 > Keep that band's value on the same row, for the same interval as the main dBFS, one row per interval, regardless of any threshold.
 
-What Phase 1 built was "recording without dropping intervals." Phase 2 added the band at the upper edge of the audible range (18–22 kHz) to that record. Many adults find this band hard to hear, but young people can sometimes hear it, so we do not call it "the inaudible band." What Phase 2 added are the three band columns in the CSV (see "Band columns" in the [CSV document](csv.md)), and on screen the dashed ultrasonic band line, "Ultrasonic max" in the statistics, the current value of the ultrasonic band and the display of the recordable limit.
+Phase 2 combines recording without dropping intervals with recording the band at the upper edge of the audible range (18–22 kHz). Many adults find this band hard to hear, but young people can sometimes hear it, so we do not call it "the inaudible band." What Phase 2 added are the three band columns in the CSV (see "Band columns" in the [CSV document](csv.md)), and on screen the dashed ultrasonic band line, "Ultrasonic max" in the statistics, the current value of the ultrasonic band and the display of the recordable limit.
 
 The differences from similar existing tools are as follows. This is based on what we found on 2026-09-29 by examining existing browser-based tools down to their code; it is not proof that nothing else exists.
 
@@ -38,7 +38,7 @@ The values of this band depend strongly on the device. At a sample rate of 44.1 
 - **A screen for direction finding (peak hold, intersection of bearings)**  
   For walking around with the device and rotating it, show the ultrasonic band value in large type and hold the peak. Entering the bearings taken at two points would also show a helper for their intersection (see "Finding the direction of a sound and narrowing down its source" in the [use cases document](use-cases.md)). The record (CSV) stays as it is; only the screen would be adapted for direction finding.
 - **Creating the AudioContext at the sample rate of the microphone track**  
-  When the microphone audio track and the AudioContext have different sample rates, the conversion lowers high sounds near the limit (see "Band columns" in the [CSV document](csv.md)). Recreating the AudioContext at the track's sample rate would remove this conversion. ⚠On iOS, a recreated AudioContext may not be resumable outside a user action. On the real iPhone 18 Pro Max, the track and the AudioContext were both at 48000 Hz, so for now we think a note on screen is enough.
+  When the microphone audio track and the AudioContext have different sample rates, the conversion reduces the recorded levels of high-frequency sounds near the limit (see "Band columns" in the [CSV document](csv.md)). Recreating the AudioContext at the track's sample rate would remove this conversion. ⚠On iOS, a recreated AudioContext may not be resumable outside a user action. On the real iPhone 18 Pro Max, the track and the AudioContext were both at 48000 Hz, so for now we think a note on screen is enough.
 
 ## Further ideas
 

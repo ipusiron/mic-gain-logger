@@ -9,7 +9,7 @@ On 2026-09-29, the public version with band recording (`090648f`) was tested on 
 | Item | Details |
 |---|---|
 | Recording device | Safari on an iPhone 18 Pro Max (1 device) |
-| Version recorded | The public version (GitHub Pages, main `090648f`). Opened both with bands and with `?bands=off` |
+| Version tested | The public version (GitHub Pages, main `090648f`). Opened both with bands and with `?bands=off` |
 | Log interval | 1 second |
 | Sound source | A speaker connected to the PC over USB (FOSTEX PC200USB-HR). The PC output was 48000 Hz / 24 bit, and no sample rate conversion happened inside the PC |
 | Placement | For the step sequence, the bottom edge of the iPhone was placed within 10 cm in front of the speaker and not moved until the end. The fan and speaker on/off recordings were made in the same place (as reported by the author) |
@@ -57,7 +57,7 @@ The header of the recording with bands had the following two lines (the same wit
 
 ## Step sequence: recording 18–22 kHz tones
 
-Tones at 1 kHz and 15–22 kHz were played in order from the PC (5 seconds each, with 2 seconds of silence in between, 9 steps in total, about 65 seconds) and recorded on the iPhone. CSV rows were matched to frequencies by the start time of each step in the PC-side log (the offset between the iPhone and PC clocks, including the time for the sound to arrive, was about 0.84 seconds). Each step's value is the average power of the 4 rows that fully contained the tone. The unit is dBFS, and the unit of the difference from silence is dB.
+Tones at 1 kHz and 15–22 kHz were played in order from the PC (5 seconds each, with 2 seconds of silence in between, 9 steps in total, about 65 seconds) and recorded on the iPhone. CSV rows were matched to frequencies by the start time of each step in the PC-side log (the offset between the iPhone and PC clocks, including the time for the sound to arrive, was about 0.84 seconds). Each step's value is the power average of the 4 rows whose entire intervals fell within the tone. The unit is dBFS, and the unit of the difference from silence is dB.
 
 | Frequency | Rows (`seq`) | Full band | Ultrasonic band | Difference from silence (ultrasonic band) | Audible band |
 |---|---|---|---|---|---|
@@ -77,9 +77,9 @@ Tones at 1 kHz and 15–22 kHz were played in order from the PC (5 seconds each,
 - ⭐22 kHz raised the ultrasonic band value slightly. It was about +1.9 dB higher than the silence right after (-93.66, with a row-to-row spread of σ≈0.1 dB), and all four rows were consistent at -91.7 to -91.8. In the full-band value (-74.66), it cannot be told apart from silence
 - Converted to the strength of the 22 kHz tone alone, it is about -96 to -98 dBFS (depending on which silence, before or after, is used as the reference; this includes the roughly 2 dB that is read low at the band edge), about 36–38 dB below 21 kHz (-60.0)
 - Of the 36–38 dB, about 2 dB is what this tool reads low. 22 kHz sits on the upper edge of the ultrasonic band, so part of the sound leaks outside the band (see "Band columns" in the [CSV document](csv.md); 21 kHz is inside the band, so this does not apply to it). The remaining roughly 34–36 dB is lost somewhere between the sound source and this tool
-- ⚠**Whether the loss at 22 kHz happens on the source side or the receiving side cannot be separated.** No sample rate conversion happens on the PC side (48000 Hz on both), so the remaining roughly 34–36 dB is lost either in the speaker (DAC, amplifier, tweeter) or in the iPhone (microphone, AD conversion filter). This setup cannot decide which
+- ⚠**This test cannot distinguish loss at 22 kHz on the source side from loss on the receiving side.** No sample rate conversion happens on the PC side (48000 Hz on both), so the remaining roughly 34–36 dB is lost either in the speaker (DAC, amplifier, tweeter) or in the iPhone (microphone, AD conversion filter). This setup cannot decide which
 - The 18 kHz tone went into both the ultrasonic band (-64.37) and the audible band (-69.75). Subtracting the silence from the audible band gives -71.7, a difference of about 7.3 dB from the ultrasonic band. This matched the calculation that a tone at exactly 18,000 Hz goes 5/6 into the ultrasonic band and 1/6 into the audible band through window leakage (a difference of 7.0 dB)
-- The band columns exist to keep high sounds that are buried in the full-band value, like 22 kHz in this table, separately
+- The band columns separately record high-frequency sounds that are obscured by the full-band value, such as 22 kHz in this table
 
 ## Why 22 kHz was not visible on screen, and the default display floor
 
@@ -93,7 +93,7 @@ When bands are computed, the default display floor is -110 dBFS (-90 dBFS with `
 
 ## Fan and speaker on/off
 
-After the step sequence, at the same place (10 cm in front of the speaker), the power of the fan and the speaker was switched, and about 30 seconds were recorded for each case. The values are row medians (so that a single row that stands out does not pull them).
+After the step sequence, at the same place (10 cm in front of the speaker), the power of the fan and the speaker was switched, and about 30 seconds were recorded for each case. The values are row medians (so that a single outlier does not skew them).
 
 | Condition | Full band | Audible band | Ultrasonic band |
 |---|---|---|---|
@@ -125,7 +125,7 @@ Play 1 kHz and 15–22 kHz tones from a PC in order from low to high, record the
 3. Place the recording device in front of the speaker (around 10 cm) and do not move it until the end. Moving it midway makes the values at different frequencies impossible to compare
 4. Play from the lowest frequency upward, with silence in between (the recording above used 1 kHz and 15–22 kHz, 5 seconds each, with 2 seconds of silence in between). On the source side, note the time each step starts
 5. When you are done, stop recording, export the CSV, and run it through the verifier in "Verifying a CSV you received" in the [CSV document](csv.md)
-6. Use the source-side times and the CSV `timestamp` (the end of each interval, in UTC) to match which row was which frequency. Because of the clock offset between the devices and the time for the sound to arrive, compare using the rows that fully contain a tone (excluding the first and last rows of each step). If the ultrasonic band value is higher than in the silent rows, that frequency is kept in the record
+6. Use the source-side times and the CSV `timestamp` (the end of each interval, in UTC) to match which row was which frequency. Because of the clock offset between the devices and the time for the sound to arrive, compare using rows whose entire intervals fall within a tone (excluding the first and last rows of each step). If the ultrasonic band value is higher than in the silent rows, that frequency is kept in the record
 
 - ⚠Many people can hear 15–17 kHz. At 18 kHz and above, a loud sound may be playing without being heard, so always turn the volume down before starting. Do not do this where children or animals are nearby
 - Also note the output sample rate on the source side (44100 Hz or 48000 Hz). Some equipment that plays at 44.1 kHz has converter filters with a passband up to about 20 kHz; if anything above that is lost on the source side, it cannot be told apart from the limit on the receiving side

@@ -12,7 +12,7 @@ English · [日本語](README.md)
 
 **Mic Gain Logger** is a browser-based tool that deliberately has no audio recording feature: it visualizes the "presence" and "strength" of the sound at the microphone input (the level in dBFS) in real time and keeps logging it.
 
-Its output is a time series of dBFS, a relative value; it is not sound pressure (dB SPL), so it cannot be set side by side with regulatory limits or standard values. What it can do is keep a timestamped record that "sound activity went up / went down within the same device and the same session."
+Its output is a time series of dBFS, a relative value; it is not sound pressure (dB SPL), so it cannot be compared with regulatory limits or standard values. What it can do is keep a timestamped record that "sound activity increased or decreased on the same device within the same session."
 
 ---
 
@@ -48,7 +48,7 @@ Its output is a time series of dBFS, a relative value; it is not sound pressure 
 
 ## ✨ Features
 
-- **A level logger that does not record audio**: logs the microphone input level (dBFS) one row per interval, without saving any audio. The CSP (`connect-src 'none'`) stops sending data outside, as a browser feature
+- **A level logger that does not record audio**: logs the microphone input level (dBFS) one row per interval, without saving any audio. The browser enforces the CSP (`connect-src 'none'`) to block external data transmission
 - **Recording without missing intervals (AudioWorklet)**: intervals are aggregated on the audio thread, so recording continues even when drawing on the screen stops. Where the AudioWorklet cannot be loaded, the tool runs in fallback mode
 - **Recording the ultrasonic band (18–22 kHz)**: for each interval, the energy of the ultrasonic band and of the audible band (20–18,000 Hz) is kept on the same row. The band values record sound energy; they cannot tell what the sound is
 - **Live display**: shows the big number, a meter, a graph of the last 60 seconds (the ultrasonic band as a dashed line) and the current value of the ultrasonic band. The big number is the value of the latest 2048 samples, so its window differs from that of the `dbfs` in the high-precision mode CSV (the energy average over the whole interval)
@@ -303,7 +303,7 @@ This is the only place that states how far the tool has been verified. The scena
 - **Seen on screen (from the author's memory)**: at 21 kHz the dashed ultrasonic band line appeared, and at 22 kHz it stuck to the bottom at the display floor of the recorded version (-90 dBFS) and could not be seen. The dashed ultrasonic band line on screen cannot be confirmed from the CSV
 - **Not tested**: real Android devices, and screen-lock and background behavior on a real device. Long recordings, and other iPhones (different models or iOS versions). The screen features added after the real-device test version (`090648f`) (the default display floor of -110 dBFS, the current value of the ultrasonic band, the button layout), and switching between Japanese and English (tested only in desktop Chromium)
 
-The measured values such as row counts and `valid_ratio` are in the [real-device test document](docs/en/real-device-test.md). The other checks at mobile widths were done in desktop Chromium (Playwright) by creating widths of 320–430 px, 4x/20x CPU throttling and a state equivalent to a screen lock. The "screen-lock equivalent" is a browser emulation, not a real screen lock.
+The measured values such as row counts and `valid_ratio` are in the [real-device test document](docs/en/real-device-test.md). The remaining checks at mobile widths were done in desktop Chromium (Playwright) by creating widths of 320–430 px, 4x/20x CPU throttling and a state equivalent to a screen lock. The "screen-lock equivalent" is a browser emulation, not a real screen lock.
 
 | Browser | Desktop | Mobile | Notes |
 |---|---|---|---|
@@ -316,7 +316,7 @@ Where AudioWorklet cannot be used, the tool switches to fallback mode. Fallback 
 
 ### Prerequisites
 
-- **A secure context (https, `localhost`, `file://`)**: both `getUserMedia` and `crypto.subtle` require a secure context. If you open the page with a URL that has a non-https host name or an IP address, neither the microphone nor the hash column works. ⚠**`file://` is a secure context, so both work there.** However, the AudioWorklet module cannot be loaded, so the tool runs in fallback mode (measured in Chromium)
+- **A secure context (https, `localhost`, `file://`)**: both `getUserMedia` and `crypto.subtle` require a secure context. If you open the page with a non-HTTPS URL with a host name or IP address, neither the microphone nor the hash column works. ⚠**`file://` is a secure context, so both work there.** However, the AudioWorklet module cannot be loaded, so the tool runs in fallback mode (measured in Chromium)
 - **Desktop**: Windows 10+, macOS 10.15+, Ubuntu 18.04+
 - **Mobile**: iOS 13+, Android 8.0+
 - **Memory**: the whole log lives in the browser's memory. At a 1-second log interval, 24 hours produce 86,400 rows

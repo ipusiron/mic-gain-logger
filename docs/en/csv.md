@@ -198,13 +198,13 @@ How the chain is built is fully described in "Verifying a CSV you received" belo
 
 | Change | Only changed | After re-linking the chain |
 |---|---|---|
-| Delete row 2 | `Mismatch starting at row 2` | `All rows passed (rows: 3; the trailer matches too)` |
-| Swap rows 2 and 3 | `Mismatch starting at row 2` | `All rows passed (rows: 4; the trailer matches too)` |
-| Rewrite `dbfs` in row 1 from `-19.70` to `-12.00` | `Mismatch starting at row 1` | `All rows passed (rows: 4; the trailer matches too)` |
-| Cut off the last 2 rows | `Trailer mismatch` | `All rows passed (rows: 2; the trailer matches too)` |
-| Delete the silent row | `Mismatch starting at row 3` | `All rows passed (rows: 3; the trailer matches too)` |
-| Replace the header line `# device=` | `Mismatch starting at row 1` | `All rows passed (rows: 4; the trailer matches too)` |
-| Shift the data-row times by 1 hour | `Mismatch starting at row 1` | `All rows passed (rows: 4; the trailer matches too)` |
+| Delete row 2 | `Mismatch starting at row 2 (expected d354201d21980d81 / actual 9381a0b301d41f3c)` | `All rows passed (rows: 3; the trailer matches too)` |
+| Swap rows 2 and 3 | `Mismatch starting at row 2 (expected d354201d21980d81 / actual 9381a0b301d41f3c)` | `All rows passed (rows: 4; the trailer matches too)` |
+| Rewrite `dbfs` in row 1 from `-19.70` to `-12.00` | `Mismatch starting at row 1 (expected f21aa286c3591dcf / actual 030554522ee00119)` | `All rows passed (rows: 4; the trailer matches too)` |
+| Cut off the last 2 rows | `Trailer mismatch (expected 6a32793731b33ff7 / actual 8fc5d56a3447408a)` | `All rows passed (rows: 2; the trailer matches too)` |
+| Delete the silent row | `Mismatch starting at row 3 (expected d8d90f1f3e5e1d7d / actual bfe90bfc6ddf9b43)` | `All rows passed (rows: 3; the trailer matches too)` |
+| Replace the header line `# device=` | `Mismatch starting at row 1 (expected 4a2fce97866b4af3 / actual 030554522ee00119)` | `All rows passed (rows: 4; the trailer matches too)` |
+| Shift the data-row times by 1 hour | `Mismatch starting at row 1 (expected 4ea6de9f0dd72a3e / actual 030554522ee00119)` | `All rows passed (rows: 4; the trailer matches too)` |
 
 There are only two ways to change this: sign with a private key, or deposit the hashes with an external timestamping authority.
 
@@ -214,7 +214,7 @@ Therefore, this CSV **does not prove that a record is correct**. For uses that n
 
 ### Where hashes cannot be computed
 
-Hashes use `crypto.subtle`. It is available only in a secure context, so when the page is opened from a URL with a non-https host name or an IP address (such as `http://192.168.1.10:8000/`), the `hash` column is empty and the `# hash=` and `# trailerHash=` lines do not appear. When we opened `http://notlocalhost:8765/` (with only its name resolution pointed at `127.0.0.1`) in Chromium, `window.isSecureContext` was `false`, `crypto.subtle` was `undefined`, and `navigator.mediaDevices` was `undefined` too. **The microphone is not available there either.**
+Hashes use `crypto.subtle`. It is available only in a secure context, so when the page is opened from a non-HTTPS URL with a host name or IP address (such as `http://192.168.1.10:8000/`), the `hash` column is empty and the `# hash=` and `# trailerHash=` lines do not appear. When we opened `http://notlocalhost:8765/` (with only its name resolution pointed at `127.0.0.1`) in Chromium, `window.isSecureContext` was `false`, `crypto.subtle` was `undefined`, and `navigator.mediaDevices` was `undefined` too. **The microphone is not available there either.**
 
 ⚠**`file://` is not one of these.** In the same Chromium, opening `file:///D:/…/index.html` gave `window.isSecureContext` as `true`, and `crypto.subtle.digest('SHA-256', 'abc')` worked (the first 16 characters were `ba7816bf8f01cfea`). When we actually recorded for about 5 seconds on `file://` and exported the CSV, the `hash` column was filled, the `# hash=` and `# trailerHash=` lines appeared, and the verifier from "Verifying a CSV you received" below answered `All rows passed (rows: 4; the trailer matches too)`.
 
@@ -316,16 +316,16 @@ These are the results of saving the sample CSV above (4 rows; row 3 is digital s
 | Input | Output |
 |---|---|
 | As is | `All rows passed (rows: 4; the trailer matches too)` |
-| Delete row 2 | `Mismatch starting at row 2 (expected d354201d… / actual 9381a0b3…)` |
-| Swap rows 2 and 3 | `Mismatch starting at row 2` |
-| Rewrite `dbfs` in row 2 | `Mismatch starting at row 2` |
-| Delete the silent row | `Mismatch starting at row 3` |
-| Fake the header line `# sampleRate=` | `Mismatch starting at row 1` |
-| Remove the header line `# device=` | `Mismatch starting at row 1` |
+| Delete row 2 | `Mismatch starting at row 2 (expected d354201d21980d81 / actual 9381a0b301d41f3c)` |
+| Swap rows 2 and 3 | `Mismatch starting at row 2 (expected d354201d21980d81 / actual 9381a0b301d41f3c)` |
+| Rewrite `dbfs` in row 2 | `Mismatch starting at row 2 (expected 0dde252ad3be6845 / actual b274e8d3ca7e6a0e)` |
+| Delete the silent row | `Mismatch starting at row 3 (expected d8d90f1f3e5e1d7d / actual bfe90bfc6ddf9b43)` |
+| Fake the header line `# sampleRate=` | `Mismatch starting at row 1 (expected 64744e0e7e010fae / actual 030554522ee00119)` |
+| Remove the header line `# device=` | `Mismatch starting at row 1 (expected 25670b7ba0d959c6 / actual 030554522ee00119)` |
 | Swap `band_ultra_dbfs` and `band_audible_dbfs` in the column header line | `The column header line does not match the columns of the # format= version` |
-| Delete the last row | `Trailer mismatch` |
-| Fake the trailer line `# intervalSec=` | `Trailer mismatch` |
-| Remove the trailer line `# silence=` | `Trailer mismatch` |
+| Delete the last row | `Trailer mismatch (expected 0235fa9ba945658d / actual 8fc5d56a3447408a)` |
+| Fake the trailer line `# intervalSec=` | `Trailer mismatch (expected b36fc8e461a815a7 / actual 8fc5d56a3447408a)` |
+| Remove the trailer line `# silence=` | `Trailer mismatch (expected ce5492be34e77592 / actual 8fc5d56a3447408a)` |
 | Drop the whole trailer | `No trailer hash (the end has been cut off)` |
 | `hash` column empty in every row (a CSV without a chain) | `The hash column is empty in every row. This CSV has no chain, so this verifier cannot check it` |
 
@@ -333,9 +333,9 @@ v2 CSVs can be checked with the same verifier. The v2 sample (4 rows; `test/fixt
 
 ⚠**A CSV without a chain is different from an altered one.** If a CSV with an empty `hash` column were run through the chain check as is, it would say "Mismatch starting at row 1" and could not be told apart from an altered file. The verifier first looks at whether there is a chain, and returns a different message.
 
-⚠Both the header lines and the trailer lines are checked. If you remove `# device=` before handing the file over, the receiver's recomputation does not pass. If you need to remove it before handing the file over, prepare both the edited file and the original. A CSV with an empty `hash` column cannot be verified. Most such files were exported where a chain cannot be built (a URL with a non-https host name or an IP address), but removing only the `hash` column from a chained CSV gives the same result. Tell them apart by whether the header lines have a `# hash=` line (if they do, there was a chain when the file was exported).
+⚠Both the header lines and the trailer lines are checked. If you remove `# device=` before handing the file over, the receiver's recomputation does not pass. If you need to remove it before handing the file over, prepare both the edited file and the original. A CSV with an empty `hash` column cannot be verified. Most such files were exported where a chain cannot be built (a non-HTTPS URL with a host name or IP address), but clearing only the `hash` values in a chained CSV, while leaving the column in place, gives the same result. Tell them apart by whether the header lines have a `# hash=` line (if they do, there was a chain when the file was exported).
 
-⚠Only the column header line is not part of the hash input. Swapping column names does not break the chain, so the verifier first checks that the column header line matches the columns for the version in the starting point's `# format=` (the "Swap … in the column header line" row of the table above). The verifier knows only v2 and v3 and does not check other versions. The order of the two band columns is also the same as the order in `# bands=`, which is in the starting point.
+⚠Only the column header line is not part of the hash input. Swapping column names does not break the chain, so the verifier first checks that the column header line matches the columns for the version in the starting point's `# format=` (the "Swap … in the column header line" row of the table above). The verifier knows the column layouts of v2 and v3 only; for other versions, it skips this column-layout check. The order of the two band columns is also the same as the order in `# bands=`, which is in the starting point.
 
 ## Analysis steps in Excel/Google Sheets
 
@@ -393,7 +393,7 @@ v2 CSVs can be checked with the same verifier. The v2 sample (4 rows; `test/fixt
 
 ## Recommended analysis methods
 - **Moving average**: smooths out short-term fluctuations to show the trend. ⚠**Do not average dB values as they are.** Convert them to power with `POWER(10,B/10)`, average, and convert back to dB with `10*LOG10()`
-- **Threshold analysis**: find the periods above a set level (for example, -30 dBFS). The order of magnitude is the same in dB and in power, so threshold comparisons can be done in dB as is
+- **Threshold analysis**: find the periods above a set level (for example, -30 dBFS). The ordering of values is the same in dB and in power, so threshold comparisons can be done in dB as is
 - **Peak finding**: pick out the timing of sudden level changes. The sample peak within each interval (the largest sample value; not the same as the ITU-R BS.1770 true peak) is in the `peak_dbfs` column (empty for rows taken in fallback mode)
 - **Frequency distribution**: show how often each dBFS value occurs as a histogram. ⚠**This is not L10/L50/L90.** Those are indicators defined as distributions of A-weighted sound pressure level, and giving the same names to dBFS percentiles invites the misreading that they can be compared with regulatory limits
 
@@ -667,7 +667,7 @@ dbfs at -30.00 dBFS or higher
 Periods: 1  total 2 s
 ```
 
-Rows that continue from the previous interval without a break are grouped into the form "from hh:mm:ss for N seconds". A group is broken by a missing row and by a boundary where recording was stopped and resumed. If you pass the threshold with a `+`, as in `+10`, the threshold is set by the difference from the record's median ("Lining up records from two devices" below). The order of magnitude is the same in dB and in power, so threshold comparisons can be done in dB as is.
+Rows that continue from the previous interval without a break are grouped into the form "from hh:mm:ss for N seconds". A group is broken by a missing row and by a boundary where recording was stopped and resumed. If you pass the threshold with a `+`, as in `+10`, the threshold is set by the difference from the record's median ("Lining up records from two devices" below). The ordering of values is the same in dB and in power, so threshold comparisons can be done in dB as is.
 
 ### Hour × weekday table (`week.py`)
 

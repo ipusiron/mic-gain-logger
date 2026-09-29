@@ -103,11 +103,14 @@ function sameNumbers(jaNums, enNums) {
   }
   return rest.every(x => /^[012]$/.test(x));
 }
-// 数値の並び。符号は見ない。英語で語にした小さな数（one〜ten）は数字に直して比べる
+// 数値の並び。負号を保持する（+ は省略可能）。one〜ten は数字に直す。
+// 検証器の出力だけはハッシュを数値として数えない。英語の全文は実行結果の固定値と別に厳密比較する。
 const WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
 function numbers(s, lang) {
   const t = lang === 'en' ? s.replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\b/gi, w => WORDS[w.toLowerCase()]) : s;
-  return t.match(/(?<![\w.])\d+(?:\.\d+)?/g) || [];
+  const numericText = /(?:Mismatch starting|Trailer mismatch|行目から合いません|トレーラーが合いません)/.test(t)
+    ? t.replace(/\b[0-9a-f]{8,16}(?:…)?/g, '') : t;
+  return (numericText.match(/(?<![\w.])[+-]?\d+(?:\.\d+)?/g) || []).map(n => n.replace(/^\+/, ''));
 }
 
 // Pythonのコードの形：コメントを除き、文字列リテラルを <STR> に置き換えて、行ごとに「字下げ|トークン」にする。
@@ -247,8 +250,10 @@ test('表の行・列の数と、各セルの数値が日本語版と同じ', ()
   // 数え方の確かめ
   assert.deepEqual(numbers('`1@0+3@12`＝seq 0から1秒', 'ja'), ['1', '0', '3', '12', '0', '1']);
   assert.deepEqual(numbers('`1@0+3@12` = 1 second from seq 0', 'en'), ['1', '0', '3', '12', '1', '0']);
-  assert.deepEqual(numbers('18〜22kHz・-19.70・v3・c7b6bad', 'ja'), ['18', '22', '19.70']);
+  assert.deepEqual(numbers('18〜22kHz・-19.70・v3・c7b6bad', 'ja'), ['18', '22', '-19.70']);
   assert.deepEqual(numbers('one iPhone, 18–22 kHz', 'en'), ['1', '18', '22']);
+  assert.deepEqual(numbers('seq 0-16; -19.70 / +19.70 dBFS', 'en'), ['0', '16', '-19.70', '19.70']);
+  assert.ok(!sameNumbers(numbers('-19.70', 'ja'), numbers('+19.70', 'en')), '負号の脱落を見逃さない');
   assert.ok(sameNumbers(['1', '2'], ['2']) && sameNumbers(['22', '18'], ['18', '22']));
   assert.ok(!sameNumbers(['-19.70'], ['-19.72']) && !sameNumbers(['3'], []) && !sameNumbers(['2'], ['2', '4']));
 });
@@ -314,6 +319,25 @@ test('英語版の相対リンクの行き先が実在し、資料へのリン�
   }
 });
 
+test('相対リンクの並びと行き先が、節ごとに日本語版の対応先と一致する', () => {
+  const normalize = (rel, link) => {
+    const target = resolve(rel, link.t);
+    const pair = PAIRS.find(p => p.includes(target));
+    return (pair ? pair[0] : target.replace(/^assets\/en\//, 'assets/')) + (link.t.includes('#') ? '#' + link.t.split('#')[1] : '');
+  };
+  for (const [ja, en] of PAIRS) {
+    const a = sections(BODY(ja));
+    const b = sections(BODY(en));
+    a.forEach((section, i) => {
+      // 言語切り替えリンクは別テストで検証済み。英語画像は assets/en/ の対応画像を指す。
+      const links = (rel, lines) => relLinks(lines.join('\n'))
+        .filter(x => !PAIRS.find(p => p.includes(rel)).includes(resolve(rel, x.t)))
+        .map(x => normalize(rel, x));
+      assert.deepEqual(links(en, b[i].lines), links(ja, section.lines), `${en} の ${b[i].head} のリンク先が違う`);
+    });
+  }
+});
+
 test('英語版の参照「"名前" in the [… document](….md)」「"名前" above/below」が、行き先の見出しか項目名を指している', () => {
   let cross = 0;
   let local = 0;
@@ -370,6 +394,8 @@ test('コードの処理が日本語版と同じ（Pythonはコメントと文�
         assert.equal(B.strings.length, A.strings.length);
         A.strings.forEach((s, k) => {
           assert.deepEqual(specs(B.strings[k]), specs(s), `${where}の文字列の書式の指定が違う: ${B.strings[k]} ／ ${s}`);
+          // CSVキー・区切り・エンコーディングなど、日本語を含まない文字列は翻訳しない。
+          if (!JA_CHAR.test(s)) assert.equal(B.strings[k], s, `${where}の処理用文字列が違う: ${B.strings[k]} ／ ${s}`);
           strs++;
         });
       } else if (['sh', 'bash', 'powershell', 'excel'].includes(x.lang)) {
@@ -706,6 +732,113 @@ test('英語版の検証器の2つの表が、日本語版の表（実測と比�
   assert.notEqual(kindOf('`Trailer mismatch`', en), kindOf('`Mismatch starting at row 1`', en));
 });
 
+// Python 3.10.6で文書から抽出した検証器を実行して採取した全文（13件 + 改変前後14件）。
+// npm test にPython依存を加えず、短縮表示・誤ったハッシュ・異なる入力ラベルも拒否する。
+const VERIFIER_OUTPUTS_EN = {
+  "basic": [
+    [
+      "As is",
+      "All rows passed (rows: 4; the trailer matches too)"
+    ],
+    [
+      "Delete row 2",
+      "Mismatch starting at row 2 (expected d354201d21980d81 / actual 9381a0b301d41f3c)"
+    ],
+    [
+      "Swap rows 2 and 3",
+      "Mismatch starting at row 2 (expected d354201d21980d81 / actual 9381a0b301d41f3c)"
+    ],
+    [
+      "Rewrite `dbfs` in row 2",
+      "Mismatch starting at row 2 (expected 0dde252ad3be6845 / actual b274e8d3ca7e6a0e)"
+    ],
+    [
+      "Delete the silent row",
+      "Mismatch starting at row 3 (expected d8d90f1f3e5e1d7d / actual bfe90bfc6ddf9b43)"
+    ],
+    [
+      "Fake the header line `# sampleRate=`",
+      "Mismatch starting at row 1 (expected 64744e0e7e010fae / actual 030554522ee00119)"
+    ],
+    [
+      "Remove the header line `# device=`",
+      "Mismatch starting at row 1 (expected 25670b7ba0d959c6 / actual 030554522ee00119)"
+    ],
+    [
+      "Swap `band_ultra_dbfs` and `band_audible_dbfs` in the column header line",
+      "The column header line does not match the columns of the # format= version"
+    ],
+    [
+      "Delete the last row",
+      "Trailer mismatch (expected 0235fa9ba945658d / actual 8fc5d56a3447408a)"
+    ],
+    [
+      "Fake the trailer line `# intervalSec=`",
+      "Trailer mismatch (expected b36fc8e461a815a7 / actual 8fc5d56a3447408a)"
+    ],
+    [
+      "Remove the trailer line `# silence=`",
+      "Trailer mismatch (expected ce5492be34e77592 / actual 8fc5d56a3447408a)"
+    ],
+    [
+      "Drop the whole trailer",
+      "No trailer hash (the end has been cut off)"
+    ],
+    [
+      "`hash` column empty in every row (a CSV without a chain)",
+      "The hash column is empty in every row. This CSV has no chain, so this verifier cannot check it"
+    ]
+  ],
+  "altered": [
+    [
+      "Delete row 2",
+      "Mismatch starting at row 2 (expected d354201d21980d81 / actual 9381a0b301d41f3c)",
+      "All rows passed (rows: 3; the trailer matches too)"
+    ],
+    [
+      "Swap rows 2 and 3",
+      "Mismatch starting at row 2 (expected d354201d21980d81 / actual 9381a0b301d41f3c)",
+      "All rows passed (rows: 4; the trailer matches too)"
+    ],
+    [
+      "Rewrite `dbfs` in row 1 from `-19.70` to `-12.00`",
+      "Mismatch starting at row 1 (expected f21aa286c3591dcf / actual 030554522ee00119)",
+      "All rows passed (rows: 4; the trailer matches too)"
+    ],
+    [
+      "Cut off the last 2 rows",
+      "Trailer mismatch (expected 6a32793731b33ff7 / actual 8fc5d56a3447408a)",
+      "All rows passed (rows: 2; the trailer matches too)"
+    ],
+    [
+      "Delete the silent row",
+      "Mismatch starting at row 3 (expected d8d90f1f3e5e1d7d / actual bfe90bfc6ddf9b43)",
+      "All rows passed (rows: 3; the trailer matches too)"
+    ],
+    [
+      "Replace the header line `# device=`",
+      "Mismatch starting at row 1 (expected 4a2fce97866b4af3 / actual 030554522ee00119)",
+      "All rows passed (rows: 4; the trailer matches too)"
+    ],
+    [
+      "Shift the data-row times by 1 hour",
+      "Mismatch starting at row 1 (expected 4ea6de9f0dd72a3e / actual 030554522ee00119)",
+      "All rows passed (rows: 4; the trailer matches too)"
+    ]
+  ]
+};
+
+test('英語の検証器の出力27件が、実行した全文と1文字ずつ一致する', () => {
+  assert.equal(sha256(SAMPLE_TEXT), 'e7317c655206a85d9a5432729b39ee2ba6ec23ab467da399041d9baea2f139f0',
+    '見本CSVが実行時と違う（変更時はPythonで27件を採り直す）');
+  const clean = rows => rows.map(row => row.map(c => c.replace(/^`([^`]*)`$/, '$1')));
+  assert.deepEqual(clean(tableAfter(CSV_EN, '| Input | Output |')), VERIFIER_OUTPUTS_EN.basic);
+  assert.deepEqual(clean(tableAfter(CSV_EN, '| Change | Only changed | After re-linking the chain |')), VERIFIER_OUTPUTS_EN.altered);
+  for (const row of [...VERIFIER_OUTPUTS_EN.basic, ...VERIFIER_OUTPUTS_EN.altered]) {
+    for (const output of row.slice(1)) assert.ok(!output.includes('…'), '出力を省略しない');
+  }
+});
+
 // ---- 強調・過去の版・用語 ----
 
 // 箇条書き（番号付きを含む）の先頭の項目名。「- **Name**:」と「- **Name**」＋改行
@@ -901,14 +1034,15 @@ test('README.en.mdが、シリーズ標準の英語版の構成（H1・バッジ
 test('英語版が、ツールの立場（相対値・改変に耐えない・何の音かは分からない・証明に使えない）を日本語版と同じく書いている', () => {
   const readme = TEXT['README.en.md'];
   for (const [where, text, s] of [
-    ['README.en.md', readme, 'it is not sound pressure (dB SPL), so it cannot be set side by side with regulatory limits or standard values'],
+    ['README.en.md', readme, 'it is not sound pressure (dB SPL), so it cannot be compared with regulatory limits or standard values'],
     ['README.en.md', readme, '(they do not withstand intentional changes)'],
     ['README.en.md', readme, 'The band values record sound energy; they cannot tell what the sound is'],
     ['README.en.md', readme, 'the records cannot be used as proof. The author does not encourage misuse.'],
     ['docs/en/csv.md', CSV_EN, 'It does not withstand intentional changes, whoever makes them.'],
     ['docs/en/csv.md', CSV_EN, 'The dividing line is not "the author or a third party" but whether the hashes are recomputed.'],
     ['docs/en/csv.md', CSV_EN, 'does not prove that a record is correct'],
-    ['docs/en/use-cases.md', TEXT['docs/en/use-cases.md'], 'The author does not encourage misuse.']
+    ['docs/en/use-cases.md', TEXT['docs/en/use-cases.md'], 'The author does not encourage misuse.'],
+    ['docs/en/use-cases.md', TEXT['docs/en/use-cases.md'], 'it cannot prove that intentional changes were made']
   ]) {
     assert.ok(text.includes(s), `${where} に「${s}」がない`);
   }

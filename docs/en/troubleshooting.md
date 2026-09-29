@@ -16,10 +16,10 @@ Common problems and how to solve them.
 
 - **Symptom**: microphone access is allowed, but no level is measured
 - **Solution**
-  1. Look at the status display on screen first. If it says "The microphone is muted at the source," silence is being fed in before the sound reaches the browser (for example, by an incoming call)
+  1. Look at the status display on screen first. If it says "The microphone is muted at the source", silence is being fed in before the sound reaches the browser (for example, by an incoming call)
   2. Check that the microphone is connected correctly
   3. Check that the microphone is not muted in the system sound settings
-  4. Check that no other application is holding the microphone
+  4. Check that no other application is using the microphone exclusively
   5. Restart the browser and try again
 
 ## ❌ Recording stops by itself
@@ -27,7 +27,7 @@ Common problems and how to solve them.
 - **Symptom**: recording stops on its own when left unattended
 - **Solution**
   1. Look at the engine display at the top of the screen. If it says "fallback mode," recording stops when drawing stops. Reopening the page over HTTPS lets it use the AudioWorklet
-  2. If it says "The microphone was disconnected," the device was lost during recording. The screen shows up to which row the log is valid (the log up to that point can be exported)
+  2. If it says "The microphone was disconnected", the device was lost during recording. The screen shows up to which row the log is valid (the log up to that point can be exported)
   3. Disable power-saving mode and sleep mode
   4. Disable the browser's automatic tab discarding. ⚠**If the tab is discarded, the whole log is lost.** For long recordings, export to CSV often
 
@@ -42,7 +42,7 @@ Common problems and how to solve them.
 ## ❌ The `hash` column in the CSV is empty
 
 - **Symptom**: no hash chain values appear
-- **Cause**: `crypto.subtle` is available only in a secure context. It is not available when you open the page with a URL that has a non-https host name or an IP address, such as `http://192.168.1.10:8000/`
+- **Cause**: `crypto.subtle` is available only in a secure context. It is not available when you open the page with a non-HTTPS URL with a host name or IP address, such as `http://192.168.1.10:8000/`
 - **Solution**: reopen the page with https, `localhost` or `file://`
 - ⚠**`file://` is not the cause of this symptom.** `file://` is a secure context, so hashes appear (measured in Chromium). What happens with `file://` is the "fallback mode" described above
 
@@ -58,7 +58,7 @@ Common problems and how to solve them.
 - **Things to check**
   1. **Time when nothing was recorded**: the line is not joined. If you stop and restart, the time in between stays empty (joining it would make unmeasured time look measured)
   2. **Silent intervals**: they stick to the bottom. The line is there, but it overlaps the lowest tick and is hard to see
-  3. **Sounds quieter than the display floor**: sounds quieter than the display floor (default -110 dBFS; -90 dBFS with `?bands=off`) also line up at the bottom. This is a setting for the display; the values recorded in the CSV do not move. Read small changes of the ultrasonic band (a few dB) from the "Ultrasonic band (last N s interval)" number below the big number
+  3. **Sounds quieter than the display floor**: sounds quieter than the display floor (default -110 dBFS; -90 dBFS with `?bands=off`) also line up at the bottom. This is a setting for the display; the values recorded in the CSV do not change. Read small changes of the ultrasonic band (a few dB) from the "Ultrasonic band (last N s interval)" number below the big number
   4. If "Engine" at the top of the screen shows fallback mode and the tab is in the background, both drawing and recording stop
 - The graph can be drawn with browser zoom (110%, 133% and so on) and at phone widths. The canvas size is set after converting the non-integer width returned by `getBoundingClientRect()` to an integer, so `RangeError: Invalid array length` does not occur (`test/canvas.test.js` checks six non-integer widths that occur with zoom and at phone widths). If the graph turns completely black, the cause is something other than zoom
 
@@ -66,5 +66,5 @@ Common problems and how to solve them.
 
 - **Symptom**: you want to change the log interval or the display floor, but the settings are not visible
 - **Solution**: press "Show settings" at the top of the screen. On narrow screens, the settings start collapsed
-- If you cannot find "Export CSV" and "Reset stats," press "More" to the right of Start recording (Stop). At 480 px wide or narrower, these two are grouped under "More"
+- If you cannot find "Export CSV" and "Reset stats", press "More" to the right of Start recording (Stop). At 480 px wide or narrower, these two are grouped under "More"
 - It has been confirmed that "start → 1-second log interval → record → stop → CSV" works at widths of 320–414 px. However, this reproduced the screen width in desktop Chromium; it is not a real device (see "Browser support" in the [README](../../README.en.md))

@@ -10,25 +10,25 @@ What this tool keeps is a time series of dBFS, a value relative to each device. 
 - **People who want to keep a record of the sound where they are**  
   In their own room, workshop or home, they keep the times when sound activity rose and when it quieted down. What comes out is a value relative to each device, not a value that represents loudness.
 - **Technicians and engineers**  
-  Checking that a microphone works, testing audio equipment, checking input levels relatively.
+  Checking that a microphone works, testing audio equipment, checking relative input levels.
 - **Developers who want to read an implementation of the Web Audio API**  
-  They can follow, through the code and the tests, how to aggregate intervals in an AudioWorklet without dropping any, an Leq weighted by interval length, and how to build a CSV with a hash chain.
+  They can follow, through the code and the tests, how to aggregate intervals in an AudioWorklet without dropping any, Leq weighted by interval length, and how to build a CSV with a hash chain.
 
 ### 🏢 Secondary target (applied users)
 - **Facility managers**  
   Knowing the times when sound activity concentrates in offices, shops, factories and similar places.
 - **Researchers and academics**  
-  Preliminary surveys before studying acoustics, environments or behavior. It does not replace a main measurement with instruments that have passed verification.
+  Preliminary surveys before studying acoustics, environments or behavior. It does not replace a full measurement using instruments that have passed verification.
 - **Security learners**  
   With something that actually runs, they check what a hash chain with no key and no external anchor can and cannot tell. It reveals corruption, loss and reordering, but it does not withstand intentional changes. Re-stitching the chain yourself shows where that line lies.
 
 ## 🎯 Intended uses (what this tool's output can and cannot do)
 
-What this tool outputs is a time series of dBFS, a relative value. It is not sound pressure (dB SPL), so it cannot be set side by side with regulatory limits or standard values. What it can do is keep a timestamped record that "sound activity went up / went down within the same device and the same session." Read the uses below on this premise.
+What this tool outputs is a time series of dBFS, a relative value. It is not sound pressure (dB SPL), so it cannot be compared with regulatory limits or standard values. What it can do is keep a timestamped record that "sound activity increased or decreased on the same device within the same session." Read the uses below on this premise.
 
 - **Site surveys**: a timestamped record of whether there was sound activity at the target location
 - **Long-term monitoring**: noticing and logging changes in sound in unattended environments
-- **Recording activity times**: keep a timestamped record of "when there was sound activity." Corruption in transfer, partial loss and reordering can be noticed later with the CSV hash chain (it cannot serve as proof against intentional changes)
+- **Recording activity times**: keep a timestamped record of "when there was sound activity." Corruption in transfer, partial loss and reordering can be noticed later with the CSV hash chain (it cannot prove that intentional changes were made)
 - **Understanding changes in the environment**: see how sound activity changes with the time of day at the same place with the same device. It cannot be used for comparison with regulatory limits or standard values (the reason is in the next section)
 - **Equipment checks**: checking that a microphone works and that an audio system is connected
 - **Meeting rooms and offices**: understanding usage, managing vacant rooms more efficiently
@@ -74,7 +74,7 @@ There is also an upper limit on how high a sound can be recorded. Recording is p
 ### Education and learning
 
 - **The difference between dBFS and dB SPL**: A teacher or learner records the same sound on two devices at the same time and confirms that they give different dBFS values. This becomes material for explaining, in class or in self-study, the difference between "a value relative to each device" and "sound pressure (an absolute value)"
-- **Sampling frequency and Nyquist frequency**: A learner compares `# sampleRate=`, `# nyquistHz=` and the `sampleRate` in `# settingsRaw=` in the CSV with the "Recordable limit on this device" line under the legend. On their own device, they can confirm that the limit changes between 44.1 kHz and 48 kHz, and that high sounds are recorded lower when the microphone audio track has the lower rate
+- **Sampling frequency and Nyquist frequency**: A learner compares `# sampleRate=`, `# nyquistHz=` and the `sampleRate` in `# settingsRaw=` in the CSV with the "Recordable limit on this device" line under the legend. On their own device, they can confirm that the limit changes between 44.1 kHz and 48 kHz, and that the recorded levels of high-frequency sounds are reduced when the microphone audio track has the lower sample rate
 - **FFT windows and bins**: A person studying signal processing confirms in the record that a tone at exactly 18 kHz splits between the ultrasonic band and the audible band (a 7.3 dB difference in the real-device test, 7.0 dB by calculation), and reads it alongside the code of `bandPlan` in `logic.js` (bin assignment) and `worklet/meter-processor.js` (window and overlap)
 - **Microphone limit of each device**: A person who wants to know the limit of their own device plays 18–22 kHz tones in order and sees where the ultrasonic band value becomes impossible to tell apart from silence (see "How to run the real-device test" in the [real-device test document](real-device-test.md)). ⚠Whether the sound was lost on the source side or the receiving side cannot be known without changing the equipment
 - **Noticing differences in hearing**: Family members or friends who are curious about how sounds are heard play tones at 18 kHz or above together, and even if some can hear them and others cannot, the ultrasonic band value rises the same way, which shows that the upper limit of hearing differs by person and age. ⚠This is not a hearing test. ⚠Always turn the volume down, and do not do this where children or animals are nearby
@@ -98,7 +98,7 @@ There is also an upper limit on how high a sound can be recorded. Recording is p
 
 ### Combining with other tools and articles
 
-- **Combining with 『エアギャップ・ブリッジ』 (Air Gap Bridge)**: A reader learning techniques for crossing air gaps reads the sections on acoustic channels (audible sound and ultrasound) in the author's 『エアギャップ・ブリッジ　隔離環境のデータ入力技法』 (*Air Gap Bridge: Data Input Techniques for Isolated Environments*) (Japanese-language book) and 『エアギャップ・ブリッジ　隔離環境のデータ出力技法』 (*Air Gap Bridge: Data Output Techniques for Isolated Environments*) (Japanese-language book), by IPUSIRON from Mirai Hacking Lab (ミライ・ハッキング・ラボ), to be distributed at Tech Book Fest 21 (技術書典21, November 2026), records with this tool the times when sound energy appeared in the ultrasonic band, and confirms both the sending side and the recording side at hand. A demo for experiencing the sending side is planned as a candidate for "200 Security Tools with Generative AI" (an ultrasonic data transmission demo). ⚠This tool does not read the transmitted content (it records only the times of band energy)
+- **Combining with 『エアギャップ・ブリッジ』 (Air Gap Bridge)**: A reader learning techniques for crossing air gaps reads the sections on acoustic channels (audible sound and ultrasound) in the author's 『エアギャップ・ブリッジ　隔離環境のデータ入力技法』 (*Air Gap Bridge: Data Input Techniques for Isolated Environments*) (Japanese-language book) and 『エアギャップ・ブリッジ　隔離環境のデータ出力技法』 (*Air Gap Bridge: Data Output Techniques for Isolated Environments*) (Japanese-language book), by IPUSIRON from Mirai Hacking Lab (ミライ・ハッキング・ラボ), to be distributed at Tech Book Fest 21 (技術書典21, November 2026), records with this tool the times when sound energy appeared in the ultrasonic band, and confirms both the sending side and the recording side at hand. A demo for experiencing the sending side is planned as a candidate for "200 Security Tools with Generative AI" (an ultrasonic data transmission and reception demo). ⚠This tool does not read the transmitted content (it records only the times of band energy)
 - **Tone source page (Tone Sweep)**: A person who wants to check the microphone limit of their own device pairs this tool with a page that plays known frequencies in order, gets an idea of the frequency from which sounds become hard to keep in the record, and can also use the pair to practice direction finding and to notice differences in hearing. The page used as the sound source in the real-device test will later be published as a standalone tool (once it is published, a link will be added to "How to run the real-device test" in the [real-device test document](real-device-test.md))
 - **Spreadsheets and Python**: A person with a week of recordings uses "Python recipes (standard library only)" in the [CSV document](csv.md) to make the Leq by time slot, the times that exceeded a threshold and a time × weekday table, and colors them with a spreadsheet color scale to see the weekdays and times when sound tends to rise
 
@@ -125,7 +125,7 @@ There is also an upper limit on how high a sound can be recorded. Recording is p
 - **Steps**
   1. Set up a laptop in the area the complaint is about and start the tool. Use the same device and the same microphone for the whole recording period (changing them midway makes the values impossible to compare)
   2. Set the log interval to 10 seconds (to keep the file size down during long-term monitoring)
-  3. Each day, run "Start recording" in the morning → "Stop" at the end of the workday → "Export CSV" → "Reset stats" as one day's cycle. ⚠**If you do not press "Reset stats", the log stays piled on top of the previous day's.** This tool accumulates the log each time recording starts, so if you forget, the next day's CSV will contain the previous day's rows. ⚠The log exists only in the browser's memory. If the tab is closed or reloaded, the browser crashes, or the OS discards the tab, everything recorded so far is lost. Do not close the tab until that day's data has been exported
+  3. Each day, run "Start recording" in the morning → "Stop" at the end of the workday → "Export CSV" → "Reset stats" as one day's cycle. ⚠**If you do not press "Reset stats", the log continues to accumulate on top of the previous day's records.** This tool accumulates the log each time recording starts, so if you forget, the next day's CSV will contain the previous day's rows. ⚠The log exists only in the browser's memory. If the tab is closed or reloaded, the browser crashes, or the OS discards the tab, everything recorded so far is lost. Do not close the tab until that day's data has been exported
   4. From each day's CSV data, read the following
      - Average (Leq), max, min and range. ⚠**These are dBFS values and have meaning only on this device.** They cannot be used for comparisons such as "a typical office is so many dBFS"
      - The distribution of rows by time of day. The difference between quiet and noisy times
