@@ -60,17 +60,55 @@ test('測定条件が無ければ unknown（off と推し量らない）', () =>
   assert.equal(processingLabel(null), 'unknown');
 });
 
-test('script.js は processingLabel を通して書く（off を決め打ちしない）', () => {
-  const start = script.indexOf('function chainMetaOf');
-  const body = script.slice(start, script.indexOf('function csvTrailerExtraOf'));
-  assert.match(body, /processing:\s*processingLabel\(/);
-  assert.doesNotMatch(body, /:\s*'off'/, "chainMetaOf に 'off' の決め打ちが残っている");
+// ---- 振る舞いで確かめる（第2弾a7）----
+// ⚠ 公開前の点検で、ソースの文字列だけを見るテストでは、unknown の一覧を落として
+//    off に戻しても、画面の条件を反転させても通ることが分かった。
+//    組み立てを logic.js の純関数へ出し、Safari 相当の設定を渡して結果を見る
+
+const { chainHeaderMeta, recordNoticeItems } = require('../logic.js');
+const SAFARI = { echoCancellation: false };   // WebKit の getSettings が返すのは echoCancellation だけ
+const firstRec = { engine: 'worklet', ts: new Date(Date.UTC(2026, 8, 29, 0, 0, 1)) };
+
+test('⭐Safari 相当の設定では、ヘッダーの processing が unknown:autoGainControl+noiseSuppression', () => {
+  const meta = chainHeaderMeta({ sessionMeta: metaOf(SAFARI), firstRec, engineMode: 'worklet', hashAlgo: 'x' });
+  assert.equal(meta.processing, 'unknown:autoGainControl+noiseSuppression');
+  assert.equal(meta.started, '2026-09-29T00:00:01.000Z');
 });
 
-test('報告しない項目があることを画面にも出す', () => {
-  const start = script.indexOf('function renderRecordNotice');
-  const body = script.slice(start, script.indexOf('// ---- 測定条件の取得'));
-  assert.match(body, /PROCESSING_UNKNOWN/);
+test('3項目とも無効と報告されたときだけ、ヘッダーが off', () => {
+  const meta = chainHeaderMeta({
+    sessionMeta: metaOf({ autoGainControl: false, noiseSuppression: false, echoCancellation: false }),
+    firstRec
+  });
+  assert.equal(meta.processing, 'off');
+});
+
+test('一覧が欠けた形を渡しても off と推し量らない', () => {
+  // 点検で使われた書き換え（unknown の一覧を落とす）を、関数の入口で止める
+  assert.equal(processingLabel({ processingActive: [] }), 'unknown');
+  assert.equal(processingLabel({ processingUnknown: [] }), 'unknown');
+});
+
+test('⭐注意書き: unknown なら「不明」の項目を出し、off なら出さない', () => {
+  const unk = recordNoticeItems({ sessionMeta: metaOf(SAFARI) });
+  assert.deepEqual(unk.map(i => i.kind), ['processingUnknown']);
+  assert.equal(unk[0].short, '音の加工の状態が不明（autoGainControl, noiseSuppression）');
+  const off = recordNoticeItems({
+    sessionMeta: metaOf({ autoGainControl: false, noiseSuppression: false, echoCancellation: false })
+  });
+  assert.deepEqual(off, []);
+  const act = recordNoticeItems({ sessionMeta: metaOf({ echoCancellation: true, noiseSuppression: false, autoGainControl: false }) });
+  assert.deepEqual(act.map(i => i.kind), ['processingActive']);
+  // 記録を始める前（測定条件なし）は加工の注意を出さない
+  assert.deepEqual(recordNoticeItems({}), []);
+});
+
+test('script.js はヘッダーと注意書きを logic.js の関数で組み立てる', () => {
+  const chain = script.slice(script.indexOf('function chainMetaOf'), script.indexOf('function csvTrailerExtraOf'));
+  assert.match(chain, /chainHeaderMeta\(\{/);
+  assert.doesNotMatch(chain, /'off'/, "chainMetaOf に 'off' の決め打ちが残っている");
+  const render = script.slice(script.indexOf('function renderRecordNotice'), script.indexOf('function ensureNoticeDom'));
+  assert.match(render, /recordNoticeItems\(\{\s*deviceLoss, deviceMuted, sessionMeta, clockBreaks, stats\s*\}\)/);
 });
 
 test('README の processing の説明が3つの書き方と過去の版の誤りを言っている', () => {

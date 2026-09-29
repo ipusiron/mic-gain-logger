@@ -100,7 +100,10 @@
 
         <div id="status" class="status ok" aria-live="polite">待機中</div>
         <div id="engineMode" class="engine-mode" aria-live="polite"></div>
-        <div id="recordNotice" class="record-notice" role="status" aria-live="polite"></div>
+        <div id="recordNotice" class="record-notice"></div>
+        <!-- 読み上げは、注意書きの要約が変わったときだけ流す（中身の割合は区間ごとに変わるため、
+             注意書きそのものを読み上げ領域にすると毎区間読み直される） -->
+        <div id="recordNoticeLive" class="sr-only" role="status" aria-live="polite"></div>
       </div>
 
       <div class="grid-item">

@@ -48,22 +48,48 @@ function decls(body) {
 
 const selectors = (head) => head.split(',').map(s => s.replace(/\s+/g, ' ').trim());
 
-function offenders() {
-  const all = blocks(CSS);
+const maxWidthOf = (head) => {
+  const m = head.match(/max-width:\s*(\d+)px/);
+  return m ? parseInt(m[1], 10) : null;
+};
+
+// 後ろのセレクター s2 が、sel と同じ要素に同じか高い詳細度で当たるか。
+// ⚠ 公開前の点検（第2弾a7）で、同じ文字列しか比べていないと、後ろに書いた
+//    もっと詳細なセレクター（.stats .stats-grid）による打ち消しを見逃すことが分かった
+const hitsSameElement = (s2, sel) => s2 === sel || s2.endsWith(' ' + sel) || s2.endsWith('>' + sel);
+
+// 後ろにある規則のうち、幅 w 以下で効くものを並べる（素の規則と、max-width が w 以上の @media の中）
+// ⚠ 公開前の点検で、後ろにある幅の広い @media（max-width:768px）による打ち消しを見逃すことが分かった
+function laterRulesAt(all, from, w) {
+  const out = [];
+  for (let k = from; k < all.length; k++) {
+    const b = all[k];
+    if (!b.head.startsWith('@')) { out.push(b); continue; }
+    if (!b.head.startsWith('@media')) continue;
+    if (/min-width/.test(b.head)) continue;
+    const mw = maxWidthOf(b.head);
+    if (mw !== null && mw >= w) out.push(...blocks(b.body));
+  }
+  return out;
+}
+
+function offendersIn(src) {
+  const all = blocks(src);
   const found = [];
   all.forEach((media, mi) => {
     if (!/^@media[^{]*max-width/.test(media.head)) return;
+    const w = maxWidthOf(media.head);
+    const later = laterRulesAt(all, mi + 1, w);
     for (const inner of blocks(media.body)) {
       const innerDecls = decls(inner.body);
       for (const sel of selectors(inner.head)) {
         for (const [prop, val] of Object.entries(innerDecls)) {
-          for (let k = mi + 1; k < all.length; k++) {
-            const later = all[k];
-            if (later.head.startsWith('@')) continue;
-            if (!selectors(later.head).includes(sel)) continue;
-            const lv = decls(later.body)[prop];
+          for (const rule of later) {
+            const s2 = selectors(rule.head).find(s => hitsSameElement(s, sel));
+            if (!s2) continue;
+            const lv = decls(rule.body)[prop];
             if (lv !== undefined && lv !== val) {
-              found.push(`${media.head} の ${sel} { ${prop}: ${val} } が、後ろの ${sel} { ${prop}: ${lv} } に打ち消される`);
+              found.push(`${media.head} の ${sel} { ${prop}: ${val} } が、後ろの ${s2} { ${prop}: ${lv} } に打ち消される`);
             }
           }
         }
@@ -71,6 +97,10 @@ function offenders() {
     }
   });
   return found;
+}
+
+function offenders() {
+  return offendersIn(CSS);
 }
 
 test('⭐幅で切り替える規則が、後ろの素の規則に打ち消されていない', () => {
@@ -88,4 +118,15 @@ test('検査が空振りしていない（わざと後ろに同じ規則を置�
   const later = all.slice(mediaIdx + 1).some(b => selectors(b.head).includes('.stat-value')
     && decls(b.body)['font-size'] === '99px');
   assert.ok(later, '後ろに置いた規則を見つけられない');
+});
+
+test('検査が空振りしていない（詳細なセレクター・幅の広い @media による打ち消しも見つける）', () => {
+  // 公開前の点検で使われた2つの型。どちらも 320px 幅で 480px 用の 1fr 1fr を打ち消す
+  const a = offendersIn(CSS + '\n.stats .stats-grid{grid-template-columns:repeat(4,1fr)}');
+  assert.ok(a.some(s => s.includes('.stats .stats-grid')), '詳細なセレクターによる打ち消しを見逃した');
+  const b = offendersIn(CSS + '\n@media (max-width: 768px){.stats-grid{grid-template-columns:repeat(3,1fr)}}');
+  assert.ok(b.some(s => s.includes('repeat(3,1fr)')), '幅の広い @media による打ち消しを見逃した');
+  // 481px以上だけで効く規則は、480px以下の規則を打ち消さない（誤検知しない）
+  const c = offendersIn(CSS + '\n@media (min-width: 481px){.stats-grid{gap:99px}}');
+  assert.deepEqual(c, []);
 });

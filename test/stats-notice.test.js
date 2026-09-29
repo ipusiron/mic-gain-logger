@@ -186,9 +186,13 @@ test('画面: クリップと欠測は既存の状態表示へ出す（ボタン
     'startBtn', 'stopBtn', 'themeToggle'
   ]);
   // 注意書きは #recordNotice にまとめる
-  // 第2弾a6 から、要点と全文の組（statsWarningItems）で取り込む
-  assert.match(script, /for \(const it of statsWarningItems\(stats\)\) parts\.push\(it\)/,
-    'renderRecordNotice が統計の注意書きを取り込んでいない');
+  // 第2弾a7 から、項目は logic.js の recordNoticeItems で作る。統計の注意が入ることを振る舞いで確かめる
+  const { recordNoticeItems } = require('../logic.js');
+  const items = recordNoticeItems({ stats: statsOf([recordOf(0, { peak: 1, clip: 3 })]) });
+  assert.ok(items.some(it => /クリップを1区間で検出/.test(it.full)),
+    '注意書きの項目に統計の注意が入っていない');
+  assert.match(script, /recordNoticeItems\(\{[^}]*stats[^}]*\}\)/,
+    'renderRecordNotice が統計を渡していない');
   // 出たその区間で画面へ出す（停止まで待たない）
   const upd = script.slice(script.indexOf('function updateStats'), script.indexOf('function resetStats'));
   assert.match(upd, /renderRecordNotice\(\)/, 'updateStats が注意書きを更新していない');

@@ -286,6 +286,7 @@ mic-gain-logger/
 │   ├── css-order.test.js          # 第2弾a: 幅で切り替える規則が後ろの素の規則に打ち消されていないか
 │   ├── meter-floor.test.js        # 第2弾a: メーターの目盛りを見えるようにし、表示下限の既定を-90dBFSに
 │   ├── notice-details.test.js     # 第2弾a: 注意書きを「件数と要点の1行＋開くと全文」にする
+│   ├── review-ui.test.js          # 第2弾a: 公開前の点検で見つかった画面の不具合（停止中のグラフ・目盛り・ボタンの高さ）
 │   ├── dbfs-fixture.test.js       # 既知振幅の正弦波に対するdBFSの計算精度
 │   ├── docs.test.js               # READMEと実装・実ファイルが合っているかの検査（構成図を含む）
 │   └── fixtures/                  # テストの期待値

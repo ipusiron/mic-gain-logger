@@ -9,15 +9,14 @@
     parseFloorDb, parseIntervalSec, canvasPixelSize, meterScaleLabels,
     GRAPH_WINDOW_SEC, GRAPH_TOP_DB, graphArea, timeToX, dbToY,
     timeTickStepSec, timeTicks, dbTickStep, dbTicks, pruneSeries, seriesPointOf,
-    createStats, addStatsRecord, formatStats, statsWarnings, statsWarningItems, noticeSummary,
+    createStats, addStatsRecord, formatStats, statsWarnings, noticeSummary,
     statsIntegrity,
     emptyStatsText, intervalRunsLabel,
     ENGINE_WORKLET, ENGINE_FALLBACK, framesForInterval,
     CLOCK_BREAK_SUSPEND, CLOCK_BREAK_STALL,
     createClockAnchor, detectClockJump, reanchorClock,
     CONNECT_HINT_MS, CONNECT_TIMEOUT_MS, createAttemptGate, raceWithTimeout,
-    PROCESSING_ACTIVE, PROCESSING_UNKNOWN, buildSessionMeta, processingVerdict,
-    processingLabel,
+    buildSessionMeta, chainHeaderMeta, recordNoticeItems,
     DEVICE_LOST_ENDED, DEVICE_LOST_GONE,
     readTrackState, isTrackLost, markDeviceLoss,
     buildIntervalRecord, buildFallbackRecord,
@@ -53,6 +52,7 @@
 
   const engineModeEl = document.getElementById('engineMode');
   const recordNoticeEl = document.getElementById('recordNotice');
+  const recordNoticeLiveEl = document.getElementById('recordNoticeLive');
   const integrityEl = document.getElementById('integrityNote');
 
   const canvas = document.getElementById('levelCanvas');
@@ -236,10 +236,20 @@
     };
   }
 
+  // グラフの右端の時刻。記録中は「いま」、停止中は止めた時刻に固定する。
+  // ⚠ 停止中も「いま」で描き直すと、表示下限の変更・テーマの切り替え・リサイズの
+  //    たびに線が左へずれ、60秒たつと記録した線がまるごと左端へ寄って見えなくなった
+  //    （公開前の点検で見つかった）
+  let graphFrozenMs = null;
+  function graphNowMs() {
+    if (running || graphFrozenMs === null) return Date.now();
+    return graphFrozenMs;
+  }
+
   // キャンバス描画。横軸は実時間（右端が「いま」）、縦軸は dBFS。
   function drawSeries() {
     const col = graphColors();
-    const nowMs = Date.now();
+    const nowMs = graphNowMs();
     const floorDb = getFloorDb();
     const area = graphArea(WIDTH, HEIGHT);
     const windowMs = GRAPH_WINDOW_SEC * 1000;
@@ -388,80 +398,68 @@
     }
   }
 
-  // 記録に関わる注意書き（デバイス喪失・時刻の跳び）を画面へ出す
-  function deviceLossLabel(reason) {
-    if (reason === DEVICE_LOST_GONE) return '音声トラックが無くなりました';
-    return 'マイクが切断されました';
-  }
-
-  // 注意書きを開いているか（区間ごとに組み直しても閉じないように覚えておく）
+  // 注意書きを開いているか（中身を差し替えても閉じないように覚えておく）
   let noticeOpen = false;
+  // 注意書きの入れ物（details・summary・ul）。一度だけ作って、中身だけ差し替える
+  let noticeDetails = null;
+  let noticeSummaryEl = null;
+  let noticeList = null;
+  // 最後に読み上げ用へ渡した要約
+  let lastNoticeSummary = '';
 
   // 注意書きは「件数と要点の1行」を出し、全文は開いて読む（第2弾a6）。
   // ⚠ 改修前は全文を ' / ' でつないだ1本の文字列で、430px幅に5行（90px）を占めた。
   //    中身は限界を正しく書くためのものなので、削らずに出し方を変える
   function renderRecordNotice() {
     if (!recordNoticeEl) return;
-    const parts = [];   // { short, full }
-    if (deviceLoss) {
-      parts.push({
-        short: `${deviceLossLabel(deviceLoss.reason)}（${deviceLoss.rowsKept}行目まで記録）`,
-        full: `${deviceLossLabel(deviceLoss.reason)}。${deviceLoss.rowsKept}行目までを記録し、`
-          + 'そのあとは記録していません（ここまでのログは書き出せます）'
-      });
-    } else if (deviceMuted) {
-      parts.push({
-        short: 'マイクが無音化されている',
-        full: 'マイクが供給元で無音化されています（通話の割り込みなど）。'
-          + 'この間の記録はデジタル無音になります'
-      });
-    }
-    if (sessionMeta && processingVerdict(sessionMeta) === PROCESSING_ACTIVE) {
-      parts.push({
-        short: `音の加工が有効（${sessionMeta.processingActive.join(', ')}）`,
-        full: `マイク側の音の加工が有効です（${sessionMeta.processingActive.join(', ')}）。`
-          + '利得が自動で動くため、この記録の dBFS は絶対値として扱えません'
-      });
-    } else if (sessionMeta && processingVerdict(sessionMeta) === PROCESSING_UNKNOWN) {
-      // 報告しない項目がある（Safari の autoGainControl など）。
-      // 黙っていると「加工なし」と読まれるので、分からないことを出す
-      parts.push({
-        short: `音の加工の状態が不明（${sessionMeta.processingUnknown.join(', ')}）`,
-        full: `マイク側の音の加工（${sessionMeta.processingUnknown.join(', ')}）の状態を、`
-          + 'このブラウザーは報告しません。利得が自動で動いていても、この画面とCSVからは分かりません'
-      });
-    }
-    if (clockBreaks.length) {
-      const totalSec = clockBreaks.reduce((a, b) => a + b.jumpMs, 0) / 1000;
-      parts.push({
-        short: `時刻の跳び${clockBreaks.length}回`,
-        full: `時刻の跳びを${clockBreaks.length}回検出（累計 ${totalSec.toFixed(2)} 秒）。`
-          + '以降の時刻は取り直したアンカーで出し、'
-          + '該当区間はCSVのメタ行（# clockBreaks / # clockBreakAt / # clockDriftMs）に残ります'
-      });
-    }
-    // クリップと欠測。ボタンを増やさず、記録の信用に関わる事実をここへ集める
-    for (const it of statsWarningItems(stats)) parts.push(it);
+    const parts = recordNoticeItems({ deviceLoss, deviceMuted, sessionMeta, clockBreaks, stats });
     const kind = deviceLoss ? ' err' : (parts.length ? ' warn' : '');
     recordNoticeEl.className = 'record-notice' + kind;
     if (!parts.length) {
       recordNoticeEl.replaceChildren();   // :empty で隠れる
+      lastNoticeSummary = '';
+      if (recordNoticeLiveEl) recordNoticeLiveEl.textContent = '';
       return;
     }
-    // 要約の1行（summary）と全文（開いたときの箇条）。中身は textContent で入れる
-    const details = document.createElement('details');
-    details.open = noticeOpen;
-    details.addEventListener('toggle', () => { noticeOpen = details.open; });
-    const summary = document.createElement('summary');
-    summary.textContent = '⚠ ' + noticeSummary(parts);
-    const list = document.createElement('ul');
-    for (const it of parts) {
-      const li = document.createElement('li');
-      li.textContent = it.full;
-      list.appendChild(li);
+    // ⚠ 区間ごとに details を作り直さない。作り直すと、フォーカス・開閉の操作・
+    //    文字の選択が失われ、同じ要約が読み上げ直される（公開前の点検で見つかった。
+    //    クリップの割合は行ごとに変わるので、全文は毎区間のように変わる）
+    ensureNoticeDom();
+    if (noticeDetails.parentNode !== recordNoticeEl) recordNoticeEl.replaceChildren(noticeDetails);
+    // 要約の1行（summary）と全文（開いたときの箇条）。変わったところだけ textContent で差し替える
+    const summaryText = '⚠ ' + noticeSummary(parts);
+    if (noticeSummaryEl.textContent !== summaryText) noticeSummaryEl.textContent = summaryText;
+    while (noticeList.children.length > parts.length) noticeList.lastElementChild.remove();
+    parts.forEach((it, i) => {
+      let li = noticeList.children[i];
+      if (!li) {
+        li = document.createElement('li');
+        noticeList.appendChild(li);
+      }
+      if (li.textContent !== it.full) li.textContent = it.full;
+    });
+    if (noticeDetails.open !== noticeOpen) noticeDetails.open = noticeOpen;
+    // 読み上げは要約が変わったときだけ（全文の割合が変わるたびには読まない）
+    if (summaryText !== lastNoticeSummary) {
+      lastNoticeSummary = summaryText;
+      if (recordNoticeLiveEl) recordNoticeLiveEl.textContent = summaryText;
     }
-    details.append(summary, list);
-    recordNoticeEl.replaceChildren(details);
+  }
+
+  // 注意書きの入れ物を一度だけ作る
+  function ensureNoticeDom() {
+    if (noticeDetails) return;
+    noticeDetails = document.createElement('details');
+    noticeSummaryEl = document.createElement('summary');
+    noticeList = document.createElement('ul');
+    noticeDetails.addEventListener('toggle', () => { noticeOpen = noticeDetails.open; });
+    noticeDetails.append(noticeSummaryEl, noticeList);
+  }
+
+  // 注意書きの開閉を閉じた状態へ戻す（リセット・新しいセッションで、前の開閉を持ち越さない）
+  function closeNotice() {
+    noticeOpen = false;
+    if (noticeDetails) noticeDetails.open = false;
   }
 
   // ---- 測定条件の取得 ----
@@ -853,6 +851,7 @@
       // デバイス喪失の監視（記録中に切断されたら止める）
       deviceLoss = null;
       deviceMuted = false;
+      closeNotice();   // 前のセッションの開閉を持ち越さない
       attachTrackWatch(mediaStream);
 
       // 新しいAudioContextを作成
@@ -897,6 +896,7 @@
       // 「記録を開始してから」ログ間隔ぶん後に出す
       lastLogTime = startedAt;
       running = true;
+      graphFrozenMs = null;
       stopBtn.disabled = false;
       updateButtonStates(); // ボタン状態を更新（記録中はCSV書き出し無効）
 
@@ -932,6 +932,7 @@
     if (!running) return;
     running = false;
     lastStopTime = Date.now();  // 停止時刻を記録
+    graphFrozenMs = lastStopTime; // 停止中のグラフは、止めた時刻を右端にして描く
     setStatus('停止しました', 'warn');
     if (rafId) {
       cancelAnimationFrame(rafId);
@@ -1003,27 +1004,29 @@
     }
   }
 
+  // 大型表示とメーター。表示下限で切るのは表示だけ（記録される値は動かない）
+  let lastMeterDb = null;
+  function renderMeter(db) {
+    if (db === null || db === undefined) return;   // まだ一度も測っていない
+    const floorDb = getFloorDb();
+    const dispDb = Math.max(db, floorDb);
+    bigValue.textContent = Number.isFinite(db) ? `${dispDb.toFixed(1)} dBFS` : '--.- dBFS';
+    const pct = dbToPercent(dispDb, floorDb);
+    meterBar.style.width = `${pct.toFixed(1)}%`;
+    // カラー（しきい値：-40dBFS, -20dBFS）
+    if (db >= -20) meterBar.style.filter = 'hue-rotate(0deg)';        // 赤寄り
+    else if (db >= -40) meterBar.style.filter = 'hue-rotate(-25deg)'; // 黄寄り
+    else meterBar.style.filter = 'hue-rotate(-60deg)';                 // 緑寄り
+  }
+
   // rAF は描画専用。記録はワークレットのオーディオクロックが担う
   function animate() {
     if (!running) return;
 
     const db = computeDb(); // dBFS (負の値、0が最大)
-
-    // 表示下限
+    lastMeterDb = db;
+    renderMeter(db);
     const floorDb = getFloorDb();
-    const dispDb = Math.max(db, floorDb);
-
-    // 大型表示
-    bigValue.textContent = Number.isFinite(db) ? `${dispDb.toFixed(1)} dBFS` : '--.- dBFS';
-
-    // メーター
-    const pct = dbToPercent(dispDb, floorDb);
-    meterBar.style.width = `${pct.toFixed(1)}%`;
-
-    // カラー（しきい値：-40dBFS, -20dBFS）
-    if (db >= -20) meterBar.style.filter = 'hue-rotate(0deg)';        // 赤寄り
-    else if (db >= -40) meterBar.style.filter = 'hue-rotate(-25deg)'; // 黄寄り
-    else meterBar.style.filter = 'hue-rotate(-60deg)';                 // 緑寄り
 
     // ⚠ ここでは点を積まない。
     // 点は pushRecord（記録された区間）から積む。rAF で積むと、タブが裏に回った
@@ -1072,19 +1075,13 @@
   // ⚠ 記録を始めた瞬間に確定する事実だけを入れる。
   //    ログ間隔・無音の有無・中断の回数は記録中に変わるので、ここには入れない。
   function chainMetaOf(firstRec) {
-    const m = sessionMeta || {};
-    return {
-      engine: firstRec.engine || engineMode,
-      // アンカーは中断のたびに取り直すので、記録開始の時刻には使えない。
-      // 1行目の区間の時刻をそのまま載せる
-      started: firstRec.ts.toISOString(),
-      sampleRate: m.contextSampleRate || null,
-      device: m.deviceLabel || null,
-      // ⚠ 報告しない項目があれば unknown と書く（logic.js の processingLabel）。
-      //    改修前はここで「有効が無ければ off」と決め打ちしていた
-      processing: processingLabel(sessionMeta),
+    // 組み立ては logic.js の chainHeaderMeta（報告しない項目があれば unknown と書く）
+    return chainHeaderMeta({
+      sessionMeta,
+      firstRec,
+      engineMode,
       hashAlgo: hashAvailable() ? HASH_ALGO_LABEL : null
-    };
+    });
   }
 
   // 記録が終わってから分かる事実。トレーラー行へ出す。
@@ -1165,6 +1162,7 @@
     // グラフの点を捨てて描き直す。停止中は rAF が止まっているので、
     // ここで描き直さないと画面が変わらない
     series = [];
+    graphFrozenMs = null;
     drawSeries();
     // 捨てたログについての注意書きの元も捨ててから、注意書きを出し直す
     clockBreaks = [];
@@ -1173,6 +1171,7 @@
     deviceMuted = false;
     sessionMeta = null;
     startedAt = 0;
+    closeNotice();
     renderRecordNotice();
     updateButtonStates();
     setStatus('統計・ログ・グラフをリセットしました', 'ok');
@@ -1254,7 +1253,9 @@
   themeToggle.addEventListener('click', toggleTheme);
   // 表示下限を変えたら、目盛りと（停止中でも）グラフを描き直す
   floorDbInput.addEventListener('input', renderMeterScale);
-  floorDbInput.addEventListener('input', () => drawSeries());
+  // 停止中でも、メーターのバー・大型表示・グラフを新しい下限で描き直す
+  // （目盛りだけが変わってバーと食い違うのを防ぐ。公開前の点検で見つかった）
+  floorDbInput.addEventListener('input', () => { renderMeter(lastMeterDb); drawSeries(); });
   window.addEventListener('beforeunload', stop);
 
   // 画面が戻ったら、次の監視タイマーを待たずに時刻を点検する

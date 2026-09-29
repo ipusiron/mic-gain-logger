@@ -61,7 +61,14 @@ const MicGainLogic = (() => {
   //    目盛りだけが嘘になる。メーターの幅と同じく「下限〜0」を等分する
   function meterScaleLabels(floorDb) {
     const f = Number.isFinite(floorDb) ? floorDb : FLOOR_DB_DEFAULT;
-    return [f, f * 2 / 3, f / 3, 0].map(v => String(Math.round(v) || 0));
+    // 下限が浅い（-6より浅い）ときは整数に丸めると同じ数字が並ぶので、小数1桁で出す
+    // （公開前の点検で、下限-1〜-2で目盛りが重複することが分かった）
+    const fine = Math.abs(f) < 6;
+    const fmt = (v) => {
+      const r = fine ? Math.round(v * 10) / 10 : Math.round(v);
+      return String(r || 0);   // -0 を 0 にする
+    };
+    return [f, f * 2 / 3, f / 3, 0].map(fmt);
   }
 
   // ログ間隔の入力値を秒へ（下限 0.2 秒）
@@ -777,12 +784,106 @@ const MicGainLogic = (() => {
   //    active:echoCancellation;unknown:autoGainControl   両方あるとき
   function processingLabel(meta) {
     if (!meta) return PROCESSING_UNKNOWN;
+    // どちらかの一覧が無い形は、判定の材料が欠けている。off と推し量らない
+    // （公開前の点検で、unknown の一覧を落とした形を渡すと off に戻ることが分かった）
+    if (!Array.isArray(meta.processingActive) || !Array.isArray(meta.processingUnknown)) {
+      return PROCESSING_UNKNOWN;
+    }
     const parts = [];
     const active = meta.processingActive || [];
     const unknown = meta.processingUnknown || [];
     if (active.length) parts.push(`${PROCESSING_ACTIVE}:${active.join('+')}`);
     if (unknown.length) parts.push(`${PROCESSING_UNKNOWN}:${unknown.join('+')}`);
     return parts.length ? parts.join(';') : PROCESSING_OFF;
+  }
+
+  // CSV のヘッダー（ハッシュチェーンの起点）に載せる測定条件。
+  // ⚠ 記録を始めた瞬間に確定する事実だけを入れる。ログ間隔・無音の有無・中断の回数は
+  //    記録中に変わるので、ここには入れない（トレーラーへ出す）。
+  // 画面の側（script.js）から切り出した。テストから振る舞いを確かめられるようにするため
+  function chainHeaderMeta(input) {
+    const src = input || {};
+    const m = src.sessionMeta || {};
+    const rec = src.firstRec || {};
+    return {
+      engine: rec.engine || src.engineMode || null,
+      // アンカーは中断のたびに取り直すので、記録開始の時刻には使えない。
+      // 1行目の区間の時刻をそのまま載せる
+      started: rec.ts instanceof Date ? rec.ts.toISOString() : null,
+      sampleRate: m.contextSampleRate || null,
+      device: m.deviceLabel || null,
+      // 報告しない項目があれば unknown と書く（改修前は「有効が無ければ off」と決め打ちしていた）
+      processing: processingLabel(src.sessionMeta || null),
+      hashAlgo: src.hashAlgo || null
+    };
+  }
+
+  function deviceLossLabel(reason) {
+    if (reason === DEVICE_LOST_GONE) return '音声トラックが無くなりました';
+    return 'マイクが切断されました';
+  }
+
+  // 記録に関わる注意の項目（要点 short と全文 full）。画面の注意書きは、この一覧だけから作る。
+  // 画面の側（script.js）から切り出した。テストから振る舞いを確かめられるようにするため
+  // （公開前の点検で、画面の条件を反転させてもテストが通ることが分かった）
+  function recordNoticeItems(input) {
+    const src = input || {};
+    const items = [];
+    const loss = src.deviceLoss;
+    if (loss) {
+      const label = deviceLossLabel(loss.reason);
+      items.push({
+        kind: 'deviceLoss',
+        short: `${label}（${loss.rowsKept}行目まで記録）`,
+        full: `${label}。${loss.rowsKept}行目までを記録し、`
+          + 'そのあとは記録していません（ここまでのログは書き出せます）'
+      });
+    } else if (src.deviceMuted) {
+      items.push({
+        kind: 'deviceMuted',
+        short: 'マイクが無音化されている',
+        full: 'マイクが供給元で無音化されています（通話の割り込みなど）。'
+          + 'この間の記録はデジタル無音になります'
+      });
+    }
+    // 記録を始める前（測定条件が無い）には、加工の注意を出さない
+    const meta = src.sessionMeta;
+    if (meta) {
+      const verdict = processingVerdict(meta);
+      if (verdict === PROCESSING_ACTIVE) {
+        const keys = meta.processingActive.join(', ');
+        items.push({
+          kind: 'processingActive',
+          short: `音の加工が有効（${keys}）`,
+          full: `マイク側の音の加工が有効です（${keys}）。`
+            + '利得が自動で動くため、この記録の dBFS は絶対値として扱えません'
+        });
+      } else if (verdict === PROCESSING_UNKNOWN) {
+        // 報告しない項目がある（Safari の autoGainControl・noiseSuppression など）。
+        // 黙っていると「加工なし」と読まれるので、分からないことを出す
+        const keys = (meta.processingUnknown || []).join(', ');
+        items.push({
+          kind: 'processingUnknown',
+          short: `音の加工の状態が不明（${keys}）`,
+          full: `マイク側の音の加工（${keys}）の状態を、`
+            + 'このブラウザーは報告しません。利得が自動で動いていても、この画面とCSVからは分かりません'
+        });
+      }
+    }
+    const breaks = src.clockBreaks || [];
+    if (breaks.length) {
+      const totalSec = breaks.reduce((a, b) => a + b.jumpMs, 0) / 1000;
+      items.push({
+        kind: 'clockBreak',
+        short: `時刻の跳び${breaks.length}回`,
+        full: `時刻の跳びを${breaks.length}回検出（累計 ${totalSec.toFixed(2)} 秒）。`
+          + '以降の時刻は取り直したアンカーで出し、'
+          + '該当区間はCSVのメタ行（# clockBreaks / # clockBreakAt / # clockDriftMs）に残ります'
+      });
+    }
+    // クリップと欠測。ボタンを増やさず、記録の信用に関わる事実をここへ集める
+    for (const it of statsWarningItems(src.stats)) items.push(it);
+    return items;
   }
 
   // ---- マイクの取得の試行 ----
@@ -1340,6 +1441,8 @@ const MicGainLogic = (() => {
     buildSessionMeta,
     processingVerdict,
     processingLabel,
+    chainHeaderMeta,
+    recordNoticeItems,
     CONNECT_HINT_MS,
     CONNECT_TIMEOUT_MS,
     createAttemptGate,

@@ -66,8 +66,34 @@ test('⭐script.js は注意書きを details に畳み、開いた状態を描�
   assert.match(script, /addEventListener\('toggle'/);
   // 中身は textContent で入れる（HTML として解釈させない）
   assert.doesNotMatch(body, /innerHTML/);
-  // 統計の注意は項目ごと取り込む
-  assert.match(body, /statsWarningItems\(stats\)/);
+  // 項目は logic.js の recordNoticeItems から作る（振る舞いは test/processing-label.test.js が確かめる）
+  assert.match(body, /recordNoticeItems\(/);
+});
+
+test('⭐注意書きの入れ物は一度だけ作り、中身だけを差し替える', () => {
+  // 公開前の点検で見つかった。区間ごとに details を作り直していたので、フォーカスと
+  // 開閉の操作が失われ、同じ要約が読み上げ直された
+  const start = script.indexOf('function renderRecordNotice');
+  const render = script.slice(start, script.indexOf('function ensureNoticeDom'));
+  assert.doesNotMatch(render, /createElement\('details'\)/, '描画のたびに details を作っている');
+  const ensure = script.slice(script.indexOf('function ensureNoticeDom'));
+  assert.match(ensure.slice(0, ensure.indexOf('\n  }')), /if \(noticeDetails\) return/);
+  // 変わったところだけ差し替える
+  assert.match(render, /noticeSummaryEl\.textContent !== summaryText/);
+  assert.match(render, /li\.textContent !== it\.full/);
+});
+
+test('読み上げは要約が変わったときだけ（注意書きそのものは読み上げ領域にしない）', () => {
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const notice = html.match(/<div id="recordNotice"[^>]*>/)[0];
+  assert.doesNotMatch(notice, /aria-live|role="status"/);
+  const live = html.match(/<div id="recordNoticeLive"[^>]*>/);
+  assert.ok(live, '読み上げ用の要素が無い');
+  assert.match(live[0], /role="status"/);
+  assert.match(live[0], /class="sr-only"/);
+  const start = script.indexOf('function renderRecordNotice');
+  const render = script.slice(start, script.indexOf('function ensureNoticeDom'));
+  assert.match(render, /summaryText !== lastNoticeSummary/);
 });
 
 test('畳んだ注意書きの見た目（押せる・箇条の余白）を CSS で持つ', () => {

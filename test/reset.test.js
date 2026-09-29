@@ -22,6 +22,13 @@ const script = fs.readFileSync(path.join(root, 'script.js'), 'utf8');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
 
+// ⚠ コメントを外してから照合する。公開前の点検で、`// series = [];` のように
+//    コメントアウトしても正規表現が一致してテストが通ることが分かった
+function stripComments(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n').map(l => l.replace(/\/\/.*$/, '')).join('\n');
+}
+
 function bodyOf(name) {
   const start = script.indexOf(`function ${name}(`);
   assert.ok(start >= 0, `${name} が見つからない`);
@@ -29,7 +36,7 @@ function bodyOf(name) {
   const next = script.indexOf('\n  function ', start + 10);
   const nextAsync = script.indexOf('\n  async function ', start + 10);
   const ends = [next, nextAsync].filter(i => i > 0);
-  return script.slice(start, ends.length ? Math.min(...ends) : undefined);
+  return stripComments(script.slice(start, ends.length ? Math.min(...ends) : undefined));
 }
 
 test('リセットボタンは記録中・接続中に押せない（書き出しボタンと同じ条件）', () => {
@@ -69,10 +76,22 @@ test('⭐リセットで、捨てたログについての注意書きの元も�
   ]) {
     assert.match(body, re, `${re} が無い`);
   }
+  // 前のセッションの注意書きの開閉を持ち越さない（公開前の点検で見つかった）
+  assert.match(body, /closeNotice\(\)/);
   // 元を捨ててから注意書きを出し直す（順番が逆だと古い文が残る）
   const cleared = body.indexOf('clockBreaks = []');
   const redraw = body.lastIndexOf('renderRecordNotice()');
   assert.ok(redraw > cleared, '注意書きの元を捨てる前に描き直している');
+});
+
+test('コメントアウトした行は、捨てたことにならない（検査が空振りしていない）', () => {
+  const probe = stripComments('  function x() {\n    // series = [];\n    /* deviceLoss = null; */\n  }');
+  assert.doesNotMatch(probe, /series\s*=\s*\[\]/);
+  assert.doesNotMatch(probe, /deviceLoss\s*=\s*null/);
+});
+
+test('記録を始めるときにも、注意書きの開閉を戻す', () => {
+  assert.match(bodyOf('start'), /closeNotice\(\)/);
 });
 
 test('ボタンの説明とヘルプが、実際に捨てるものを言っている', () => {
