@@ -61,7 +61,7 @@ test('docs/measurement.md が「なぜスムージングの設定を置かない
 
 test('README と docs/features.md の設定の一覧にスムージングが無い', () => {
   for (const [where, text] of [['README', readme], ['docs/features.md', features]]) {
-    const head = text.indexOf('- **リアルタイム設定変更**');
+    const head = text.indexOf('- リアルタイム設定変更');
     assert.notEqual(head, -1, `${where}に「リアルタイム設定変更」の項目が無い`);
     const item = text.slice(head, head + 300);
     assert.ok(!item.includes('スムージング'), `${where}の設定の一覧にスムージングが残っている`);

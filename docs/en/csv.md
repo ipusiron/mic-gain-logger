@@ -8,8 +8,8 @@ This document covers the format of exported CSVs, what the hash chain can and ca
 
 A file has four parts, in this order: header lines (lines starting with `#`) → the column header line → data rows → trailer lines (lines starting with `#`).
 
-- **Header lines**: the measurement conditions fixed at the moment recording starts. They are also the starting point of the hash chain
-- **Trailer lines**: facts known only after recording ends (the row count, which seq was measured at which log interval, session boundaries, whether there was silence, whether there were clock jumps)
+- Header lines: the measurement conditions fixed at the moment recording starts. They are also the starting point of the hash chain
+- Trailer lines: facts known only after recording ends (the row count, which seq was measured at which log interval, session boundaries, whether there was silence, whether there were clock jumps)
 
 The sample below was not written by hand; it is a CSV exactly as exported. We fed Chromium's fake microphone (`--use-file-for-fake-audio-capture`) a repeating pattern of 2 seconds of a synthesized 1 kHz (-20 dBFS) and 19 kHz (-30 dBFS) tone followed by 2 seconds of digital silence, and recorded 4 intervals at a log interval of 1 second. The 3rd row is the digital-silence interval.
 
@@ -79,20 +79,20 @@ Digital silence (samples arrived, but every amplitude was 0) is kept as one row 
 
 ⚠**A band value is a record of whether there was sound energy in that band.** It cannot tell what the sound is, and it is not a tool for finding ultrasonic beacons either. Like `dbfs`, the values are relative and depend on the device (microphone, converter, sample rate), so they cannot be compared with regulatory limits or standards ("Cannot be compared with regulatory limits or standard values" in the [use cases document](use-cases.md)).
 
-- **Band definitions**: the ultrasonic band is 18,000 Hz or higher and below 22,000 Hz; the audible band is 20 Hz or higher and below 18,000 Hz. The header line `# bands=18000-22000,20-18000` lists the same definitions in column order
-- **How it works**: on the audio thread, about 21 ms of samples (1,024 at 48 kHz; the length is in the header line `# fftSize=`) form one frame. A periodic Hann window is applied, an FFT splits the frame into the strength at each frequency, and the results are summed per band. The frames overlap, each shifted by a quarter (about 5 ms), so in an interval without breaks, the sound at every moment is counted with the same weight
-- **The actual lower edge of the audible band**: about 50 Hz. The mean of each frame is subtracted before the computation, so sounds below about 100 Hz change in value. Below about 50 Hz they read low, and between 50 and 100 Hz they move up or down by about ±0.5 dB (at 48 kHz: 20 Hz about -8 dB, 30 Hz about -4 dB, 50 Hz about -0.4 dB, 70 Hz about +0.5 dB). The `20` in `# bands=` is the defined value, not the actual sensitivity
-- **A sound at exactly 22 kHz**: it sits on the band edge, so it reads low (about -2 dB at 48 kHz, about -6 dB at 44.1 kHz). The part that leaks beyond the upper edge of the ultrasonic band goes into neither band. At 44.1 kHz, 22 kHz is just below the Nyquist frequency (22.05 kHz)
-- **The header line `# nyquistHz=`**: half the AudioContext sample rate. It is the upper limit for computing bands, but not necessarily the upper limit of the sound that actually arrives. If the sample rate of the microphone's audio track (`sampleRate` in `# settingsRaw=`) is lower, the actual upper limit is half of that, and values can drop before that point. Playing a -20 dBFS tone into the fake microphone (audio track 44.1 kHz, AudioContext 48 kHz), 1 kHz gave `-20.00` for both `dbfs` and `band_audible_dbfs`, but at 21 kHz `band_ultra_dbfs` dropped to `-53.78`, and at 23 kHz `dbfs` was `-101.99`, so nothing remained (`# nyquistHz=24000` in every case). Read ultrasonic band values against the smaller of `# nyquistHz=` and half the `sampleRate` in `# settingsRaw=`
-- **Notes on the screen**: this mismatch appears in the recording notes. When the sample rates of the microphone's audio track and the AudioContext differ, a note says "Sample rate conversion records high sounds near the limit lower" and shows both values (in the fake-microphone example above, a -20 dBFS tone at 21 kHz was recorded at about -54 dBFS). The "Recordable limit on this device" under the legend is the "smaller" one above (half of the smaller of the AudioContext and track sample rates). When the track does not report its sample rate, no note appears, and the limit is shown as half of the AudioContext rate with "track rate unknown" added
-- **The 18 kHz boundary**: sound within a range of about 94 Hz is split between the neighboring bands (due to window leakage; the total of both bands does not change)
-- **Sound just before an interval boundary**: about 21 ms of sound can go into the value of the following interval. This is because each frame is counted in "the interval that contains the frame's end" (so that the computation is finished when the interval ends and that row can be given its hash). As a result, a row whose `dbfs` is `-Infinity` (digital silence) can still have band values. When we exported the interval right after the fake microphone switched from sound to silence, `dbfs` was `-Infinity` and the bands were `-51.02` and `-40.58`
-- **How "Ultrasonic max" counts**: the on-screen statistic "Ultrasonic max" also counts band values attached to digital-silence rows, because such a value is the real sound of about 21 ms just before the boundary, not a fictitious value (values attached to rows of intervals where no sample arrived at all are counted for the same reason). The statistics "Max" and "Min", on the other hand, leave out silent rows
-- **Sound near the starting point of the recording**: sound within about 21 ms of the starting point of the recording gets less weight. A 1 ms sound 6.3 ms after the starting point counts only about 33%. This is the trade-off for not making the first row a spurious missing interval; it does not show in `band_valid_ratio` (it happens every time recording starts)
-- **`band_valid_ratio`**: frames counted ÷ frames expected. It falls below 1.000 when a render quantum was dropped or the input arrived empty; frames containing those samples are not counted (filling them with 0 would mean "there was no sound"). If no frame was counted, the two band columns are empty; if no frame was expected, `band_valid_ratio` is empty too
-- **`?bands=off`**: when added to the URL, bands are not computed (this is for comparing `valid_ratio` with and without bands on the same version). The three band columns are then all empty, and the header line is `# bands=off` (no `# fftSize=` line). On the screen, the legend and the notes say that it is stopped, the dashed line is not drawn on the graph, and "Ultrasonic max" in the statistics stays `--.-`
-- **Sample rates that cannot measure the ultrasonic band**: when the AudioContext sample rate is so low that no bin falls in the ultrasonic band (when the Nyquist frequency does not reach 18 kHz), `band_ultra_dbfs` is empty, a note on the screen says "Ultrasonic band not measurable", and the legend says "not measurable at this sample rate"
-- **Fallback mode**: in rows taken in fallback mode, the three band columns are empty too (so that "not measurable" is not shown as "no problem"). On the screen, the legend says "not measured in fallback mode" and a note says "Bands not computed (fallback mode)"
+- Band definitions: the ultrasonic band is 18,000 Hz or higher and below 22,000 Hz; the audible band is 20 Hz or higher and below 18,000 Hz. The header line `# bands=18000-22000,20-18000` lists the same definitions in column order
+- How it works: on the audio thread, about 21 ms of samples (1,024 at 48 kHz; the length is in the header line `# fftSize=`) form one frame. A periodic Hann window is applied, an FFT splits the frame into the strength at each frequency, and the results are summed per band. The frames overlap, each shifted by a quarter (about 5 ms), so in an interval without breaks, the sound at every moment is counted with the same weight
+- The actual lower edge of the audible band: about 50 Hz. The mean of each frame is subtracted before the computation, so sounds below about 100 Hz change in value. Below about 50 Hz they read low, and between 50 and 100 Hz they move up or down by about ±0.5 dB (at 48 kHz: 20 Hz about -8 dB, 30 Hz about -4 dB, 50 Hz about -0.4 dB, 70 Hz about +0.5 dB). The `20` in `# bands=` is the defined value, not the actual sensitivity
+- A sound at exactly 22 kHz: it sits on the band edge, so it reads low (about -2 dB at 48 kHz, about -6 dB at 44.1 kHz). The part that leaks beyond the upper edge of the ultrasonic band goes into neither band. At 44.1 kHz, 22 kHz is just below the Nyquist frequency (22.05 kHz)
+- The header line `# nyquistHz=`: half the AudioContext sample rate. It is the upper limit for computing bands, but not necessarily the upper limit of the sound that actually arrives. If the sample rate of the microphone's audio track (`sampleRate` in `# settingsRaw=`) is lower, the actual upper limit is half of that, and values can drop before that point. Playing a -20 dBFS tone into the fake microphone (audio track 44.1 kHz, AudioContext 48 kHz), 1 kHz gave `-20.00` for both `dbfs` and `band_audible_dbfs`, but at 21 kHz `band_ultra_dbfs` dropped to `-53.78`, and at 23 kHz `dbfs` was `-101.99`, so nothing remained (`# nyquistHz=24000` in every case). Read ultrasonic band values against the smaller of `# nyquistHz=` and half the `sampleRate` in `# settingsRaw=`
+- Notes on the screen: this mismatch appears in the recording notes. When the sample rates of the microphone's audio track and the AudioContext differ, a note says "Sample rate conversion records high sounds near the limit lower" and shows both values (in the fake-microphone example above, a -20 dBFS tone at 21 kHz was recorded at about -54 dBFS). The "Recordable limit on this device" under the legend is the "smaller" one above (half of the smaller of the AudioContext and track sample rates). When the track does not report its sample rate, no note appears, and the limit is shown as half of the AudioContext rate with "track rate unknown" added
+- The 18 kHz boundary: sound within a range of about 94 Hz is split between the neighboring bands (due to window leakage; the total of both bands does not change)
+- Sound just before an interval boundary: about 21 ms of sound can go into the value of the following interval. This is because each frame is counted in "the interval that contains the frame's end" (so that the computation is finished when the interval ends and that row can be given its hash). As a result, a row whose `dbfs` is `-Infinity` (digital silence) can still have band values. When we exported the interval right after the fake microphone switched from sound to silence, `dbfs` was `-Infinity` and the bands were `-51.02` and `-40.58`
+- How "Ultrasonic max" counts: the on-screen statistic "Ultrasonic max" also counts band values attached to digital-silence rows, because such a value is the real sound of about 21 ms just before the boundary, not a fictitious value (values attached to rows of intervals where no sample arrived at all are counted for the same reason). The statistics "Max" and "Min", on the other hand, leave out silent rows
+- Sound near the starting point of the recording: sound within about 21 ms of the starting point of the recording gets less weight. A 1 ms sound 6.3 ms after the starting point counts only about 33%. This is the trade-off for not making the first row a spurious missing interval; it does not show in `band_valid_ratio` (it happens every time recording starts)
+- `band_valid_ratio`: frames counted ÷ frames expected. It falls below 1.000 when a render quantum was dropped or the input arrived empty; frames containing those samples are not counted (filling them with 0 would mean "there was no sound"). If no frame was counted, the two band columns are empty; if no frame was expected, `band_valid_ratio` is empty too
+- `?bands=off`: when added to the URL, bands are not computed (this is for comparing `valid_ratio` with and without bands on the same version). The three band columns are then all empty, and the header line is `# bands=off` (no `# fftSize=` line). On the screen, the legend and the notes say that it is stopped, the dashed line is not drawn on the graph, and "Ultrasonic max" in the statistics stays `--.-`
+- Sample rates that cannot measure the ultrasonic band: when the AudioContext sample rate is so low that no bin falls in the ultrasonic band (when the Nyquist frequency does not reach 18 kHz), `band_ultra_dbfs` is empty, a note on the screen says "Ultrasonic band not measurable", and the legend says "not measurable at this sample rate"
+- Fallback mode: in rows taken in fallback mode, the three band columns are empty too (so that "not measurable" is not shown as "no problem"). On the screen, the legend says "not measured in fallback mode" and a note says "Bands not computed (fallback mode)"
 
 ### Header lines (fixed when recording starts; the starting point of the hash chain)
 
@@ -176,9 +176,9 @@ However, the starting point of the hash chain is the header lines themselves. If
 
 Each row's hash is computed from "the previous row's hash + that row's data". The chain has three parts.
 
-1. **Starting point = the header lines**: fixed when recording starts, so it does not move during recording or after export
-2. **Data rows**: each one mixes the previous row's hash into its input, so they link in order from the top
-3. **Trailer = the last link**: computed with the last data row's hash mixed into its input. Because of it, you can also tell when rows at the end were dropped together
+1. Starting point = the header lines: fixed when recording starts, so it does not move during recording or after export
+2. Data rows: each one mixes the previous row's hash into its input, so they link in order from the top
+3. Trailer = the last link: computed with the last data row's hash mixed into its input. Because of it, you can also tell when rows at the end were dropped together
 
 ### What it can tell you
 
@@ -341,10 +341,10 @@ v2 CSVs can be checked with the same verifier. The v2 sample (4 rows; `test/fixt
 
 ⚠If you open the file as is, the first line is not the column header line. About 12 header lines starting with `#` come above it, and 3 to 10 trailer lines follow the data rows. Remove these before aggregating.
 
-1. **Remove the `#` lines**: in Excel, import with "Data" → "From Text/CSV", exclude the lines starting with `#` in the Power Query editor, and then press "Use First Row as Headers". The header lines and the trailer lines both start with `#`, so this single exclusion removes both. In Google Sheets, import with "File" → "Import", then select the header lines at the top and the trailer lines at the bottom and delete those rows. ⚠A file with the `#` lines removed does not pass the check in "Verifying a CSV you received" above. Keep the original CSV separately for verification
-2. **Data import**: when opening the CSV file, choose "comma-delimited" and "UTF-8 encoding"
-3. **Timestamp conversion**: to have the ISO-format date and time recognized, change that column to a date-and-time format
-4. **Basic statistics**
+1. Remove the `#` lines: in Excel, import with "Data" → "From Text/CSV", exclude the lines starting with `#` in the Power Query editor, and then press "Use First Row as Headers". The header lines and the trailer lines both start with `#`, so this single exclusion removes both. In Google Sheets, import with "File" → "Import", then select the header lines at the top and the trailer lines at the bottom and delete those rows. ⚠A file with the `#` lines removed does not pass the check in "Verifying a CSV you received" above. Keep the original CSV separately for verification
+2. Data import: when opening the CSV file, choose "comma-delimited" and "UTF-8 encoding"
+3. Timestamp conversion: to have the ISO-format date and time recognized, change that column to a date-and-time format
+4. Basic statistics
 
    ⚠Put working columns in column K or later. The 10 imported columns are column A `timestamp`, column B `dbfs`, column C `seq`, column D `peak_dbfs`, column E `clip`, column F `valid_ratio`, column G `band_ultra_dbfs`, column H `band_audible_dbfs`, column I `band_valid_ratio` and column J `hash`. If you overwrite column C (`seq`) or column H (`band_audible_dbfs`) for your work, you lose the band values or the clue for finding the boundary rows described below.
 
@@ -352,7 +352,7 @@ v2 CSVs can be checked with the same verifier. The v2 sample (4 rows; `test/fixt
 
    ⚠A row with an empty column B is a missing interval (an interval where no sample arrived at all; `valid_ratio` is `0.000`). It is different from silence (`-Infinity`): nothing was measured, so it does not go into the Leq (the on-screen statistics leave it out too). ⚠Do not put it into the Leq formula while it is empty. An empty cell is treated as 0, so `POWER(10,0)` = 1 (equivalent to 0 dBFS) gets added. If you use the formula for equal intervals (below), remove the missing rows first (when the interval lengths are equal, the weights do not use `timestamp` differences, so removing whole rows is fine). If you use the weighted formula (below), do not delete the missing rows; set their interval length in column K to `0` instead (deleting a whole row would put the missing interval into the next row's `timestamp` difference). `=MAX()` and `=MIN()` ignore empty cells, so they can stay as they are.
 
-   - **Max, min and range**: `=MAX($B$2:$B$100)` / `=MIN($B$2:$B$100)` / their difference. The on-screen "Max", "Min" and "Range" leave out silent intervals, so they do not match `=MIN()` after the replacement with `-999`. To make them match, leave the silent rows out of the range
+   - Max, min and range: `=MAX($B$2:$B$100)` / `=MIN($B$2:$B$100)` / their difference. The on-screen "Max", "Min" and "Range" leave out silent intervals, so they do not match `=MIN()` after the replacement with `-999`. To make them match, leave the silent rows out of the range
    - ⚠**`=AVERAGE($B$2:$B$100)` is not the on-screen "Average (Leq)".** It is the arithmetic mean of dB values. dB is logarithmic, so adding the values and dividing by the row count gives something that corresponds to no physical quantity. Moreover, since the steps above replace `-Infinity` with `-999`, any silent rows put the replacement value itself into the average, and the answer is completely detached from any physical quantity. Results of running the same CSVs through both formulas in our own check (all at 1-second intervals, after the replacement with `-999`).
 
      | Record | Arithmetic mean | Leq | Difference |
@@ -362,21 +362,21 @@ v2 CSVs can be checked with the same verifier. The v2 sample (4 rows; `test/fixt
      | 9 of 10 rows silent, the remaining 1 row at -20 dBFS | -901.1000 | -30.0000 | Arithmetic mean 871.1000 dB lower |
 
      Both the direction and the size of the error depend on the contents of the record, so it cannot be corrected afterward. ⚠Skipping the replacement does not fix it. `=AVERAGE()` ignores text cells without any warning, so silent rows left as `-Infinity` drop out of the calculation. For the 2nd record in the table above it gives -30.0000 (1.2494 dB higher than the Leq), and for the 3rd, -20.0000 (10.0000 dB higher than the Leq). The value looks like a normal number, so you cannot notice
-   - **When the interval lengths are equal**: if the trailer line `# intervalSec=` has no `+` (you did not change the log interval during recording), the following single formula matches the screen. It works even if you stopped and resumed recording (with constant weights, the weighted and the equal-weight averages give the same value)
+   - When the interval lengths are equal: if the trailer line `# intervalSec=` has no `+` (you did not change the log interval during recording), the following single formula matches the screen. It works even if you stopped and resumed recording (with constant weights, the weighted and the equal-weight averages give the same value)
      ```excel
      =10*LOG10(SUMPRODUCT(POWER(10,$B$2:$B$100/10))/COUNT($B$2:$B$100))
      ```
      In our own check, it matched the on-screen "Average (Leq)" for all 6 records with equal log intervals. ⚠The CSV `dbfs` is exported rounded to 2 decimal places, so values rebuilt from it keep the rounding difference. The screen shows 1 decimal place, so they match within that. `=10*LOG10(AVERAGE(POWER(10,$B$2:$B$100/10)))` gives the same value, but older versions of Excel need it to be confirmed as an array formula (Ctrl+Shift+Enter). SUMPRODUCT does not need that
-   - **Specifying the range**: ⚠Do not specify a whole column, as in `B:B`. Empty cells are treated as 0, so `POWER(10,0)` = 1 (equivalent to 0 dBFS) gets added once for each empty row. Fit the range exactly to the rows that have data
-   - **When log intervals are mixed**: if `# intervalSec=` is joined with `+`, as in `1@0+3@12`, the formula above cannot be used. Weight by the interval length
-     - **Column K**: enter the interval length (seconds). `timestamp` is the end of the interval, so enter `=(A3-A2)*86400` in K3 and copy it down to the bottom
+   - Specifying the range: ⚠Do not specify a whole column, as in `B:B`. Empty cells are treated as 0, so `POWER(10,0)` = 1 (equivalent to 0 dBFS) gets added once for each empty row. Fit the range exactly to the rows that have data
+   - When log intervals are mixed: if `# intervalSec=` is joined with `+`, as in `1@0+3@12`, the formula above cannot be used. Weight by the interval length
+     - Column K: enter the interval length (seconds). `timestamp` is the end of the interval, so enter `=(A3-A2)*86400` in K3 and copy it down to the bottom
      - ⭐**Do not use this difference for the boundary rows.** For the rows whose `seq` (column C) is listed in the trailer lines `# sessionStartAt=` and `# clockBreakAt=`, overwrite column K by hand. Read the value from the `# intervalSec=` runs (for `1@0+3@12`, `1` for seq 0–11 and `3` for seq 12 and later). The number of boundaries is the number of sessions plus the number of suspensions, so it stays small enough to fix by hand
-       - **First row**: there is no previous row, so no difference can be taken (`# started=` is the end time of the first row's interval, so a difference with it would be 0). `# sessionStartAt=` always contains the first row's `seq`, so it is filled in the same way
-       - **Boundaries where recording was stopped and resumed**: the `timestamp` difference includes the whole pause. In a measurement (17 rows, a 60.032-second difference at the boundary), the result came out 6.49 dB lower. A record with the order reversed came out 2.00 dB higher, and a record with a 600-second pause came out 15.42 dB lower
-       - **Rows where the time anchor was reset**: the jump (`# clockDriftMs=`) is included
-       - **Missing rows (empty column B)**: set column K to `0` (see above)
+       - First row: there is no previous row, so no difference can be taken (`# started=` is the end time of the first row's interval, so a difference with it would be 0). `# sessionStartAt=` always contains the first row's `seq`, so it is filled in the same way
+       - Boundaries where recording was stopped and resumed: the `timestamp` difference includes the whole pause. In a measurement (17 rows, a 60.032-second difference at the boundary), the result came out 6.49 dB lower. A record with the order reversed came out 2.00 dB higher, and a record with a 600-second pause came out 15.42 dB lower
+       - Rows where the time anchor was reset: the jump (`# clockDriftMs=`) is included
+       - Missing rows (empty column B): set column K to `0` (see above)
        - Leaving K2 empty drops the weight of the first row. In our own check, the results scattered from 0.79 dB higher to 969.00 dB lower, and in a record where only the first row was not silent, the answer was the replacement value `-999` itself
-     - **Leq**: `=10*LOG10(SUMPRODUCT($K$2:$K$100,POWER(10,$B$2:$B$100/10))/SUM($K$2:$K$100))`
+     - Leq: `=10*LOG10(SUMPRODUCT($K$2:$K$100,POWER(10,$B$2:$B$100/10))/SUM($K$2:$K$100))`
      - In our own check, this formula matched the on-screen "Average (Leq)" in all 6 cases (1 session / 2 sessions / 3 sessions with mixed intervals / a log interval change within 1 session / an anchor reset / 2 sessions including silence). ⚠Unrounded values match to 10 decimal places, but the CSV `dbfs` is rounded to 2 decimal places, so rebuilding from an actual CSV leaves that difference
      - Leaving out the weighting (applying the equal-weight formula) gave the following errors. ⚠The direction depends on the contents of the record, so it cannot be corrected afterward
 
@@ -388,14 +388,14 @@ v2 CSVs can be checked with the same verifier. The v2 sample (4 rows; `test/fixt
        | 1 s × 1 row (-20), then 9 s × 1 row of silence | -30.0000 | -23.0103 | 6.9897 dB higher |
        | 1 s × 1 row (-6), then 10 s × 1 row (-60) | -16.4138 | -9.0103 | 7.4035 dB higher |
        | 1 s × 1 row (-6), then 10 s × 5 rows (-60) | -23.0748 | -13.7814 | 9.2934 dB higher |
-5. **Time-series graph**: create a scatter chart with column A (time) on the X axis and column B (dBFS values) on the Y axis
-6. **Analysis by time of day**: apply the Leq formula above to each time period to see patterns of activity. ⚠An average per time period, too, has no meaning as an arithmetic mean of dB
+5. Time-series graph: create a scatter chart with column A (time) on the X axis and column B (dBFS values) on the Y axis
+6. Analysis by time of day: apply the Leq formula above to each time period to see patterns of activity. ⚠An average per time period, too, has no meaning as an arithmetic mean of dB
 
 ## Recommended analysis methods
-- **Moving average**: smooths out short-term fluctuations to show the trend. ⚠**Do not average dB values as they are.** Convert them to power with `POWER(10,B/10)`, average, and convert back to dB with `10*LOG10()`
-- **Threshold analysis**: find the periods above a set level (for example, -30 dBFS). The ordering of values is the same in dB and in power, so threshold comparisons can be done in dB as is
-- **Peak finding**: pick out the timing of sudden level changes. The sample peak within each interval (the largest sample value; not the same as the ITU-R BS.1770 true peak) is in the `peak_dbfs` column (empty for rows taken in fallback mode)
-- **Frequency distribution**: show how often each dBFS value occurs as a histogram. ⚠**This is not L10/L50/L90.** Those are indicators defined as distributions of A-weighted sound pressure level, and giving the same names to dBFS percentiles invites the misreading that they can be compared with regulatory limits
+- Moving average: smooths out short-term fluctuations to show the trend. ⚠**Do not average dB values as they are.** Convert them to power with `POWER(10,B/10)`, average, and convert back to dB with `10*LOG10()`
+- Threshold analysis: find the periods above a set level (for example, -30 dBFS). The ordering of values is the same in dB and in power, so threshold comparisons can be done in dB as is
+- Peak finding: pick out the timing of sudden level changes. The sample peak within each interval (the largest sample value; not the same as the ITU-R BS.1770 true peak) is in the `peak_dbfs` column (empty for rows taken in fallback mode)
+- Frequency distribution: show how often each dBFS value occurs as a histogram. ⚠**This is not L10/L50/L90.** Those are indicators defined as distributions of A-weighted sound pressure level, and giving the same names to dBFS percentiles invites the misreading that they can be compared with regulatory limits
 
 ## Check before processing
 
@@ -408,14 +408,14 @@ v2 CSVs can be checked with the same verifier. The v2 sample (4 rows; `test/fixt
 
 `timestamp` is in UTC (the trailing `Z`) and is the time at the end of the interval. Japan time is this time plus 9 hours. The start of the interval is the end minus the interval length ("Session boundaries" above).
 
-- **Excel and Google Sheets**: when column A holds a string such as `2026-09-29T03:06:21.680Z` as is, enter the following formula in a working column and set the cell's number format to `yyyy-mm-dd hh:mm:ss.000`
+- Excel and Google Sheets: when column A holds a string such as `2026-09-29T03:06:21.680Z` as is, enter the following formula in a working column and set the cell's number format to `yyyy-mm-dd hh:mm:ss.000`
 
   ```excel
   =DATEVALUE(LEFT(A2,10))+TIMEVALUE(MID(A2,12,8))+MID(A2,21,3)/86400000+9/24
   ```
 
   The first row of the sample becomes `2026-09-29 12:06:21.680`. This value was checked by doing the same calculation as the formula in Python; it has not been checked in actual Excel or Google Sheets. If the spreadsheet converted column A to dates on import, first check whether the value is still in UTC
-- **Python**: convert with `parse_time()` and `jst()` in `mgl.py` below (see the output of `to_jst.py`)
+- Python: convert with `parse_time()` and `jst()` in `mgl.py` below (see the output of `to_jst.py`)
 
 ## Reducing it to a table on the command line
 

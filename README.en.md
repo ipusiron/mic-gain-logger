@@ -48,20 +48,20 @@ Its output is a time series of dBFS, a relative value; it is not sound pressure 
 
 ## ✨ Features
 
-- **A level logger that does not record audio**: logs the microphone input level (dBFS) one row per interval, without saving any audio. The browser enforces the CSP (`connect-src 'none'`) to block external data transmission
-- **Recording without missing intervals (AudioWorklet)**: intervals are aggregated on the audio thread, so recording continues even when drawing on the screen stops. Where the AudioWorklet cannot be loaded, the tool runs in fallback mode
-- **Recording the ultrasonic band (18–22 kHz)**: for each interval, the energy of the ultrasonic band and of the audible band (20–18,000 Hz) is kept on the same row. The band values record sound energy; they cannot tell what the sound is
-- **Live display**: shows the big number, a meter, a graph of the last 60 seconds (the ultrasonic band as a dashed line) and the current value of the ultrasonic band. The big number is the value of the latest 2048 samples, so its window differs from that of the `dbfs` in the high-precision mode CSV (the energy average over the whole interval)
-- **Statistics**: shows Elapsed, Log rows, Average (Leq), Max, Min, Range, Sample peak and Ultrasonic max. The average is an energy average, weighted by interval length (seconds), not by row count
-- **Recording gaps display**: clipping and problems with the valid sample ratio are shown on screen whether or not there are any (with no gaps, it says "No recording gaps")
-- **CSV (v3) and hash chain**: data rows are exported between header lines with the measurement conditions and trailer lines with facts known only after recording ends. The per-row hashes let you notice accidental corruption, partial loss and reordering (they do not withstand intentional changes)
-- **Telling silence from missing data**: digital silence is kept as a row with `-Infinity`, and for an interval where no sample arrived, `dbfs` is left empty
-- **Noticing microphone disconnection, clock jumps and audio processing**: a lost microphone, muting at the source, a stopped AudioContext, and audio processing (AGC, noise suppression, echo cancellation) left on are all shown on screen as they happen (clock jumps and the state of audio processing are also kept in the CSV)
-- **Changing settings in real time**: the log interval (1s/3s/5s/10s/1m) and the display floor can be changed during recording. The display floor is a display-only setting; recorded values do not change
-- **Cumulative data recording**: repeating "Start recording → Stop → Start recording" keeps adding to the log and statistics. "Reset stats" clears them all at once
-- **Phone support**: at 480 px wide or narrower, Start recording/Stop, "More", Help and the theme switch sit on one row
-- **Japanese and English display**: switch with the button at the top right of the header or with `?lang=`. The CSV contents are the same regardless of language
-- **Dark mode and light mode**: the theme can be switched (the choice is saved)
+- A level logger that does not record audio: logs the microphone input level (dBFS) one row per interval, without saving any audio. The browser enforces the CSP (`connect-src 'none'`) to block external data transmission
+- Recording without missing intervals (AudioWorklet): intervals are aggregated on the audio thread, so recording continues even when drawing on the screen stops. Where the AudioWorklet cannot be loaded, the tool runs in fallback mode
+- Recording the ultrasonic band (18–22 kHz): for each interval, the energy of the ultrasonic band and of the audible band (20–18,000 Hz) is kept on the same row. The band values record sound energy; they cannot tell what the sound is
+- Live display: shows the big number, a meter, a graph of the last 60 seconds (the ultrasonic band as a dashed line) and the current value of the ultrasonic band. The big number is the value of the latest 2048 samples, so its window differs from that of the `dbfs` in the high-precision mode CSV (the energy average over the whole interval)
+- Statistics: shows Elapsed, Log rows, Average (Leq), Max, Min, Range, Sample peak and Ultrasonic max. The average is an energy average, weighted by interval length (seconds), not by row count
+- Recording gaps display: clipping and problems with the valid sample ratio are shown on screen whether or not there are any (with no gaps, it says "No recording gaps")
+- CSV (v3) and hash chain: data rows are exported between header lines with the measurement conditions and trailer lines with facts known only after recording ends. The per-row hashes let you notice accidental corruption, partial loss and reordering (they do not withstand intentional changes)
+- Telling silence from missing data: digital silence is kept as a row with `-Infinity`, and for an interval where no sample arrived, `dbfs` is left empty
+- Noticing microphone disconnection, clock jumps and audio processing: a lost microphone, muting at the source, a stopped AudioContext, and audio processing (AGC, noise suppression, echo cancellation) left on are all shown on screen as they happen (clock jumps and the state of audio processing are also kept in the CSV)
+- Changing settings in real time: the log interval (1s/3s/5s/10s/1m) and the display floor can be changed during recording. The display floor is a display-only setting; recorded values do not change
+- Cumulative data recording: repeating "Start recording → Stop → Start recording" keeps adding to the log and statistics. "Reset stats" clears them all at once
+- Phone support: at 480 px wide or narrower, Start recording/Stop, "More", Help and the theme switch sit on one row
+- Japanese and English display: switch with the button at the top right of the header or with `?lang=`. The CSV contents are the same regardless of language
+- Dark mode and light mode: the theme can be switched (the choice is saved)
 
 Detailed descriptions are in the [features document](docs/en/features.md).
 
@@ -92,9 +92,9 @@ Detailed descriptions are in the [features document](docs/en/features.md).
 
 ### Switching the display language
 
-1. **With the button**: press the button at the top right of the header. It shows `EN` on the Japanese display and `JA` on the English display (the language it switches to). The chosen language is saved in the browser's `localStorage` (key `mic-gain-logger-lang`) and used the next time you open the page
-2. **With the URL**: open the page with `?lang=en` or `?lang=ja` (for example, `https://ipusiron.github.io/mic-gain-logger/?lang=en`). To use it together with `?bands=off`, join them as in `?bands=off&lang=en`. If you switch with the button while the page is open with `?lang=`, the `?lang=` in the URL is rewritten too (so that reloading does not bring back the original language)
-3. **With neither**: if no language has been saved, the browser language is used. If the first entry of `navigator.languages` is Japanese (`ja`, `ja-JP` and so on), the display is Japanese; otherwise it is English
+1. With the button: press the button at the top right of the header. It shows `EN` on the Japanese display and `JA` on the English display (the language it switches to). The chosen language is saved in the browser's `localStorage` (key `mic-gain-logger-lang`) and used the next time you open the page
+2. With the URL: open the page with `?lang=en` or `?lang=ja` (for example, `https://ipusiron.github.io/mic-gain-logger/?lang=en`). To use it together with `?bands=off`, join them as in `?bands=off&lang=en`. If you switch with the button while the page is open with `?lang=`, the `?lang=` in the URL is rewritten too (so that reloading does not bring back the original language)
+3. With neither: if no language has been saved, the browser language is used. If the first entry of `navigator.languages` is Japanese (`ja`, `ja-JP` and so on), the display is Japanese; otherwise it is English
 
 - The order is "`?lang=` → saved language → browser language". Values other than `ja` and `en` (such as `?lang=fr`) are ignored, and the next step in the order is used
 - Switching also works when `localStorage` is unavailable, as in private browsing. The choice is not saved, so the next time the language is decided by `?lang=` or the browser language
@@ -114,13 +114,13 @@ What this tool keeps is a time series of dBFS, a value relative to each device. 
 
 ### 🧭 Examples of use (summary)
 
-- **Comparing with a baseline**: set a baseline recording made with the same device, the same placement and the same log interval side by side with the recording in question, and look for times when the sound (including the ultrasonic band) was higher than usual
-- **Daily life and home**: when home appliances were running, pets home alone, your own snoring and instrument practice time, high-pitched sounds from devices around you
-- **Education and learning**: the difference between dBFS and dB SPL, sampling frequency and Nyquist frequency, FFT windows and bins, the microphone limit of each device, noticing differences in hearing
-- **Work and creative projects**: preparing for recording sessions, estimating how long equipment ran
-- **Hobbies, electronics and nature watching**: checking oscillator circuits and buzzers, the time birds start singing, insect sounds at night
-- **Research and security audits**: auditing and testing air gaps, finding the direction of a sound and narrowing down its source, checking the limits of the hash chain
-- **Combining with other tools and articles**: 『エアギャップ・ブリッジ』 (*Air Gap Bridge*) (Japanese-language book), the tone source page (Tone Sweep), spreadsheets and Python
+- Comparing with a baseline: set a baseline recording made with the same device, the same placement and the same log interval side by side with the recording in question, and look for times when the sound (including the ultrasonic band) was higher than usual
+- Daily life and home: when home appliances were running, pets home alone, your own snoring and instrument practice time, high-pitched sounds from devices around you
+- Education and learning: the difference between dBFS and dB SPL, sampling frequency and Nyquist frequency, FFT windows and bins, the microphone limit of each device, noticing differences in hearing
+- Work and creative projects: preparing for recording sessions, estimating how long equipment ran
+- Hobbies, electronics and nature watching: checking oscillator circuits and buzzers, the time birds start singing, insect sounds at night
+- Research and security audits: auditing and testing air gaps, finding the direction of a sound and narrowing down its source, checking the limits of the hash chain
+- Combining with other tools and articles: 『エアギャップ・ブリッジ』 (*Air Gap Bridge*) (Japanese-language book), the tone source page (Tone Sweep), spreadsheets and Python
 
 ⚠Every example of use has the following limits. Recording is possible only up to half the sample rate (24 kHz at 48 kHz), and sounds above 24 kHz cannot be recorded at their own frequency. dBFS from two devices cannot be compared, and one microphone cannot tell direction, so direction finding is done while moving the device.
 
@@ -136,10 +136,10 @@ The following covers only what could be confirmed in the original texts in e-Gov
 
 ### What we confirmed in the original texts
 
-- **Use in transactions or certification**: **This tool's output cannot be used for transactions or certification.** A sound level meter is a "specified measuring instrument" under the Measurement Act (Order for Enforcement of the Measurement Act, Article 2, item 15). A specified measuring instrument without the mark of having passed verification, and anything that is not a measuring instrument, must not be used for measurement in transactions or certification, nor possessed to be offered for such use (Measurement Act, Article 16, paragraph 1). Violations are subject to penalties (the same Act, Article 172, item 1). Article 2, paragraph 2 of the Measurement Act defines "certification" as "stating, publicly or in the course of business, to another person that a certain fact is true"
-- **Regulatory standards of the Noise Regulation Act**: comparing with them requires a sound level meter that has passed verification. The notice that sets out how the regulatory standards are measured limits the instrument to "a sound level meter that has passed the conditions of Article 71 of the Measurement Act," and specifies that the A characteristic be used for the frequency weighting network and the fast time weighting (FAST) for the dynamic characteristic (Standards for the Regulation of Noise Generated at Specified Factories, etc.: Notice No. 1 of 1968 of the Ministry of Health and Welfare, the Ministry of Agriculture and Forestry, the Ministry of International Trade and Industry and the Ministry of Transport, Remark 3)
-- **Occupational noise standard values**: they are equivalent continuous A-weighted sound pressure levels. The measurement method is set by Article 4 of the Working Environment Measurement Standards (Ministry of Labour Notice No. 46 of 1976), which states that "the instrument used for measurement (hereinafter "sound level meter") shall be capable of measuring the equivalent continuous sound level" and that measurement "shall be made with the A characteristic of the frequency weighting network of the sound level meter"
-- **Notification for private investigation business**: a business that investigates the whereabouts and actions of other people as a trade is required to file a notification (Act on Ensuring the Proper Conduct of Private Investigation Business, Article 4, paragraph 1). Article 6 of the same Act provides that private investigators "shall bear in mind that this Act does not make it possible to perform acts that are prohibited or restricted by other laws and regulations, and shall not infringe on the rights and interests of individuals, such as by disturbing the peace of people's lives." Filing a notification does not make the act of recording itself lawful
+- Use in transactions or certification: **This tool's output cannot be used for transactions or certification.** A sound level meter is a "specified measuring instrument" under the Measurement Act (Order for Enforcement of the Measurement Act, Article 2, item 15). A specified measuring instrument without the mark of having passed verification, and anything that is not a measuring instrument, must not be used for measurement in transactions or certification, nor possessed to be offered for such use (Measurement Act, Article 16, paragraph 1). Violations are subject to penalties (the same Act, Article 172, item 1). Article 2, paragraph 2 of the Measurement Act defines "certification" as "stating, publicly or in the course of business, to another person that a certain fact is true"
+- Regulatory standards of the Noise Regulation Act: comparing with them requires a sound level meter that has passed verification. The notice that sets out how the regulatory standards are measured limits the instrument to "a sound level meter that has passed the conditions of Article 71 of the Measurement Act," and specifies that the A characteristic be used for the frequency weighting network and the fast time weighting (FAST) for the dynamic characteristic (Standards for the Regulation of Noise Generated at Specified Factories, etc.: Notice No. 1 of 1968 of the Ministry of Health and Welfare, the Ministry of Agriculture and Forestry, the Ministry of International Trade and Industry and the Ministry of Transport, Remark 3)
+- Occupational noise standard values: they are equivalent continuous A-weighted sound pressure levels. The measurement method is set by Article 4 of the Working Environment Measurement Standards (Ministry of Labour Notice No. 46 of 1976), which states that "the instrument used for measurement (hereinafter "sound level meter") shall be capable of measuring the equivalent continuous sound level" and that measurement "shall be made with the A characteristic of the frequency weighting network of the sound level meter"
+- Notification for private investigation business: a business that investigates the whereabouts and actions of other people as a trade is required to file a notification (Act on Ensuring the Proper Conduct of Private Investigation Business, Article 4, paragraph 1). Article 6 of the same Act provides that private investigators "shall bear in mind that this Act does not make it possible to perform acts that are prohibited or restricted by other laws and regulations, and shall not infringe on the rights and interests of individuals, such as by disturbing the peace of people's lives." Filing a notification does not make the act of recording itself lawful
 
 ### What to check before use
 
@@ -150,10 +150,10 @@ The following covers only what could be confirmed in the original texts in e-Gov
 
 ### Operating principles (practical guidance, not law)
 
-- **Minimum scope**: record only what is needed to achieve the purpose
-- **Transparency**: as far as possible, make clear that you are recording and why
-- **Data minimization**: delete records promptly once they are not needed
-- **Limiting disclosure to third parties**: do not give records to others without a legitimate reason
+- Minimum scope: record only what is needed to achieve the purpose
+- Transparency: as far as possible, make clear that you are recording and why
+- Data minimization: delete records promptly once they are not needed
+- Limiting disclosure to third parties: do not give records to others without a legitimate reason
 
 ### What this section does not cover
 
@@ -259,6 +259,7 @@ mic-gain-logger/
 │   ├── readme-recipes.test.js     # Recomputes the output of the CSV recipes from the sample CSV in JS and compares
 │   ├── readme-structure.test.js   # Series-standard heading order, required examples of use, the on-screen number and the CSV value
 │   ├── readme-docs.test.js        # How README and docs/ are split (line count, index table, cross-references, emphasis count, current version only)
+│   ├── no-bold-labels.test.js     # List-item labels are not bold (README and docs/, both languages)
 │   ├── readme-en.test.js          # Whether README.en.md and docs/en/ match the Japanese versions (headings, numbers in tables, code processing, recipe outputs, terms)
 │   ├── i18n.test.js               # Japanese/English UI (matching dictionary keys, no Japanese left in the English display, how the language is chosen)
 │   ├── dbfs-fixture.test.js       # dBFS calculation accuracy for sine waves of known amplitude
@@ -297,11 +298,11 @@ This is the only place that states how far the tool has been verified. The scena
 
 ⚠**Only one real device has been tested: an iPhone 18 Pro Max (iOS Safari) (2026-09-29).**
 
-- **Versions tested**: two public versions, `c7b6bad` and `090648f` (band recording is in `090648f`). The sample rate was 48000 Hz
-- **From recording to CSV verification**: in both versions, the AudioWorklet module loaded and the tool ran in high-precision mode, and recording → stopping → exporting the CSV worked. Every exported CSV passed the verifier in "Verifying a CSV you received" in the [CSV document](docs/en/csv.md)
-- **Confirmed with the real-device CSVs**: in `090648f`, band recording (the worklet's FFT and CSV v3), how the processing state is written (`unknown:`), and the `valid_ratio` of the first row. That computing the FFT does not drop render quanta was confirmed with 1-minute and 2-minute recordings with the screen on
-- **Seen on screen (from the author's memory)**: at 21 kHz the dashed ultrasonic band line appeared, and at 22 kHz it stuck to the bottom at the display floor of the recorded version (-90 dBFS) and could not be seen. The dashed ultrasonic band line on screen cannot be confirmed from the CSV
-- **Not tested**: real Android devices, and screen-lock and background behavior on a real device. Long recordings, and other iPhones (different models or iOS versions). The screen features added after the real-device test version (`090648f`) (the default display floor of -110 dBFS, the current value of the ultrasonic band, the button layout), and switching between Japanese and English (tested only in desktop Chromium)
+- Versions tested: two public versions, `c7b6bad` and `090648f` (band recording is in `090648f`). The sample rate was 48000 Hz
+- From recording to CSV verification: in both versions, the AudioWorklet module loaded and the tool ran in high-precision mode, and recording → stopping → exporting the CSV worked. Every exported CSV passed the verifier in "Verifying a CSV you received" in the [CSV document](docs/en/csv.md)
+- Confirmed with the real-device CSVs: in `090648f`, band recording (the worklet's FFT and CSV v3), how the processing state is written (`unknown:`), and the `valid_ratio` of the first row. That computing the FFT does not drop render quanta was confirmed with 1-minute and 2-minute recordings with the screen on
+- Seen on screen (from the author's memory): at 21 kHz the dashed ultrasonic band line appeared, and at 22 kHz it stuck to the bottom at the display floor of the recorded version (-90 dBFS) and could not be seen. The dashed ultrasonic band line on screen cannot be confirmed from the CSV
+- Not tested: real Android devices, and screen-lock and background behavior on a real device. Long recordings, and other iPhones (different models or iOS versions). The screen features added after the real-device test version (`090648f`) (the default display floor of -110 dBFS, the current value of the ultrasonic band, the button layout), and switching between Japanese and English (tested only in desktop Chromium)
 
 The measured values such as row counts and `valid_ratio` are in the [real-device test document](docs/en/real-device-test.md). The remaining checks at mobile widths were done in desktop Chromium (Playwright) by creating widths of 320–430 px, 4x/20x CPU throttling and a state equivalent to a screen lock. The "screen-lock equivalent" is a browser emulation, not a real screen lock.
 
@@ -316,10 +317,10 @@ Where AudioWorklet cannot be used, the tool switches to fallback mode. Fallback 
 
 ### Prerequisites
 
-- **A secure context (https, `localhost`, `file://`)**: both `getUserMedia` and `crypto.subtle` require a secure context. If you open the page with a non-HTTPS URL with a host name or IP address, neither the microphone nor the hash column works. ⚠**`file://` is a secure context, so both work there.** However, the AudioWorklet module cannot be loaded, so the tool runs in fallback mode (measured in Chromium)
-- **Desktop**: Windows 10+, macOS 10.15+, Ubuntu 18.04+
-- **Mobile**: iOS 13+, Android 8.0+
-- **Memory**: the whole log lives in the browser's memory. At a 1-second log interval, 24 hours produce 86,400 rows
+- A secure context (https, `localhost`, `file://`): both `getUserMedia` and `crypto.subtle` require a secure context. If you open the page with a non-HTTPS URL with a host name or IP address, neither the microphone nor the hash column works. ⚠**`file://` is a secure context, so both work there.** However, the AudioWorklet module cannot be loaded, so the tool runs in fallback mode (measured in Chromium)
+- Desktop: Windows 10+, macOS 10.15+, Ubuntu 18.04+
+- Mobile: iOS 13+, Android 8.0+
+- Memory: the whole log lives in the browser's memory. At a 1-second log interval, 24 hours produce 86,400 rows
 
 ### Running locally
 

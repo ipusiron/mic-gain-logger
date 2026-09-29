@@ -82,6 +82,9 @@ function targetsOf(text) {
   const heads = lines.filter(l => /^#{1,6} /.test(l)).map(l => l.replace(/^#+ /, ''));
   const labels = [];
   for (const l of lines) for (const m of l.matchAll(/\*\*([^*]+)\*\*/g)) labels.push(m[1]);
+  for (const l of lines) { const m = l.match(/^\s*(?:[-*]|\d+\.)\s+([^：\n]{1,60})：/); if (m) labels.push(m[1]); }
+  // 次の行に字下げした説明が続く項目（「- 名前」＋改行）も項目名として拾う（項目名を太字にしなくなったため）
+  lines.forEach((l, i) => { const m = l.match(/^\s*(?:[-*]|\d+\.)\s+(.+?)\s*$/); if (m && /^\s{2,}\S/.test(lines[i + 1] || '')) labels.push(m[1]); });
   return [...heads, ...labels];
 }
 const pointsTo = (text, name) => targetsOf(text).some(t => t.includes(name));
