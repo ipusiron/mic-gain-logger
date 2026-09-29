@@ -4,7 +4,7 @@
 //
 // ワークレット（worklet/meter-processor.js）を node:vm の中で動かし、区間ごとに送る帯域の値
 // （帯域ごとの電力の和 bandPower・数えたフレーム数 bandFrames・数えるはずだったフレーム数 bandExpected）と、
-// logic.js の換算（帯域の dBFS・band_valid_ratio）を確かめる。画面（b3）はまだ無い。
+// logic.jsの換算（帯域のdBFS・band_valid_ratio）を確かめる。画面（第2弾b3）はtest/band-ui.test.js。
 // CSV の列は第2弾b2で足した（列・ヘッダー・検証は test/csv-v3.test.js）。
 //
 // ここで固めること：

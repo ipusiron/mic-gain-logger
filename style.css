@@ -19,6 +19,9 @@
      （改修前はグリッドが rgba(255,255,255,.06) 固定で、ライトでは白地に白だった） */
   --grid:rgba(255,255,255,.18);
   --plot:#7cc0ff;
+  /* 超音波帯の破線（第2弾b3）。本体の線（青）と色相を離し、形（破線）でも見分けられるようにする。
+     図形なので背景（--card）に対して3:1以上（test/contrast.test.js） */
+  --plot-ultra:#f0883e;
 }
 
 *{box-sizing:border-box}
@@ -120,6 +123,27 @@ body.light .theme-toggle .icon-moon{display:block;}
   height:220px;
   display:block;
 }
+
+/* グラフの凡例と、記録できる上限の1行（第2弾b3）。
+   凡例はキャンバスの外に置き、色と線の形（実線・破線）の両方で示す。
+   ⚠ 幅で切り替える規則はここに書かない（@mediaブロックは基本の規則の後ろ。test/css-order.test.js） */
+.graph-legend{
+  display:flex; flex-wrap:wrap; gap:4px 16px;
+  margin:8px 0 0; padding:0; list-style:none;
+  font-size:12px; color:var(--muted);
+}
+.legend-item{display:inline-flex; align-items:center; gap:6px}
+.legend-swatch{flex:none; width:28px; height:8px}
+.legend-level{color:var(--plot)}
+.legend-ultra{color:var(--plot-ultra)}
+/* 超音波帯の線を描かないとき（?bands=off・簡易モード・超音波帯にビンが無い）は、見本の線も出さない
+   （文字で描かない理由を出す。付け外しはscript.jsのrenderBandInfoが、logic.jsのultraSwatchShownで決める） */
+.legend-item.stopped .legend-swatch{display:none}
+.graph-limit{
+  margin:4px 0 0; font-size:12px; color:var(--muted);
+  line-height:1.5;
+}
+.graph-limit:empty{display:none}
 
 .grid{
   display:grid;
@@ -782,4 +806,5 @@ body.light{
   --on-accent:#ffffff;
   --grid:rgba(11,13,16,.22);
   --plot:#0b5bd3;
+  --plot-ultra:#b54708;
 }

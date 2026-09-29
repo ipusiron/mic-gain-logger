@@ -15,7 +15,7 @@
   <!-- favicon を参照していないと、ブラウザーが /favicon.ico を取りにいって
        コンソールに404が残る。SVG 1枚で済ませる（外部への取得は発生しない） -->
   <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="./style.css?v=3.6" />
+  <link rel="stylesheet" href="./style.css?v=3.7" />
 </head>
 <body>
   <header class="app-header">
@@ -108,7 +108,23 @@
 
       <div class="grid-item">
         <h2 class="section-title">リアルタイムグラフ</h2>
-        <canvas id="levelCanvas" width="800" height="220" aria-label="音量推移グラフ" title="音量推移グラフ（横軸=-60s〜0s＝いまから何秒前、縦軸=音量レベル dBFS）"></canvas>
+        <!-- aria-labelはscript.jsがlogic.jsのgraphAriaLabelで差し替える（?bands=off・簡易モード・超音波帯にビンが無いときは、超音波帯の線を描かない） -->
+        <canvas id="levelCanvas" width="800" height="220" role="img" aria-label="音量推移グラフ。実線は音量（全帯域）、破線は超音波帯（18〜22kHz）の値。横軸は直近60秒、縦軸はdBFS" title="音量推移グラフ（横軸=-60s〜0s＝いまから何秒前、縦軸=音量レベル dBFS。線の見分け方はグラフの下の凡例にあります）"></canvas>
+        <!-- 凡例はキャンバスの外に置く（第2弾b3）。色と線の形（実線・破線）の両方で示し、文字でも「実線」「破線」と書く。
+             破線の間隔はlogic.jsのGRAPH_LINE_STYLES.ultra.dashと同じ（test/band-ui.test.jsが見ている）。
+             超音波帯の線を描かないときは、見本の線を隠して描かない理由を出す（logic.jsのultraBandState） -->
+        <ul class="graph-legend" aria-label="グラフの凡例">
+          <li class="legend-item" title="区間ごとの音量（全帯域のエネルギー平均。CSVのdbfs）。音が1つも届かなかった区間は線を切り、デジタル無音は下端に描きます">
+            <svg class="legend-swatch legend-level" width="28" height="8" viewBox="0 0 28 8" aria-hidden="true" focusable="false"><line x1="0" y1="4" x2="28" y2="4" stroke="currentColor" stroke-width="2"></line></svg>
+            <span>実線：音量（全帯域）</span>
+          </li>
+          <li class="legend-item" id="legendUltra" title="超音波帯（18,000〜22,000Hz）の、区間ごとのエネルギー平均（CSVのband_ultra_dbfs）。その帯域に音のエネルギーがあったかの記録で、何の音かは分かりません。値の無い区間は線を切ります">
+            <svg class="legend-swatch legend-ultra" width="28" height="8" viewBox="0 0 28 8" aria-hidden="true" focusable="false"><line x1="0" y1="4" x2="28" y2="4" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4"></line></svg>
+            <span id="legendUltraText">破線：超音波帯（18〜22kHz）</span>
+          </li>
+        </ul>
+        <!-- 記録を始めると「この端末で記録できる上限：約◯◯kHz」が入る（空のあいだは隠れる） -->
+        <p id="upperLimit" class="graph-limit" title="AudioContextとマイクの音声トラックのサンプルレートの、小さいほうの半分です。サンプルレートで決まる上限で、マイクがその高さの音を拾えることは示しません"></p>
       </div>
 
       <div class="grid-item stats">
@@ -141,6 +157,10 @@
           <div class="stat" title="区間内の標本点の最大絶対振幅（サンプルピーク）のうち、最も大きかったもの。上の「最大」はRMSなので別の値になる。ITU-R BS.1770 のトゥルーピーク（標本の間のピーク）とは別物で、トゥルーピークはこれ以上になる。0 dBFSを超えることがある（浮動小数点の音声なので、上流のリサンプリングの跳ね返りで振幅が1.0を超える）。簡易モードでは測れないため「--.-」のまま">
             <div class="stat-label">サンプルピーク</div>
             <div id="peakDb" class="stat-value">--.- dBFS</div>
+          </div>
+          <div class="stat" title="超音波帯（18〜22kHz）の区間ごとの値（CSVのband_ultra_dbfs）のうち、最も大きかったもの。その帯域に音のエネルギーがあったかの記録で、何の音かは分からない。デジタル無音の行に付いた値も数える（区間の境目の前の約21ミリ秒の実際の音が、後ろの区間に入るため）。音が1つも届かなかった区間の行に付いた値も、同じ理由で数える。簡易モードと?bands=offでは測れないため「--.-」のまま">
+            <div class="stat-label">超音波帯の最大</div>
+            <div id="ultraMaxDb" class="stat-value">--.- dBFS</div>
           </div>
         </div>
         <div id="integrityNote" class="integrity-note" role="status" aria-live="polite" title="クリップした区間と、有効サンプル率が1.000未満だった区間の数。どちらも0なら「穴なし」と出る"></div>
@@ -204,8 +224,12 @@
             <li><strong>平均（Leq）：</strong>記録された行のエネルギー平均。⚠<strong>重みは行数ではなく区間長（秒）です。</strong>ログ間隔は記録中に変えられるので、1秒の区間と3秒の区間を同じ重みで平均すると実時間に比例しない値になります（手元の検算では最大9.3dBずれました）。dBは対数なので算術平均にも物理的な意味がなく、無音の行を-999などへ置き換えて平均すると数百dB外れます。無音の行は電力0として数えます。音が1つも届かなかった区間（CSVの<code>dbfs</code>が空欄の行）は、測っていないので入れません</li>
             <li><strong>最大/最小/変動幅：</strong>記録された行のうち、有限値の行での最大・最小とその差。無音（-∞ dBFS）の区間は外します</li>
             <li><strong>サンプルピーク：</strong>区間内の標本点の最大絶対振幅のうち、最も大きかったもの。上の「最大」はRMSなので別の値になります。ITU-R BS.1770 のトゥルーピーク（標本の間のピーク）とは別物で、トゥルーピークはこれ以上になります。0 dBFSを超えることがあります（上流のリサンプリングの跳ね返りで振幅が1.0を超えるため）。簡易モードでは測れないため「--.-」のままです</li>
+            <li><strong>超音波帯の最大：</strong>CSVの<code>band_ultra_dbfs</code>（超音波帯18〜22kHzの、区間ごとの値）のうち、最も大きかったもの。その帯域に音のエネルギーがあったかの記録で、何の音かは分かりません。デジタル無音の行（<code>dbfs</code>が<code>-Infinity</code>）に付いた値も数えます。区間の境目の前の約21ミリ秒の実際の音が後ろの区間に入るためで、架空の値ではありません。音が1つも届かなかった区間の行に付いた値も、同じ理由で数えます。簡易モードと<code>?bands=off</code>では測れないため「--.-」のままです</li>
             <li><strong>記録の穴：</strong>統計の下に1行で出ます。<strong>クリップした区間</strong>（|振幅|が1.0に届いたサンプルを含む区間。1〜2サンプルの単発なら区間の値への影響は小さく、3サンプル以上続いていれば波形がつぶれて値は本来の音と違います。注意書きには、記録した全サンプルに対する割合も出ます）と、<strong>有効サンプル率</strong>（届いたサンプル数÷期待サンプル数。1.000未満＝その区間の音の一部が届いていない）の区間数を示します。どちらも0なら「記録の穴なし」と出ます</li>
-            <li><strong>リアルタイムグラフ：</strong>時系列での音量推移を可視化</li>
+            <li><strong>リアルタイムグラフ：</strong>時系列での音量推移を可視化。実線が音量（全帯域）、破線が超音波帯（18〜22kHz）の値です（グラフの下の凡例に、色と線の形があります）。音が1つも届かなかった区間と、帯域の値が無い区間は線を切ります。デジタル無音は下端に描きます。簡易モード・<code>?bands=off</code>・超音波帯を測れないサンプルレートでは超音波帯の線を描かず、凡例に見本の線の代わりに理由（「簡易モードでは測れません」など）が出ます</li>
+            <li><strong>記録できる上限：</strong>記録を始めると、凡例の下に「この端末で記録できる上限：約◯◯kHz」と出ます。AudioContextとマイクの音声トラックのサンプルレートの、小さいほうの半分です（トラックがサンプルレートを報告しないときはAudioContextの半分で、「トラックの値は不明」と添えます）。サンプルレートで決まる上限で、マイクがその高さの音を拾えることは示しません</li>
+            <li><strong>帯域の注意書き：</strong>次のときに、記録の注意として出ます。帯域の有効率（CSVの<code>band_valid_ratio</code>）が1.0を下回った区間があるとき（件数と最小値）。マイクの音声トラックとAudioContextのサンプルレートが違うとき（サンプルレートの変換で、上限に近い高い音は低く記録されます）。サンプルレートが低くて超音波帯を測れないとき。<code>?bands=off</code>で帯域の計算を止めているとき。簡易モードで帯域を計算していないとき</li>
+            <li><strong>?bands=off：</strong>URLの末尾に<code>?bands=off</code>を付けて開くと、帯域の計算を止めます（帯域あり・なしで有効サンプル率を比べるためのものです）。凡例と注意書きに「止めています」と出て、超音波帯の線は描かれず、「超音波帯の最大」は「--.-」のままです。CSVの帯域の3列は空欄になります</li>
             <li><strong>音量メーター：</strong>現在の音量を色分けで表示（緑→黄→赤）</li>
           </ul>
           <p><em>※ 統計はCSVに書き出される行（区間）だけから計算します</em></p>
@@ -259,7 +283,7 @@
     </div>
   </div>
 
-  <script src="./logic.js?v=3.6"></script>
-  <script src="./script.js?v=3.6"></script>
+  <script src="./logic.js?v=3.7"></script>
+  <script src="./script.js?v=3.7"></script>
 </body>
 </html>

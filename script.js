@@ -9,7 +9,8 @@
     parseFloorDb, parseIntervalSec, canvasPixelSize, meterScaleLabels,
     GRAPH_WINDOW_SEC, GRAPH_TOP_DB, graphArea, timeToX, dbToY,
     timeTickStepSec, timeTicks, dbTickStep, dbTicks, pruneSeries, seriesPointOf,
-    createStats, addStatsRecord, formatStats, statsWarnings, noticeSummary,
+    GRAPH_LINE_STYLES, graphLinePoints,
+    createStats, addStatsRecord, formatStats, formatUltraMax, statsWarnings, noticeSummary,
     statsIntegrity,
     emptyStatsText, intervalRunsLabel,
     ENGINE_WORKLET, ENGINE_FALLBACK, framesForInterval,
@@ -21,6 +22,7 @@
     readTrackState, isTrackLost, markDeviceLoss,
     buildIntervalRecord, buildFallbackRecord,
     bandPlan, bandsEnabledFromQuery,
+    upperLimitText, ultraBandState, ultraSwatchShown, ultraLegendText, graphAriaLabel,
     buildCsv, csvFileName,
     csvTrailerLines, createHashChain, HASH_ALGO_LABEL
   } = MicGainLogic; // logic.js（classic script のグローバル束縛）
@@ -45,6 +47,7 @@
   const minEl = document.getElementById('minDb');
   const rangeEl = document.getElementById('rangeDb');
   const peakEl = document.getElementById('peakDb');
+  const ultraMaxEl = document.getElementById('ultraMaxDb');
   const countEl = document.getElementById('count');
   const uptimeEl = document.getElementById('uptime');
 
@@ -58,6 +61,14 @@
 
   const canvas = document.getElementById('levelCanvas');
   const ctx = canvas.getContext('2d');
+  // グラフの凡例と上限の表示（第2弾b3）。凡例はキャンバスの外のHTMLに置く
+  const legendUltraEl = document.getElementById('legendUltra');
+  const legendUltraTextEl = document.getElementById('legendUltraText');
+  const upperLimitEl = document.getElementById('upperLimit');
+
+  // 帯域を計算するか（?bands=offならfalse）。ページを開いたときのURLで決まり、開いているあいだ変わらない。
+  // 凡例は記録を始める前から出すので、セッションのメタ（bandsEnabled）を待たずにここで読む
+  const bandsOnPage = bandsEnabledFromQuery(window.location.search);
 
   // 状態
   let audioCtx = null;
@@ -233,7 +244,9 @@
       bg: pick('--card', '#141820'),
       grid: pick('--grid', 'rgba(128,128,128,.28)'),
       axis: pick('--muted', '#8b95a7'),
-      plot: pick('--plot', '#4da3ff')
+      plot: pick('--plot', '#4da3ff'),
+      // 超音波帯の破線（第2弾b3）。本体の線と色でも形でも見分けられるようにする
+      plotUltra: pick('--plot-ultra', '#f0883e')
     };
   }
 
@@ -303,24 +316,18 @@
       ctx.fillText(unit, 1, area.y - 1);
     }
 
-    // 折れ線。x は実時刻、y は dB 値（正規化して持たない）
+    // 折れ線。xは実時刻、yはdB値（正規化して持たない）。
+    // 本体の音量（実線）に、超音波帯の値（破線）を重ねる（第2弾b3）。点の組み立て（どこで線を切るか）は
+    // logic.jsのgraphLinePointsが決める。欠測の行・帯域の値の無い区間は線を切り、デジタル無音は下端に描く
     if (series.length) {
+      const view = { nowMs, windowMs, floorDb, topDb: GRAPH_TOP_DB, area };
       ctx.save();
       ctx.beginPath();
       ctx.rect(area.x, area.y, area.w, area.h);
       ctx.clip();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = col.plot;
-      ctx.beginPath();
-      for (let i = 0; i < series.length; i++) {
-        const p = series[i];
-        const x = timeToX(p.tMs, nowMs, windowMs, area);
-        const y = dbToY(p.db, floorDb, GRAPH_TOP_DB, area);
-        // gap が立っている点は前とつなげない。測っていない時間を線で埋めないため
-        if (i === 0 || p.gap) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
+      strokeSeries(graphLinePoints(series, 'db', view), col.plot, GRAPH_LINE_STYLES.level);
+      // 破線を上に描く（超音波帯だけに音があると、2本の線がほぼ重なるため）
+      strokeSeries(graphLinePoints(series, 'ultraDb', view), col.plotUltra, GRAPH_LINE_STYLES.ultra);
       ctx.restore();
     }
 
@@ -330,6 +337,30 @@
     ctx.strokeRect(area.x + 0.5, area.y + 0.5, area.w - 1, area.h - 1);
   }
 
+  // 1本の折れ線を描く。pointsはlogic.jsのgraphLinePointsの戻り値
+  function strokeSeries(points, color, style) {
+    if (!points.length) return;
+    ctx.lineWidth = style.width;
+    ctx.setLineDash(style.dash);
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    for (const p of points) {
+      // gapが立っている点は前とつなげない。測っていない時間・欠測の行・値の無い区間を線で埋めないため
+      if (p.gap) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // 前後どちらともつながらない点は線にならないので、小さな丸で描く
+    ctx.fillStyle = color;
+    for (const p of points) {
+      if (!p.alone) continue;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, style.width, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
   function renderStats(text) {
     avgEl.textContent = text.avg;
     maxEl.textContent = text.max;
@@ -337,6 +368,24 @@
     rangeEl.textContent = text.range;
     peakEl.textContent = text.peak;
     countEl.textContent = text.count;
+  }
+
+  // 統計の「超音波帯の最大」（第2弾b3）。簡易モード・?bands=offでは値のある行が無いので「--.- dBFS」のまま
+  function renderUltraStat() {
+    if (ultraMaxEl) ultraMaxEl.textContent = formatUltraMax(stats);
+  }
+
+  // 凡例・上限の表示・キャンバスの説明（第2弾b3）。判定と文言はlogic.jsで組み立てる。
+  // 線を描くかどうかは、ページのURL（?bands=off）だけでなく、セッションの計測エンジンとサンプルレートでも決まる
+  // （ultraBandState。簡易モード・超音波帯にビンが無いときも、描かない線の見本を出さない）。
+  // ⚠ 読み上げ領域（aria-live）にはしない。注意書きの要約は#recordNoticeLiveだけで流す
+  function renderBandInfo() {
+    const state = ultraBandState(sessionMeta, bandsOnPage);
+    if (legendUltraEl) legendUltraEl.classList.toggle('stopped', !ultraSwatchShown(state));
+    if (legendUltraTextEl) legendUltraTextEl.textContent = ultraLegendText(state);
+    // 上限は記録を始めてから分かる（リセットで測定条件を捨てたら消す）
+    if (upperLimitEl) upperLimitEl.textContent = upperLimitText(sessionMeta);
+    canvas.setAttribute('aria-label', graphAriaLabel(state));
   }
 
   // 記録に穴があるかないかを、必ず1行で言い切る。
@@ -357,6 +406,7 @@
     addStatsRecord(stats, rec);
     // 件数は、取り込めなかった行があっても logs に合わせる
     renderStats(formatStats(stats, logs.length));
+    renderUltraStat();
     // 穴の有無は行が増えるたびに出し直す（0区間→1区間で文言が変わる）
     renderIntegrity();
     // クリップ・欠測が出たら、その区間で注意書きへ反映する。
@@ -372,6 +422,7 @@
     stats = createStats();
     statsNoticeText = '';
     renderStats(emptyStatsText());
+    renderUltraStat();
     // 穴の有無の表示も消す（統計と同じ母集団から出ているため）
     renderIntegrity();
     // 稼働時間だけ残ると「何をリセットしたのか」が読めない
@@ -729,7 +780,7 @@
 
     // ⚠ キャッシュ用の版番号を index.html とそろえる。付けないと、公開直後に
     //    古いワークレットと新しい logic.js が組み合わさることがある
-    await audioCtx.audioWorklet.addModule('./worklet/meter-processor.js?v=3.6');
+    await audioCtx.audioWorklet.addModule('./worklet/meter-processor.js?v=3.7');
     workletNode = new AudioWorkletNode(audioCtx, 'meter-processor', {
       numberOfInputs: 1,
       numberOfOutputs: 1,
@@ -742,7 +793,8 @@
         // 帯域の集計（第2弾b1）。FFT の長さとビンの割り当ては logic.js の bandPlan が決める。
         // ワークレットは logic.js を読めないので、同じ値を向こうに書かずにここで渡す。
         // ?bands=off なら帯域を計算しない（実機で帯域あり・なしの valid_ratio を比べるため）。
-        // CSV では帯域の3列が空欄になり、ヘッダーが `# bands=off` になる（第2弾b2）。画面への反映は b3
+        // CSVでは帯域の3列が空欄になり、ヘッダーが`# bands=off`になる（第2弾b2）。
+        // 画面では凡例と注意書きに「止めています」と出す（第2弾b3）
         bands: bandsEnabledFromQuery(window.location.search),
         bandPlan: bandPlan(audioCtx.sampleRate)
       }
@@ -888,6 +940,8 @@
       // 測定条件を1セッションぶん記録する（CSV の列は増やさない）。
       // 要求した制約ではなく、track.getSettings() の実値を残すのが要点である
       sessionMeta = captureSessionMeta();
+      // 記録できる上限は、このセッションのサンプルレートで決まる（第2弾b3）
+      renderBandInfo();
 
       // 時刻のアンカーと、その監視
       clockAnchor = createClockAnchor(audioCtx.currentTime, Date.now());
@@ -1183,6 +1237,8 @@
     startedAt = 0;
     closeNotice();
     renderRecordNotice();
+    // 上限の表示も、捨てた測定条件から出ているので消す
+    renderBandInfo();
     updateButtonStates();
     setStatus('統計・ログ・グラフをリセットしました', 'ok');
   }
@@ -1400,6 +1456,7 @@
 
   // 初期
   renderEngineMode();
+  renderBandInfo();
   renderMeterScale();
   applyTheme();
   resizeCanvas();
