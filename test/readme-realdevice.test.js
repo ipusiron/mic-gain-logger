@@ -271,12 +271,12 @@ test('画面の見え方は筆者の記憶として書き、CSVで確かめた�
   const browser = section(readme, '### ブラウザー対応状況');
   assert.ok(!browser.includes('CSV v3・画面の超音波帯の線'), '画面の線をCSVで確かめたと書いている');
   // READMEのブラウザー対応状況は、である調の箇条書き（第2弾c1bの点検で、1段落1,390字を分けた）
-  const seen = browser.split('\n').find(l => l.startsWith('- **画面で見たこと（筆者の記憶による）**：'));
+  const seen = browser.split('\n').find(l => l.startsWith('- 画面で見たこと（筆者の記憶による）：'));
   assert.ok(seen, 'ブラウザー対応状況に「画面で見たこと（筆者の記憶による）」の項目が無い');
   assert.ok(seen.includes('画面の超音波帯の破線は、CSVでは確かめられない'));
   assert.ok(seen.includes('22kHzでは記録した版の表示下限（-90dBFS）の下端に張り付いて見えなかった'));
   // CSVで確かめたことの項目に、画面の見え方を混ぜない
-  const csvLine = browser.split('\n').find(l => l.startsWith('- **実機のCSVで確かめたこと**：'));
+  const csvLine = browser.split('\n').find(l => l.startsWith('- 実機のCSVで確かめたこと：'));
   assert.ok(csvLine, 'ブラウザー対応状況に「実機のCSVで確かめたこと」の項目が無い');
   assert.ok(!/破線|画面で/.test(csvLine), 'CSVで確かめたことの項目に、画面の見え方が入っている');
 });
@@ -292,7 +292,7 @@ const UNVERIFIED = ['Android', '画面ロック中・バックグラウンド', 
 test('実機で確かめていないことを、実機テストの節とブラウザー対応状況の両方に書いている', () => {
   const list = section(realDoc, '## 実機で確かめていないこと');
   const browser = section(readme, '### ブラウザー対応状況');
-  const notYet = browser.split('\n').find(l => l.startsWith('- **確かめていないこと**：'));
+  const notYet = browser.split('\n').find(l => l.startsWith('- 確かめていないこと：'));
   assert.ok(notYet, 'ブラウザー対応状況に「確かめていないこと」の項目が無い');
   for (const s of UNVERIFIED) {
     assert.ok(list.includes(s), `実機テストの節に「${s}」が無い`);

@@ -368,7 +368,7 @@ test('モバイルの検証範囲を、実際より広く書いていない', ()
   );
   // 第2弾c1bの点検で、ブラウザー対応状況をである調の箇条書きにした。確かめていない範囲は「確かめていないこと」の項目に書く
   assert.ok(
-    table.split('\n').some(l => l.startsWith('- **確かめていないこと**：Androidの実機と、実機での画面ロック中・バックグラウンドの挙動。')),
+    table.split('\n').some(l => l.startsWith('- 確かめていないこと：Androidの実機と、実機での画面ロック中・バックグラウンドの挙動。')),
     '実機で確かめていない範囲を書いていない'
   );
 });
@@ -542,7 +542,7 @@ test('ヘルプが「平均（Leq）の重みは区間長」と書いている',
   assert.match(helpItem('平均（Leq）：'), /重みは行数ではなく区間長/);
   // READMEの「✨ 主な機能」の要約と docs/features.md も同じことを書く（第2弾c1bの点検で、READMEの要約を
   // 「dBの算術平均で、重みは行数」に書き換えても落ちないと指摘された）
-  const summary = readme.split('\n').find(l => l.startsWith('- **統計**：'));
+  const summary = readme.split('\n').find(l => l.startsWith('- 統計：'));
   assert.ok(summary, 'READMEの主な機能に「統計」の項目が無い');
   assert.ok(summary.includes('平均はエネルギー平均で、重みは行数ではなく区間長（秒）である'), 'READMEの主な機能の統計の要約が違う');
   assert.ok(!/算術平均で|重みは行数である/.test(summary));

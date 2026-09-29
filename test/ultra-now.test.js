@@ -228,7 +228,7 @@ test('⭐大きな数字の窓（2048サンプル・48kHzで約43ミリ秒）は
   }
   // READMEの「✨ 主な機能」の要約（第2弾c1bの点検で、2048を書き換えても落ちないと指摘された）。
   // 要点なので例（48kHzでのミリ秒・揺れる音）は docs/features.md に任せ、サンプル数と、窓が違うのは高精度モードのCSVだけを見る
-  const summary = readme.split('\n').find(l => l.startsWith('- **リアルタイム表示**：'));
+  const summary = readme.split('\n').find(l => l.startsWith('- リアルタイム表示：'));
   assert.ok(summary, 'READMEの主な機能に「リアルタイム表示」の項目が無い');
   assert.ok(summary.includes(`大きな数字は直近${n}の値で、高精度モードのCSVの\`dbfs\`（区間全体のエネルギー平均）とは窓が違う`),
     `READMEの主な機能の要約が、窓（${n}）と条件（高精度モードのCSV）を書いていない`);

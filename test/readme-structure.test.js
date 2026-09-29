@@ -141,7 +141,7 @@ test('READMEの概要と主な機能が、ツールの立場（相対値・改�
   assert.ok(sentences >= 1 && sentences <= 3, `概要が${sentences}文ある（1〜3文にする）`);
   const features = section(readme, '## ✨ 主な機能').split('\n');
   const item = name => {
-    const l = features.find(x => x.startsWith(`- **${name}**：`));
+    const l = features.find(x => x.startsWith(`- ${name}：`));
     assert.ok(l, `主な機能に「${name}」の項目が無い`);
     return l;
   };
@@ -184,9 +184,9 @@ test('フロントマターの説明とタグが、第2弾の帯域の記録に�
 // ---- 活用例（docs/use-cases.md）----
 
 const USES = section(DOC['docs/use-cases.md'], '## 🧭 活用例（暮らし・教育・仕事・趣味・研究）');
-const items = outsideFences(USES).filter(l => l.startsWith('- **'));
+const items = outsideFences(USES).filter(l => /^- [^：\s][^：]{0,60}：/.test(l));
 const item = label => {
-  const found = items.filter(l => l.startsWith('- **' + label));
+  const found = items.filter(l => l.startsWith('- ' + label));
   assert.equal(found.length, 1, `活用例に「${label}」の項目が1つない`);
   return found[0];
 };
@@ -200,7 +200,7 @@ test('活用例が、教育・仕事・暮らし・趣味・研究・ほかの�
   // 1項目＝「何をして、何が分かるか」。名前だけの行にしない
   for (const l of items) assert.ok(l.length > 60, `説明の短い項目がある: ${l}`);
   // READMEの要点にも、同じ観点の見出しがそろっている
-  const summary = outsideFences(section(readme, '### 🧭 活用例（要点）')).filter(l => l.startsWith('- **'));
+  const summary = outsideFences(section(readme, '### 🧭 活用例（要点）')).filter(l => /^- [^：\s][^：]{0,60}：/.test(l));
   for (const g of ['平時', '暮らし', '教育', '仕事', '趣味', '研究', 'ほかのツールや記事との組み合わせ']) {
     assert.ok(summary.some(l => l.includes(g)), `READMEの活用例の要点に「${g}」が無い`);
   }
@@ -208,7 +208,7 @@ test('活用例が、教育・仕事・暮らし・趣味・研究・ほかの�
 
 // 項目の本文（ラベルのあと、最初の⚠より前）。括弧の中は数えない
 function itemBody(l) {
-  let s = l.slice(l.indexOf('**：') + 2);
+  let s = l.slice(l.indexOf('：') + 1);
   if (s.includes('⚠')) s = s.slice(0, s.indexOf('⚠'));
   for (let prev = null; prev !== s;) { prev = s; s = s.replace(/（[^（）]*）/g, ''); }
   return s;
@@ -271,10 +271,10 @@ test('シナリオ1（探偵の調査）は残し、作者の意図は「悪用�
   const sc = section(DOC['docs/use-cases.md'], '## 📋 具体的なシナリオ例');
   const s1 = sc.slice(sc.indexOf('### シナリオ1'), sc.indexOf('### シナリオ2'));
   assert.ok(s1.includes('探偵'), 'シナリオ1（第1弾からある例）が無い');
-  for (const s of ['**作者の意図**：', '作者は悪用を勧めない', '国・地域の法令や状況によって異なる']) {
+  for (const s of ['作者の意図：', '作者は悪用を勧めない', '国・地域の法令や状況によって異なる']) {
     assert.ok(s1.includes(s), `シナリオ1に「${s}」が無い`);
   }
-  assert.ok(!s1.includes('**前提**：'), 'シナリオ1に、用途を狭める前提の段落が残っている');
+  assert.ok(!s1.includes('前提：'), 'シナリオ1に、用途を狭める前提の段落が残っている');
   assert.ok(USES.includes('作者は悪用を勧めません'));
   assert.ok(!USES.includes('関係者が知っている場所で使うもので'), '活用例を、関係者が知っている場所に限っている');
   assert.ok(!USES.includes('研究室での再現に限る'), 'エアギャップの監査を、研究室での再現に限っている');

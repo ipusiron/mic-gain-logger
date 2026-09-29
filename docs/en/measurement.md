@@ -35,14 +35,14 @@ There is no "smoothing" setting that evens out fluctuations in the sound. The me
 ### What is dBFS?
 dBFS (decibels relative to Full Scale) is a unit of level used in digital audio systems.
 
-- **Reference point**: the maximum level in the digital system is 0 dBFS
-- **Range**: usually expressed as negative values from -∞ dBFS to 0 dBFS
-- **Practical range**: the guide values below are rough impressions from measuring the author's own environment with the built-in microphone of a typical laptop. A different microphone can shift them by 10 dB or more, so they cannot be used as an absolute reference
-  - **-60 dBFS or below**: nearly silent (ambient noise level)
-  - **-40 dBFS**: a quiet environment (a library, a house late at night)
-  - **-20 dBFS**: normal conversation, background music
-  - **-10 dBFS**: fairly loud sound (lively discussion, music)
-  - **0 dBFS**: the digital maximum (just before clipping)
+- Reference point: the maximum level in the digital system is 0 dBFS
+- Range: usually expressed as negative values from -∞ dBFS to 0 dBFS
+- Practical range: the guide values below are rough impressions from measuring the author's own environment with the built-in microphone of a typical laptop. A different microphone can shift them by 10 dB or more, so they cannot be used as an absolute reference
+  - -60 dBFS or below: nearly silent (ambient noise level)
+  - -40 dBFS: a quiet environment (a library, a house late at night)
+  - -20 dBFS: normal conversation, background music
+  - -10 dBFS: fairly loud sound (lively discussion, music)
+  - 0 dBFS: the digital maximum (just before clipping)
 
 ### What dBFS can and cannot compare
 
@@ -52,9 +52,9 @@ Therefore, **measuring the same sound on a different device gives a different dB
 
 What can be said is limited to the following.
 
-- **Relative comparison within the same device and the same session**: if you do not change the microphone and do not touch the OS input volume during recording, you can read "the sound now is 12 dB louder than 3 minutes ago" from the record
-- **Comparison across sessions**: limited to cases where the measurement conditions match. This tool writes to the CSV meta lines the device name, the sample rate and the actual values returned by `getSettings()` (whether AGC, noise suppression and echo cancellation were applied). If these three match, different sessions on the same device can be compared. If even one differs, they cannot. ⚠In a record where `# processing=` has `unknown:` items (Safari on iPhone and others), the actual state of those settings is unknown, so even if the meta line strings are the same, you cannot say that the conditions matched
-- **Absolute loudness**: cannot be given. You cannot say "it was -35 dBFS, so it was a quiet office." If the microphone sensitivity differs by 10 dB, the same office can read -25 dBFS or -45 dBFS
+- Relative comparison within the same device and the same session: if you do not change the microphone and do not touch the OS input volume during recording, you can read "the sound now is 12 dB louder than 3 minutes ago" from the record
+- Comparison across sessions: limited to cases where the measurement conditions match. This tool writes to the CSV meta lines the device name, the sample rate and the actual values returned by `getSettings()` (whether AGC, noise suppression and echo cancellation were applied). If these three match, different sessions on the same device can be compared. If even one differs, they cannot. ⚠In a record where `# processing=` has `unknown:` items (Safari on iPhone and others), the actual state of those settings is unknown, so even if the meta line strings are the same, you cannot say that the conditions matched
+- Absolute loudness: cannot be given. You cannot say "it was -35 dBFS, so it was a quiet office." If the microphone sensitivity differs by 10 dB, the same office can read -25 dBFS or -45 dBFS
 
 Note that the accuracy of the dBFS calculation itself is ±0.0002 dB against a reference tone. This number shows that "the calculation of dBFS from digital samples is correct," not that "the loudness of sound is measured correctly." These are two different things.
 
@@ -92,15 +92,15 @@ It is intended for keeping timestamped records of when sound rises and quiets do
 This tool's output is a record of whether there was activity; it is neither a sound pressure measurement nor proof usable in formal procedures.
 
 ## 🌐 Tech stack
-- **HTML / CSS / JavaScript**: front-end foundation (vanilla JS, no build step)
-- **Web Audio API / AudioWorklet**: audio input and per-interval aggregation on the audio thread
-- **Canvas API**: live graph drawing
-- **Web Crypto API (`crypto.subtle`)**: SHA-256 for the hash chain
-- **Blob API**: CSV output and file download
-- **CSS Grid & Flexbox**: responsive layout
-- **LocalStorage**: saving the theme and the display language (where it is unavailable, the tool still works; it just does not save)
-- **Content Security Policy**: `connect-src 'none'` blocks sending data outside
-- **node:test**: dependency-free tests (`npm test`)
+- HTML / CSS / JavaScript: front-end foundation (vanilla JS, no build step)
+- Web Audio API / AudioWorklet: audio input and per-interval aggregation on the audio thread
+- Canvas API: live graph drawing
+- Web Crypto API (`crypto.subtle`): SHA-256 for the hash chain
+- Blob API: CSV output and file download
+- CSS Grid & Flexbox: responsive layout
+- LocalStorage: saving the theme and the display language (where it is unavailable, the tool still works; it just does not save)
+- Content Security Policy: `connect-src 'none'` blocks sending data outside
+- node:test: dependency-free tests (`npm test`)
 
 ### 📖 Reading the implementation details
 
