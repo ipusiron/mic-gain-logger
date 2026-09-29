@@ -1,6 +1,6 @@
 # 💡 将来的な追加アイデア
 
-[READMEへ戻る](../README.md)
+[READMEへ戻る](../README.md) · [English](en/roadmap.md)
 
 第2弾で入れたもの、第3弾の案、その先の案、将来案に入れないものをまとめます。
 

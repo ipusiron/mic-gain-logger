@@ -1,6 +1,6 @@
 # 🔬 計測の作りと技術的な基礎知識
 
-[READMEへ戻る](../README.md)
+[READMEへ戻る](../README.md) · [English](en/measurement.md)
 
 計測の作り（AudioWorkletでの区間の集計）と実測値、dBFSの基礎知識、画面の数字とCSVの値の違い、セキュリティ的背景、技術スタックをまとめます。
 

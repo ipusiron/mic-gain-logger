@@ -39,6 +39,8 @@ hub: true
 ---
 -->
 
+[English](README.en.md) · 日本語
+
 # Mic Gain Logger - マイク音量ロガー
 
 ![GitHub Repo stars](https://img.shields.io/github/stars/ipusiron/mic-gain-logger?style=social)
@@ -64,16 +66,16 @@ hub: true
 ## 📸 スクリーンショット
 
 <a href="assets/screenshot.png">
-  <img src="assets/screenshot.png" alt="記録中の画面。計測エンジンの表示と実時間の横軸のグラフ" width="760">
+  <img src="assets/screenshot.png" alt="記録中の画面。超音波帯の現在値と、グラフの超音波帯の破線" width="760">
 </a>
 
-<sub>記録中の画面。計測エンジン・実時間の横軸・統計が1枚に入る</sub>
+<sub>記録中の画面（デスクトップ）。大きな数字の下に超音波帯の現在値、グラフに超音波帯の破線が出る</sub>
 
 <a href="assets/screenshot2.png">
   <img src="assets/screenshot2.png" alt="スマートフォン幅で設定を開いた画面" width="300">
 </a>
 
-<sub>スマートフォン幅（390px）で設定を開いたところ</sub>
+<sub>スマートフォン幅（430px）で設定を開いたところ。書き出しとリセットは「その他」にまとまる</sub>
 
 <a href="assets/screenshot3.png">
   <img src="assets/screenshot3.png" alt="ダークテーマで記録中の画面" width="760">
@@ -81,7 +83,7 @@ hub: true
 
 <sub>ダークテーマでの表示</sub>
 
-<sub>いずれも疑似マイクにテスト信号を流して撮ったものです。実際のマイクでは値が変わります。スマートフォン幅の画面はブラウザーの画面幅を390pxにしたもので、実機ではありません。</sub>
+<sub>いずれも、1kHz・440Hz・19kHzのテスト信号をマイクの代わりに流して撮ったものです。実際のマイクでは値が変わります。スマートフォン幅の画面はブラウザーの画面幅を430pxにしたもので、実機ではありません。英語の画面は`assets/en/`にあります。</sub>
 
 ---
 
@@ -243,6 +245,14 @@ mic-gain-logger/
 ├── worklet/                       # オーディオスレッドで動くコード
 │   └── meter-processor.js         # AudioWorkletProcessor（区間ごとの集計）
 ├── docs/                          # 詳しい資料（日本語）。READMEの「📚 資料（docs/）」から案内する
+│   ├── en/                        # 英語版の資料（docs/と同じファイル名）。README.en.mdの「📚 Documents (docs/en/)」から案内する
+│   │   ├── features.md            # 主な機能の詳しい説明（英語）
+│   │   ├── csv.md                 # CSVの形式・ハッシュチェーン・検証器・Excelの手順・Pythonのレシピ（英語）
+│   │   ├── real-device-test.md    # iPhone 18 Pro Maxの実機テストの条件・結果・やり方（英語）
+│   │   ├── measurement.md         # 計測の作りと実測値・dBFSの基礎知識・セキュリティ的背景・技術スタック（英語）
+│   │   ├── use-cases.md           # 想定ターゲット層・想定する使い方・規制値と比べられない理由・活用例・シナリオ（英語）
+│   │   ├── troubleshooting.md     # よくある問題と解決方法（英語）
+│   │   └── roadmap.md             # 第2弾で入れたもの・第3弾の案・その先の案・将来案に入れないもの（英語）
 │   ├── features.md                # 主な機能の詳しい説明
 │   ├── csv.md                     # CSVの形式・ハッシュチェーン・検証器・Excelの手順・Pythonのレシピ
 │   ├── real-device-test.md        # iPhone 18 Pro Maxの実機テストの条件・結果・やり方
@@ -290,6 +300,7 @@ mic-gain-logger/
 │   ├── readme-recipes.test.js     # CSVのレシピの出力を、見本CSVからJSで計算し直して比べる
 │   ├── readme-structure.test.js   # シリーズ標準の見出しの順・活用例の必須項目・画面の数字とCSVの違い
 │   ├── readme-docs.test.js        # READMEとdocs/の分け方（行数・案内の表・相互参照・強調の数・いまの版のことだけを書く）
+│   ├── readme-en.test.js          # 英語版のREADMEとdocs/en/が日本語版とそろっているか（見出し・表の数値・コードの処理・レシピの出力・用語）
 │   ├── i18n.test.js               # 画面の日英対応（辞書のキーの一致・英語の表示に日本語が残らない・言語の決め方）
 │   ├── dbfs-fixture.test.js       # 既知振幅の正弦波に対するdBFSの計算精度
 │   ├── docs.test.js               # README・docs/と実装・実ファイルが合っているかの検査（構成図を含む）
@@ -300,7 +311,11 @@ mic-gain-logger/
 │   ├── favicon.svg                # ファビコン（レベルメーターの棒。外部への取得は発生しない）
 │   ├── screenshot.png             # 記録中の画面（ライトテーマ）
 │   ├── screenshot2.png            # スマートフォン幅で設定を開いた画面
-│   └── screenshot3.png            # 記録中の画面（ダークテーマ）
+│   ├── screenshot3.png            # 記録中の画面（ダークテーマ）
+│   └── en/                        # 英語の画面（README.en.md用）
+│       ├── screenshot.png         # 記録中の画面（ライトテーマ、英語）
+│       ├── screenshot2.png        # スマートフォン幅で設定を開いた画面（英語）
+│       └── screenshot3.png        # 記録中の画面（ダークテーマ、英語）
 ├── .github/                       # GitHubの設定
 │   └── workflows/                 # GitHub Actionsのワークフロー
 │       └── test.yml               # CI（pushとpull requestでnpm testを実行する）
@@ -309,6 +324,7 @@ mic-gain-logger/
 ├── .gitignore                     # Gitの除外設定
 ├── CLAUDE.md                      # 開発ガイド（ファイルの役割分担・計測の要点・CSVの約束・READMEとdocs/の構成）
 ├── README.md                      # プロジェクト説明書の入口（本ファイル）
+├── README.en.md                   # 英語版のプロジェクト説明書の入口
 └── LICENSE                        # MITライセンス
 ```
 

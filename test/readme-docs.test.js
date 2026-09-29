@@ -12,7 +12,11 @@
 //  - 強調（**…**）は、H1〜H3の見出しで区切った節ごとに2か所以下（箇条書きの先頭の項目名と、表の見出しの行は数えない）
 //  - 過去の版との違い（「改修前は」「以前は」「初期の実装では」など）を書かない（本人の指示 2026-09-29「過去の版をわざわざ
 //    見る人はいないので、訂正の差異の説明は不要。今の版で正しいことを書けば良いだけ」）。経緯はCLAUDE.mdに置く
-// 英語版（README.en.mdとdocs/en/）は次の段階で足す。そのときは、ここの約束を英語版にも広げる。
+// 第2弾c3bで英語版（README.en.mdとdocs/en/、同じファイル名）を足したので、分け方の約束を英語版にも広げた。
+//  - README.en.mdも入口として450行以下に収める
+//  - docs/en/のファイルはdocs/と同じ名前。1行目がH1で、英語のREADMEへ戻るリンクを置く。docs/の各ファイルは英語版へのリンクを置く
+//  - docs/en/の全ファイルを、README.en.mdの「📚 Documents (docs/en/)」の表に1行ずつ載せ、両方のREADMEのディレクトリー構造にも載せる
+// 英語版の中身（見出しの対応・表の数値・日本語の文字・リンク・相互参照・コード・強調・過去の版・用語）は test/readme-en.test.js が見る。
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -26,10 +30,12 @@ const README_MAX_LINES = 450;
 const EMPHASIS_MAX = 2;
 
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+const readmeEn = fs.readFileSync(path.join(root, 'README.en.md'), 'utf8');
 const docNames = fs.readdirSync(DOCS, { withFileTypes: true })
   .filter(e => e.isFile())
   .map(e => e.name)
   .sort();
+const DOCS_EN = path.join(DOCS, 'en');
 // 読むファイル（リポジトリーからの相対パス → 中身）
 const FILES = { 'README.md': readme };
 for (const n of docNames) FILES['docs/' + n] = fs.readFileSync(path.join(DOCS, n), 'utf8');
@@ -84,9 +90,11 @@ const fileDir = rel => path.dirname(path.join(root, rel));
 
 // ---- 入口の長さ ----
 
-test(`README.mdは入口として${README_MAX_LINES}行以下に収まっている`, () => {
-  const n = readme.split('\n').length;
-  assert.ok(n <= README_MAX_LINES, `README.mdが${n}行ある（${README_MAX_LINES}行以下にする。長くなった説明はdocs/へ）`);
+test(`README.mdとREADME.en.mdは入口として${README_MAX_LINES}行以下に収まっている`, () => {
+  for (const [name, text] of [['README.md', readme], ['README.en.md', readmeEn]]) {
+    const n = text.split('\n').length;
+    assert.ok(n <= README_MAX_LINES, `${name}が${n}行ある（${README_MAX_LINES}行以下にする。長くなった説明はdocs/・docs/en/へ）`);
+  }
 });
 
 // ---- docs/ の形 ----
@@ -101,35 +109,70 @@ test('docs/のファイル名は英語の小文字とハイフンで、1行目�
     // H1は1つだけ（見出しの階層を README と同じ考え方にそろえる）
     assert.equal(outsideFences(FILES['docs/' + n]).filter(l => /^# /.test(l)).length, 1, `docs/${n}にH1が2つ以上ある`);
   }
-  // docs/ の中はMarkdownだけ（英語版の docs/en/ は次の段階で足す）
+  // docs/ の中はMarkdownと、英語版の docs/en/ だけ
   for (const e of fs.readdirSync(DOCS, { withFileTypes: true })) {
     if (e.isDirectory()) assert.equal(e.name, 'en', `docs/に想定していないディレクトリーがある: ${e.name}`);
     else assert.ok(e.name.endsWith('.md'), `docs/にMarkdown以外のファイルがある: ${e.name}`);
   }
 });
 
-test('docs/の全ファイルが、READMEの「📚 資料（docs/）」の表とディレクトリー構造に1行ずつ載っている', () => {
-  const lines = readme.split('\n');
-  const head = lines.indexOf('## 📚 資料（docs/）');
-  assert.notEqual(head, -1, 'READMEに「## 📚 資料（docs/）」がない');
+test('docs/en/にはdocs/と同じ名前の英語版だけがあり、1行目がH1、その下に英語のREADMEへ戻るリンクがある', () => {
+  const entries = fs.readdirSync(DOCS_EN, { withFileTypes: true });
+  for (const e of entries) assert.ok(e.isFile() && e.name.endsWith('.md'), `docs/en/にMarkdown以外がある: ${e.name}`);
+  assert.deepEqual(entries.map(e => e.name).sort(), docNames, 'docs/en/のファイル名がdocs/と食い違う');
+  for (const n of docNames) {
+    const en = fs.readFileSync(path.join(DOCS_EN, n), 'utf8');
+    const lines = en.split('\n');
+    assert.match(lines[0], /^# \S/, `docs/en/${n}の1行目がH1でない`);
+    assert.ok(lines.slice(1, 5).some(l => l.includes('](../../README.en.md)')), `docs/en/${n}の先頭に英語のREADMEへ戻るリンクがない`);
+    assert.equal(outsideFences(en).filter(l => /^# /.test(l)).length, 1, `docs/en/${n}にH1が2つ以上ある`);
+    // 日本語版の先頭には、同じ名前の英語版へのリンクがある
+    assert.ok(FILES['docs/' + n].split('\n').slice(1, 5).some(l => l.includes(`](en/${n})`)), `docs/${n}の先頭に英語版へのリンクがない`);
+  }
+});
+
+// READMEの資料の案内の表（「| [docs/x.md](docs/x.md) | 説明 |」の行）に載っているファイル名
+function docTable(text, heading, dir) {
+  const lines = text.split('\n');
+  const head = lines.indexOf(heading);
+  assert.notEqual(head, -1, `「${heading}」がない`);
   const rows = [];
   for (const l of lines.slice(head + 1)) {
     if (/^## /.test(l)) break;
     if (l.startsWith('| [')) rows.push(l);
   }
-  const listed = rows.map(r => {
-    const m = r.match(/^\| \[docs\/([^\]]+)\]\(docs\/([^)]+)\) \| (.+) \|$/);
+  const d = dir.replace(/\//g, '\\/');
+  return rows.map(r => {
+    const m = r.match(new RegExp(`^\\| \\[${d}([^\\]]+)\\]\\(${d}([^)]+)\\) \\| (.+) \\|$`));
     assert.ok(m, `案内の表の行が読めない: ${r}`);
     assert.equal(m[1], m[2], `案内の表のリンクの文字と行き先が違う: ${r}`);
     assert.ok(m[3].trim().length >= 5, `案内の表の説明が短い: ${r}`);
     return m[1];
   });
-  assert.deepEqual([...listed].sort(), docNames, '案内の表とdocs/の実ファイルが食い違う');
+}
+
+test('docs/の全ファイルが、READMEの「📚 資料（docs/）」の表とディレクトリー構造に1行ずつ載っている', () => {
+  assert.deepEqual([...docTable(readme, '## 📚 資料（docs/）', 'docs/')].sort(), docNames, '案内の表とdocs/の実ファイルが食い違う');
   // ディレクトリー構造（test/docs.test.js が全行の説明と実ファイルとの一致を見ている）にも載っている
   const tree = readme.slice(readme.indexOf('## 📁 ディレクトリー構造'));
   assert.match(tree, /\n├── docs\/\s+# \S/, 'ディレクトリー構造にdocs/の行がない');
   for (const n of docNames) {
     assert.ok(new RegExp(`\\n│   [├└]── ${n.replace('.', '\\.')}\\s+# \\S`).test(tree), `ディレクトリー構造にdocs/${n}の行がない`);
+  }
+});
+
+test('docs/en/の全ファイルが、README.en.mdの「📚 Documents (docs/en/)」の表と、両方のREADMEのディレクトリー構造に1行ずつ載っている', () => {
+  assert.deepEqual([...docTable(readmeEn, '## 📚 Documents (docs/en/)', 'docs/en/')].sort(), docNames,
+    'README.en.mdの案内の表とdocs/en/の実ファイルが食い違う');
+  // 日本語版の表には日本語の資料だけを載せる（英語版は README.en.md から案内する）
+  assert.ok(!docTable(readme, '## 📚 資料（docs/）', 'docs/').some(n => n.startsWith('en/')), 'README.mdの表に英語版が載っている');
+  for (const [name, text, head] of [['README.md', readme, '## 📁 ディレクトリー構造'], ['README.en.md', readmeEn, '## 📁 Directory structure']]) {
+    const tree = text.slice(text.indexOf(head));
+    assert.match(tree, /\n├── README\.en\.md\s+# \S/, `${name}のディレクトリー構造にREADME.en.mdの行がない`);
+    assert.match(tree, /\n│   ├── en\/\s+# \S/, `${name}のディレクトリー構造にdocs/en/の行がない`);
+    for (const n of docNames) {
+      assert.ok(new RegExp(`\\n│   │   [├└]── ${n.replace('.', '\\.')}\\s+# \\S`).test(tree), `${name}のディレクトリー構造にdocs/en/${n}の行がない`);
+    }
   }
 });
 

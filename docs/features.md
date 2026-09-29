@@ -1,6 +1,6 @@
 # ✨ 主な機能（詳しい説明）
 
-[READMEへ戻る](../README.md)
+[READMEへ戻る](../README.md) · [English](en/features.md)
 
 [README](../README.md)の「✨ 主な機能」の要点を、画面の見え方と記録の中身まで含めて詳しく説明します。CSVの列と書式は[CSVの資料](csv.md)、計測の作りは[計測の資料](measurement.md)にあります。
 

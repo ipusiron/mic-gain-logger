@@ -22,6 +22,7 @@ index.html ──> messages.js                   画面の文言の辞書（日�
            ──> worklet/meter-processor.js    オーディオスレッドでの区間集計
 test/                                        node:test（依存パッケージなし）
 README.md ──> docs/*.md                      ユーザー向けの説明。READMEは入口、詳しい資料はdocs/（下の「Documentation」）
+README.en.md ──> docs/en/*.md                英語版。日本語版と同じ節・同じファイル名で全文を訳す（下の「英語版」）
 ```
 
 ### どこに何を書くか（この約束を崩さない）
@@ -136,12 +137,12 @@ README.md ──> docs/*.md                      ユーザー向けの説明。R
 - 英語の`Start recording`は`Stop`より長いので、481px以上では`html[lang="en"] .run-btn{min-width:9em}`で幅をそろえる（入れ替えたときに右のボタンが横へずれない。Chromiumで`Start recording`は約117px）。480px以下は`.run-btn`が残りの幅を取るので要らない
 - ⚠英語の表示では、幅481〜489pxで`.actions`の行が約5px足りず、テーマの切り替えが次の行の頭へ落ちた（最初の実装。ブラウザーで測って見つけた）。幅481〜560pxのときだけ、英語のボタンの左右の余白を14pxから10pxに詰める（`@media (min-width: 481px) and (max-width: 560px)`）。日本語は481pxで約17px余るので変えていない
 - `messages.js`を足したので、キャッシュ用の版番号は`index.html`の4か所（`style.css`・`messages.js`・`logic.js`・`script.js`）と`script.js`の`addModule`でそろえる（`test/cleanup.test.js`）。第2弾c3aで3.9にした
-- ⚠英語版のREADME（`README.en.md`）と英語の画面のスクリーンショットは、第2弾c3b・c2で作る。READMEの`[English](README.en.md)`のリンクもそのときに足す。docs/の英語版は`docs/en/`に同じファイル名で作る
+- 英語版のREADME（`README.en.md`）と`docs/en/`は第2弾c3bで作った（下の「Documentation」の「英語版」）。⚠英語の画面のスクリーンショットはまだ無い。次の段階で`assets/en/`に撮り、README.en.mdの参照を差し替える（いまは日本語の画面の画像を指し、そのことをREADME.en.mdに書いてある）
 - ⚠スクリプトが動く前の一瞬は、HTMLの日本語が出る（英語を選んでいても）。`<head>`で先に`<html lang>`と文言を変える仕組みはファイルが増えるので入れていない
 
 ### 用語の一覧
 
-英語の画面とREADME.en.md・docs/en/（第2弾c3b）で同じ語を使う。`test/i18n.test.js`が、この表の英語が英語の辞書に出てくることと、ボタンの名前が表の語そのものであることに加え、**キーごとの対応**を見ている。表の日本語を含むキーは、英語の値（タグを除き、小文字にし、ハイフンを空白にそろえたもの）に表の英語の核（括弧の注記を除いたもの）を含むこと。表のもっと長い語（超音波帯の最大）の一部として出ている日本語は、その長い語の行で見る。当てはまらないキーは、テストの`TERM_EXCEPTIONS`に理由つきで書く（いまは「記録開始からの経過時間」の2キーだけ。時点を指す名詞で、ボタンの名前ではないため）。dBFS・Leq・CSV・AudioWorkletは訳さない。
+英語の画面とREADME.en.md・docs/en/（第2弾c3b）で同じ語を使う。`test/i18n.test.js`が、この表の英語が英語の辞書に出てくることと、ボタンの名前が表の語そのものであることに加え、**キーごとの対応**を見ている。表の日本語を含むキーは、英語の値（タグを除き、小文字にし、ハイフンを空白にそろえたもの）に表の英語の核（括弧の注記を除いたもの）を含むこと。表のもっと長い語（超音波帯の最大）の一部として出ている日本語は、その長い語の行で見る。当てはまらないキーは、テストの`TERM_EXCEPTIONS`に理由つきで書く（いまは「記録開始からの経過時間」の2キーだけ。時点を指す名詞で、ボタンの名前ではないため）。dBFS・Leq・CSV・AudioWorkletは訳さない。README.en.md・docs/en/では、日本語版の節に表の日本語があれば、英語版の同じ節に表の英語（単数・複数の違いは許す）があることを`test/readme-en.test.js`が見る。ボタンは日本語版で「」に入れてボタンを指している箇所だけを見て、英語版には画面と同じ文字（`"Start recording"`など、大文字・小文字も同じ）で書く。
 
 | 日本語 | English | 備考 |
 |---|---|---|
@@ -208,7 +209,7 @@ CIは`.github/workflows/test.yml`（pushとpull requestで`npm test`）。
 
 - **ユーザー向けの説明は、README.md（入口）とdocs/（詳しい資料）の2段である**（第2弾c1b、本人の決定）。TECHNICAL.mdは廃止した。実在しない関数（`updateDisplay`・`shouldLog`・`createLogEntry`）の擬似コードが載っており、第1弾の改修で記述のほぼ全部が実装と食い違ったためである
 - 実装の理由はコードのコメントとテストに書く。README・docs/に書くのは「何ができて、何ができないか」に限る
-- READMEのディレクトリー構造（`## 📁 ディレクトリー構造`）は`test/docs.test.js`が実ファイルと比べている。ファイルを足したらREADMEも直す（直さないとテストが落ちる）。docs/のファイルもこの構造と`## 📚 資料（docs/）`の表に1行ずつ載せる
+- READMEのディレクトリー構造（`## 📁 ディレクトリー構造`）は`test/docs.test.js`が実ファイルと比べている。ファイルを足したらREADME.mdとREADME.en.mdの両方を直す（直さないとテストが落ちる。README.en.mdの構成図がREADME.mdと同じ項目を同じ順に並べ、`#`の桁がそろっていることは`test/readme-en.test.js`が見る）。docs/のファイルもこの構造と`## 📚 資料（docs/）`の表に1行ずつ載せる
 
 ### READMEとdocs/の構成（第2弾c1b）
 
@@ -226,16 +227,29 @@ CIは`.github/workflows/test.yml`（pushとpull requestで`npm test`）。
   | `docs/troubleshooting.md` | よくある問題と解決方法（1つの問題を1つのH2にする） |
   | `docs/roadmap.md` | 第2弾で入れたもの、第3弾の案、その先の案、将来案に入れないもの |
 
-- 英語版は次の段階で`README.en.md`と`docs/en/`（同じファイル名）に作る。見出しの数・順・階層を日本語版とそろえる
+- 英語版は`README.en.md`と`docs/en/`（同じファイル名）に置く（下の「英語版」）
 - ⚠**相互参照は「[CSVの資料](docs/csv.md)の「見出しの名前」」の形で書く。**日本語の見出しのアンカーは壊れやすいので、ファイルへのリンクと見出し（または箇条書きの項目名）の名前で示す。同じファイルの中は「前述の「…」」「後述の「…」」でよいが、ほかのファイルを前述・後述で指さない。docs/からREADMEへは`../README.md`、docs/どうしは`csv.md`のように書く。行き先のファイルと見出しが実在することは`test/readme-docs.test.js`が見る。見出しの名前を変えたら、参照と、見出しで節を切り出しているテスト（`docs.test.js`・`readme-*.test.js`・`chain-claim.test.js`・`smoothing.test.js`ほか）も直す
 - ⭐**README・docs/には、いまの版で正しいことだけを書く**（本人の指示 2026-09-29「過去の版をわざわざ見る人はいないので、訂正の差異の説明は不要。今の版で正しいことを書けば良いだけ」）。「以前は」「改修前は」「初期の実装では」「旧版」「第1弾で直した」のような過去の版との比較・訂正の経緯は書かない（`test/readme-docs.test.js`が言い回しを見ている）。いまの作りの理由（なぜAudioWorkletなのか、なぜ区間ごとに1行なのか）は、過去の版に触れずに書く。どの版で確かめたかという実機テストの条件（`c7b6bad`・`090648f`）と、将来案の「第2弾で入れたもの」（機能の一覧）は残す。経緯は下の「README・docs/から外した経緯」、PRの本文、コミットに残す
 - ⭐**強調（`**…**`）は一節に一、二か所まで**（本人の指示 2026-09-29。分ける前のREADMEには強調が300か所を超えてあった）。H1〜H3の見出しで区切った節ごとに数え、箇条書きの先頭の項目名（`- **名前**：`、`- **名前**`＋改行）と表の見出しの行は数えない。残すのは誤読を防ぐ否定と、節の結論の1文だけにする。項目の頭の太字の文は、「- **名前**：本文」の形に直す。`test/readme-docs.test.js`が数える
+
+### 英語版（README.en.md・docs/en/。第2弾c3b）
+
+- **置き場所**：`README.en.md`（リポジトリーの直下）と`docs/en/<日本語版と同じファイル名>.md`。README.en.mdの1行目は`English · [日本語](README.md)`、README.mdはYAMLメタデータの直後・H1の直前に`[English](README.en.md) · 日本語`（手本のday025と同じ位置）。YAMLメタデータはREADME.mdだけに置く（hackinglab.onlineが読むのはREADME.md）。docs/en/の1行目はH1、3行目は`[Back to README](../../README.en.md) · [日本語](../<同じ名前>.md)`、docs/の3行目は`[READMEへ戻る](../README.md) · [English](en/<同じ名前>.md)`
+- README.en.mdのH2はシリーズ標準の英語版で固定する：`🌐 Demo` → `📸 Screenshots` → `✨ Features` → `📖 Usage` → `🎯 Use cases` → `⚖️ Usage notes (not legal advice)` → `📚 Documents (docs/en/)` → `🧪 Tests` → `📁 Directory structure` → `💻 Requirements` → `📄 License` → `🛠️ About this tool`。Day行は`**Day041 - 100 Security Tools with Generative AI**`
+- ⚠⚠**要約にしない。日英で見出しをそろえる。**見出しの数・順・階層（H1〜H4）と頭の絵文字、節ごとの本文の行数（空行を除く）、表の行・列と数値、ファイルをまたぐ参照の数を日本語版と同じにする（`test/readme-en.test.js`）。日本語版の節を直したら、英語版の同じ節も直す（片方だけ直すとテストが落ちる）。表の数値は、英語で語にした0〜2（first・once・zero など）だけ数字でなくてよい
+- ⚠**日本語の文字を入れない。**例外は言語のリンクと、書名の行だけ（`『エアギャップ・ブリッジ　隔離環境のデータ入力技法』 (*Air Gap Bridge: Data Input Techniques for Isolated Environments*) (Japanese-language book)`の形で、原題・英語の意味・注記をそろえる）。法令名とコードのコメントの節の名前は英語の意味で書き、日本語の原語を添えない（法令名と引用は非公式の英訳だと本文に書いてある）。人名・製品名・URLはそのまま
+- **リンクは英語版どうしでつなぐ**：README.en.mdはdocs/en/を、docs/en/の中はdocs/en/を指す。日本語版の資料を指すのは言語のリンクだけ。相互参照は`"Heading" in the [CSV document](csv.md)`、同じファイルの中は`"…" above`／`"…" below`で書き、行き先の英語版の見出しか項目名と一字一句そろえる
+- ⚠⚠**コードと出力は、英語の版を動かして写す。手で書かない。**英語版のコードで訳してよいのは、コメント・docstring・printと`sys.exit`の文言だけで、処理（コメントと文字列を除いたトークン・字下げ・行数・空行の位置・文字列の中の書式の指定の並び）は日本語版と同じにする（`test/readme-en.test.js`）。出力は英語のコードを見本CSVと実機のCSVにかけて実際に動かし、そのまま写す。見本CSVにかけた出力はテストがJSで計算し直して1文字ずつ比べ、実機のCSVにかけた出力は動かし直した全文を`REAL_OUT_EN`に持つ。検証器の2つの表の英語の文言も、英語の検証器を同じ入力で動かして採る（テストは、日本語版の表と同じ種類の出力・同じ数値かを見る）。日本語版のレシピか検証器を変えたら、英語版にも同じ変更をして両方を動かし直し、`RECIPE_SHA256`・`VERIFIER_SHA256`と`RECIPE_SHA256_EN`・`VERIFIER_SHA256_EN`を直す。見本CSV・コマンドライン・Excelの式・`grep`の出力は日英で同じ文字にする
+  - 表示の文言は、行数が1のときに「1 rows」と出ない言い方にしてある（`Rows to watch: %d / %d`・`Periods: %d  total %d s`など）。`hourly.py`の時間帯のキーは`%H:00`、`week.py`の曜日の見出しは`MTWTFSS`（`Mon`…`Sun`の組にすると`"\t".join(...)`の引数の形が変わり、処理が日本語版と同じでなくなる）
+- **用語**は「用語の一覧」の英語を使い、ボタンの名前は画面の英語と同じ文字で書く。tamper・detect（製品名とURLの`Ultrasonic Leak Detector`・`frequencydetector.com`を除く）・simple mode・effective sampleは使わない。訳語の決め事：平時＝baseline、第2弾・第3弾＝Phase 2・Phase 3、〇〇の資料＝〇〇 document、検定＝passed verification、証明＝certification（法令の文脈）／proof、探偵＝private investigator（detectiveは`/detect/i`に当たるので使わない）
+- 過去の版を説明する言い回し（previously・used to・earlier／old version・formerly・originallyなど）と、開発の段階名（`Phase 2c3a`など）を書かない。`Phase 2`・`Phase 3`（将来案の区切り）は使ってよい。「older versions of Excel」はExcelの版の話なので、テストの`PAST_OK_EN`で除いている
+- 強調は日本語版と同じく、H1〜H3で区切った節ごとに2か所以下（`- **Name**:`の項目名は数えない）。行数の上限（450行）・案内の表・両方のREADMEのディレクトリー構造にdocs/en/とREADME.en.mdが載っていることは`test/readme-docs.test.js`が見る
 
 ### 検証と記録の約束
 
 - **「どこまで確かめたか」は、READMEの`## 💻 動作環境`の「ブラウザー対応状況」が唯一の記載場所である。**実機で測った値と測り方は`docs/real-device-test.md`に置く。実機テストの値の正は、リポジトリーの外に保管している実機の記録（測定メモと実機のCSV）で、`test/readme-realdevice.test.js`がdocs/real-device-test.mdの表をその値と比べる。実機テストをやり直したら、実機の記録→テストの期待値→docs/real-device-test.mdの順に直す。⚠画面の見え方（実機で見た数字・破線）はCSVに残らないので、「実機のCSVで確かめた」に含めない。筆者の記憶として分けて書く（第2弾c1の点検で直した）。「確かめていないこと」（Android・画面ロック中・バックグラウンド・長時間・ほかのiPhone・実機テストの版（`090648f`）より後に入れた画面（第2弾c0）・日英の切り替え（第2弾c3a））は、docs/real-device-test.mdとREADMEのブラウザー対応状況の両方に同じものを書く。⚠README・docs/には開発の段階名（「第2弾c0」「第2弾c3a」など）を書かない。読む人には説明が無いので、機能の名前と、確かめた版（`c7b6bad`・`090648f`）との前後で書く（`test/readme-realdevice.test.js`の`UNVERIFIED`）。READMEのブラウザー対応状況は、である調の箇条書き（確かめた版・記録からCSVの検証まで・実機のCSVで確かめたこと・画面で見たこと・確かめていないこと）にし、行数と`valid_ratio`の値はdocs/real-device-test.mdに任せる
 - ⚠⚠**実機のCSVはリポジトリーに入れない。**筆者の部屋で採った記録だからである。README・docs/に載せるのは数値だけで、実機のCSVの行も貼らない（`test/readme-realdevice.test.js`が見ている）
-- ⚠⚠**CSVのレシピ（docs/csv.mdのPython・コマンドライン）の出力は、実際に動かして写す。手で書かない。**見本CSVにかけた出力は`test/readme-recipes.test.js`がJSで計算し直して1文字ずつ比べる。実機のCSVにかけた出力は計算し直せないので、動かし直して写した全文を同じテストの`REAL_OUT`に持ち、docs/csv.mdと1文字ずつ比べる（あわせて実機テストの表と矛盾しないことも見る）。レシピか実機の記録を変えたら、動かし直してdocs/csv.mdと`REAL_OUT`の両方を写し直す（第2弾c1では、Excelの日本時間の式のミリ秒の位置を`MID(A2,20,3)`と書きかけ、Pythonで同じ計算をして`MID(A2,21,3)`だと分かった。Excel・Google Sheetsの実物では確かめていないことも、docs/csv.mdに書いてある）
+- ⚠⚠**CSVのレシピ（docs/csv.mdのPython・コマンドライン）の出力は、実際に動かして写す。手で書かない。**見本CSVにかけた出力は`test/readme-recipes.test.js`がJSで計算し直して1文字ずつ比べる。実機のCSVにかけた出力は計算し直せないので、動かし直して写した全文を同じテストの`REAL_OUT`に持ち、docs/csv.mdと1文字ずつ比べる（あわせて実機テストの表と矛盾しないことも見る）。レシピか実機の記録を変えたら、動かし直してdocs/csv.mdと`REAL_OUT`の両方を写し直す（第2弾c1では、Excelの日本時間の式のミリ秒の位置を`MID(A2,20,3)`と書きかけ、Pythonで同じ計算をして`MID(A2,21,3)`だと分かった。Excel・Google Sheetsの実物では確かめていないことも、docs/csv.mdに書いてある）。英語版のdocs/en/csv.mdと`test/readme-en.test.js`の`REAL_OUT_EN`も、英語のコードで同じように動かし直して写す（上の「英語版」）
 - レシピはPythonの標準ライブラリー（`csv`・`datetime`・`math`・`sys`）だけで書く。pandasは使わない（本人の指示）。共通のモジュール`mgl.py`は1本のCSVを1回で読み、境界の行（1行目・`# sessionStartAt=`・`# clockBreakAt=`）の区間長を`# intervalSec=`から取る（画面の「平均（Leq）」と同じ重み）。複数のCSVは1本ずつ読んでからつなぐ（ファイルをまたいで`timestamp`の差を取らない）
   - ⚠帯域の有無は`# bands=`で決めない。簡易モードでも帯域の計算を止めていなければ`# bands=18000-22000,20-18000`が出て、帯域の列は空欄になる。中央値が`None`になったら計算の前に理由を出して止める（`ultra_only.py`・`over.py`の`+`付き。第2弾c1の点検でTypeErrorを指摘された）
   - ⚠`compare.py`の「ヘッダーの違い=なし」はヘッダーの文字列が同じというだけである。`# processing=`が`off`でない記録（Safariの`unknown:`など）があれば「注意：」の行を出す（AGCが動いていると平時との差が縮む）。出力は`cp932`のコンソールへリダイレクトしても落ちないよう、`⚠`などの記号をprintしない
@@ -264,7 +278,7 @@ README・docs/には「いまの版で正しいこと」だけを書くので、
 
 ### 画面とコードを直せる段階で直すもの（第2弾c1bの持ち越し）
 
-第2弾c1bはREADMEとdocs/だけを直す段階で、画面とコードは変えていない。そのため、READMEから外した節を「README」として指す文言とコメントが残っている。利用者はREADMEの「CSVを書き出す」と「📚 資料（docs/）」からdocs/csv.mdへ1回でたどれるので実害は小さいが、画面を直す段階（第2弾c3b・c2）で次を直す。
+第2弾c1bはREADMEとdocs/だけを直す段階で、画面とコードは変えていない。そのため、READMEから外した節を「README」として指す文言とコメントが残っている。利用者はREADMEの「CSVを書き出す」と「📚 資料（docs/）」からdocs/csv.mdへ1回でたどれるので実害は小さいが、画面を直す段階（第2弾c2）で次を直す。第2弾c3bもREADME.en.mdとdocs/en/だけを作る段階で、画面とコードは変えていない。英語の文言（`help.stats.noteCsv`・`help.data.chain`のen）がdocs/en/csv.mdを指すかどうかも、そのときに決める。
 
 - **画面の文言**：`messages.js`の`help.stats.noteCsv`（「手順はREADMEにあります」＝Excelの重み付けの手順。いまはdocs/csv.mdの「Excel/Google Sheetsでの分析手順」）と`help.data.chain`（「鎖の作り方をREADMEで公開しているので」。いまはdocs/csv.mdの「受け取ったCSVを検証する」）を、日英の両方で「READMEから案内しているdocs/csv.md」を指す文に変える。`index.html`の同じ文も同じ文字にする（`test/i18n.test.js`がHTMLと`ja`の値を比べる）
 - **`logic.js`のコメント**：`READMEの「帯域の列」`・`README の「帯域の列」`（計3か所）→docs/csv.mdの「帯域の列」、`README の「将来案に入れないもの」`→docs/roadmap.mdの「将来案に入れないもの」。ほかに`README の検証器`・`README（列の表・見本・検証器とその実測表`・`README が案内している Excel の手順`・`README の重み付け手順`・`鎖の作り方は README で`も、行き先はdocs/csv.mdである（`grep -n README logic.js script.js`で洗い出す）

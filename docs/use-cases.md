@@ -1,6 +1,6 @@
 # 🎯 ユースケース
 
-[READMEへ戻る](../README.md)
+[READMEへ戻る](../README.md) · [English](en/use-cases.md)
 
 本ツールが残すのは、dBFSという端末ごとの相対値の時系列です。その記録が役に立つのは、次のような場面です。
 

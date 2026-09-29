@@ -1,6 +1,6 @@
 # 🔧 トラブルシューティング
 
-[READMEへ戻る](../README.md)
+[READMEへ戻る](../README.md) · [English](en/troubleshooting.md)
 
 よくある問題と解決方法をまとめます。
 

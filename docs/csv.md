@@ -1,6 +1,6 @@
 # 📊 CSVデータの形式と活用方法
 
-[READMEへ戻る](../README.md)
+[READMEへ戻る](../README.md) · [English](en/csv.md)
 
 書き出したCSVの形式、ハッシュチェーンで分かること・分からないこと、受け取ったCSVの検証、表計算ソフトとPythonでの集計の手順をまとめます。
 

@@ -1,6 +1,6 @@
 # 📱 実機テスト（iPhone 18 Pro Max）
 
-[READMEへ戻る](../README.md)
+[READMEへ戻る](../README.md) · [English](en/real-device-test.md)
 
 2026-09-29に、iPhone 18 Pro Maxの実機で、帯域の記録が入った公開版（`090648f`）を確かめました。この資料の値は、そのとき書き出したCSVから採ったものです。CSVそのものは筆者の部屋で採った記録なので、リポジトリーには入れていません。どの環境でどこまで確かめたかの一覧は、[README](../README.md)の「ブラウザー対応状況」にあります。
 
