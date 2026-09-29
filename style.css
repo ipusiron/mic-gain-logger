@@ -57,11 +57,6 @@ a:hover{text-decoration:underline}
   flex-wrap:wrap;
   margin-bottom:20px;
 }
-/* デスクトップではmobile-controlsを非表示 */
-.mobile-controls {
-  display: none;
-}
-
 .help-btn,
 .theme-toggle{
   position:relative;
@@ -204,7 +199,16 @@ body.light .theme-toggle .icon-moon{display:block;}
   font-weight:800;
   font-size: clamp(36px, 6vw, 60px);
   letter-spacing:0.5px;
-  margin:6px 0 14px;
+  margin:6px 0 2px;
+}
+/* 超音波帯の現在値（第2弾c0）。大きな数字のすぐ下に1行で出す。
+   文言はlogic.jsのultraNowText（窓が違うことが分かるように、区間の長さを添える） */
+.ultra-now{
+  margin:0 0 12px;
+  font-size:13px;
+  line-height:1.5;
+  color:var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .meter{
@@ -351,6 +355,18 @@ body.light .theme-toggle .icon-moon{display:block;}
 .btn:hover{transform:translateY(-1px); box-shadow:0 6px 16px rgba(0,0,0,.25)}
 .btn:disabled{opacity:.5; cursor:not-allowed; transform:none; box-shadow:none}
 .btn.primary{background: linear-gradient(180deg, #3287ff, #2a6fe0); border-color: rgba(255,255,255,.1)}
+/* 操作ボタン（第2弾c0）。記録開始と停止は同じ場所に置き、押せるほうだけを見せる（見せないほうはhidden）。
+   ⚠ .btnにdisplayを足すと、hidden属性のdisplay:none（ブラウザーの既定のスタイル）より作者のスタイルが優先され、
+   隠したボタンが見えてしまう。そうならないように、ここで明示しておく */
+.btn[hidden]{display:none}
+/* 記録開始（4文字）と停止（2文字）を入れ替えても、右のボタンが横へずれないように幅をそろえる */
+.run-btn{min-width:6.5em}
+/* 「その他」は幅480px以下でだけ出す（下の@media (max-width: 480px)）。
+   481px以上では#moreMenuをdisplay:contentsにして、中のボタンをこれまでどおり1列に並べる */
+.more-btn{display:none; align-items:center; justify-content:center; gap:4px}
+.more-icon{font-size:.8em; transition:transform .2s}
+.more-btn[aria-expanded="true"] .more-icon{transform:rotate(180deg)}
+.more-menu{display:contents}
 
 footer .footer{
   text-align:center; color:var(--muted);
@@ -383,30 +399,23 @@ footer .footer{
     line-height: 1.3;
   }
   
-  /* スマートフォン用のヘルプ・テーマボタン配置エリア */
-  .mobile-controls {
-    display: flex;
-    justify-content: center;
-    gap: 12px;
-    padding: 8px 0 16px;
-    margin: 0 12px;
-  }
-  
-  /* ヘルプとテーマボタンをモバイル用エリアに配置 */
+  /* 操作ボタンを1行に並べる（第2弾c0）。
+     記録開始／停止（見えているほう）が残りの幅を取り、「その他」・ヘルプ・テーマが右に並ぶ。
+     改修前は「ヘルプとテーマの行」「記録開始・停止の行」「書き出し・リセットの行」の3行で、
+     幅430pxでヘッダーとボタンが画面の上から242.6pxを使っていた */
   .help-btn,
   .theme-toggle {
     position: static;
     padding: 8px;
-    min-width: 40px;
-    min-height: 40px;
+    min-width: 44px;
+    min-height: 44px;
     margin-left: 0;
     margin-right: 0;
   }
   
-  /* アクションボタンを配置 */
   .actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     margin-bottom: 16px;
     align-items: center;
@@ -420,6 +429,28 @@ footer .footer{
     min-height: 44px; /* タッチターゲット */
   }
   
+  .run-btn {
+    flex: 1 1 auto;
+  }
+  
+  .more-btn {
+    display: inline-flex;
+  }
+  
+  /* 「その他」を開くと、CSV書き出しと統計リセットが次の行に出る。
+     orderで行の最後へ送り、幅100%で折り返す（DOMの順は「その他」の直後なので、Tabの順は「その他」→中身） */
+  .more-menu {
+    order: 1;
+    flex-basis: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  
+  .more-btn[aria-expanded="false"] + .more-menu {
+    display: none;
+  }
+  
   /* カードのパディングを最小限に */
   .card {
     padding: 12px;
@@ -430,7 +461,12 @@ footer .footer{
   /* 現在の音量セクション */
   .big-value {
     font-size: clamp(24px, 8vw, 36px);
-    margin: 8px 0;
+    margin: 8px 0 2px;
+  }
+  
+  .ultra-now {
+    font-size: 12px;
+    margin-bottom: 8px;
   }
   
   .meter {
@@ -631,7 +667,10 @@ label[title]:hover {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   max-width: 600px;
+  /* dvh（いま見えている高さ）を後ろに書く。dvhを読めない古いブラウザーは前のvhのまま（第2弾c0）。
+     iOS Safariのvhはツールバーを畳んだときの高さなので、ツールバーが出ているとモーダルの下が画面の外へ出る */
   max-height: 80vh;
+  max-height: 80dvh;
   width: 90%;
   display: flex;
   flex-direction: column;
@@ -715,6 +754,7 @@ label[title]:hover {
 @media (max-width: 768px) {
   .modal-content {
     max-height: 85vh;
+    max-height: 85dvh;
     width: 92%;
     margin: 0 8px;
   }
@@ -737,6 +777,7 @@ label[title]:hover {
 @media (max-width: 480px) {
   .modal-content {
     max-height: 90vh;
+    max-height: 90dvh;
     width: 95%;
     margin: 0 8px;
     border-radius: 12px;

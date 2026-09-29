@@ -13,6 +13,8 @@
 //
 // ⚠ ボタンは増やさない（style.css の 480px 分岐と handleMobileButtonLayout が
 //    壊れやすいため）。統計欄の項目と、既存の状態表示（#recordNotice）に載せる。
+//    第2弾c0で「その他」（#moreBtn）を1つ足した（設計書§3のQ3、本人の決定）。同時に
+//    handleMobileButtonLayoutは廃止し、並びはstyle.cssだけで決めるようにした（test/mobile-view.test.js）
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -179,10 +181,12 @@ test('画面: 統計欄にピークの枠があり、script.js が書き込ん�
 });
 
 test('画面: クリップと欠測は既存の状態表示へ出す（ボタンを増やさない）', () => {
-  // ⚠ 3つ目のボタンを handleMobileButtonLayout へ乗せない、という約束がある
+  // ⚠ 3つ目のボタンをhandleMobileButtonLayoutへ乗せない、という約束があった。
+  //    第2弾c0で、本人の決定（設計書§3のQ3）により「その他」（moreBtn）だけを足した。
+  //    handleMobileButtonLayoutは同時に廃止した。ボタンを足すときは、本人の決定を経てここを直す
   const ids = [...html.matchAll(/<button[^>]*id="([^"]+)"/g)].map(m => m[1]).sort();
   assert.deepEqual(ids, [
-    'controlsToggle', 'exportBtn', 'helpBtn', 'resetBtn',
+    'controlsToggle', 'exportBtn', 'helpBtn', 'moreBtn', 'resetBtn',
     'startBtn', 'stopBtn', 'themeToggle'
   ]);
   // 注意書きは #recordNotice にまとめる
@@ -320,9 +324,10 @@ test('穴の有無: モードが混ざったら、測れない区間の数を添
 
 test('穴の有無: 画面に出す場所と配線がある', () => {
   assert.match(html, /id="integrityNote"/, '穴の有無を出す要素が無い');
-  // ⚠ ボタンは増やさない（style.css の 480px 分岐が壊れやすい）
+  // ⚠ ボタンは増やさない（style.cssの480px分岐が壊れやすい）。
+  //    第2弾c0で「その他」の1つだけ足した（本人の決定。上の「ボタンを増やさない」のテストを参照）
   const buttons = (html.match(/<button/g) || []).length;
-  assert.equal(buttons, 13, `ボタンの数が変わっている: ${buttons}`);
+  assert.equal(buttons, 14, `ボタンの数が変わっている: ${buttons}`);
   assert.match(script, /statsIntegrity\(stats\)/, 'script.js が穴の有無を出していない');
   assert.match(script, /renderIntegrity\(\)/, '穴の有無を出し直す関数が無い');
   // 行が増えるたびに出し直す（0区間→1区間で文言が変わる）

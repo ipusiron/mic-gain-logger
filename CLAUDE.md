@@ -36,6 +36,8 @@ test/                                        node:test（依存パッケージ�
 - **`requestAnimationFrame`は描画専用**である。ここで統計を進めたり記録を作ったりしない（改修前は毎フレーム加算していて、統計の母集団がCSVの行と食い違っていた）
 - AudioWorkletを読み込めない環境では**簡易モード**（`ENGINE_FALLBACK`）へ切り替わる。簡易モードは描画ループで記録するので欠測しうる。どちらで動いたかは画面（`#engineMode`）とCSVのメタ行（`# engine=`）に出す
 - **表示下限（floorDb）は表示専用**である。記録する値（`rawDb`）を丸めてはいけない。記録中に表示の設定を変えるとログそのものが変質する
+  - 既定は**帯域を計算するとき-110dBFS、`?bands=off`のとき-90dBFS**（第2弾c0。決め方は`logic.js`の`floorDbDefaultFor`、定数は`FLOOR_DB_DEFAULT_BANDS`・`FLOOR_DB_DEFAULT`）。b4で静かな部屋の超音波帯が-93〜-107dBFS（行の中央値）と-90より下にあり、超音波帯の破線がいつも下端に張り付いたため。`index.html`の`value`は-110で、`script.js`が初期化で`floorDbInput.defaultValue`を書き換える（`value`を直接書かない。ブラウザーが復元した利用者の値を上書きしないため）。空欄・非数も同じ既定へ戻す（`parseFloorDb(raw, fallback)`）
+  - -110でも、メーターの目盛りは`-110 / -73 / -37 / 0`（下限〜0の等分）、グラフの縦軸は`0 / -20 / -40 / -60 / -80 / -110`（下限の手前10dBの-100は`dbTicks`が間引く）になる。重ならないこと・小数が出ないことは`test/meter-floor.test.js`が見ている
 - **統計はエネルギー平均（Leq）**である。dBの算術平均ではない。無音は電力0として数える
 - ⚠**Leqの重みは行数ではなく区間長（秒）**である。ログ間隔は記録中に変えられるので、等重みだと実時間に比例しない値が出る（手元の検算で最大9.29dB）。重みは`recordDurationSec(rec) = endTime - startTime`（オーディオクロックの差）から取る
 - ⚠**記録の穴の表示は両側で出す**（`statsIntegrity`）。クリップと欠測が「あるときだけ」出す片側表示にしない。穴が無いときも「記録の穴なし（クリップ0区間／有効サンプル率は{n}区間すべて1.000）」と出し、簡易モードの行は「測れません」と区別する。測れないことを「異常なし」として出さない
@@ -64,6 +66,14 @@ test/                                        node:test（依存パッケージ�
   - 注意書き＝帯域の有効率が1.0未満の区間（`statsWarningItems`の`bandValid`）、サンプルレートの食い違い・`?bands=off`・簡易モード・超音波帯にビンが無い（`bandNoticeItems`。セッションのメタだけから決まるので、`recordNoticeItems`の入力は増やしていない）
   - 「この端末で記録できる上限」（`recordableUpperHz`・`upperLimitText`）＝min(AudioContext÷2, トラック÷2)。トラックが報告しなければAudioContextの半分で「トラックの値は不明」を添える。⚠`# nyquistHz=`（AudioContextの半分）とは別物で、サンプルレートで決まる上限にすぎない（マイクがその高さの音を拾えることは示さない）
   - 凡例と上限の1行は読み上げ領域にしない（`aria-live`を増やさない）。キャンバスは`role="img"`で、`aria-label`は`graphAriaLabel`
+- ⚠**超音波帯の現在値（第2弾c0、`#ultraNow`）。**大きな数字のすぐ下に「超音波帯（直近1秒の区間）：-91.7 dBFS」と出す。値は最後に記録した区間（`pushRecord`の`rec`）の`band_ultra_dbfs`で、CSVに書く値と同じ。文言は`logic.js`の`ultraNowText(state, rec)`（`state`は凡例と同じ`ultraBandState`）。区間の長さはレコードの`intervalSec`（その区間を実際に測った長さ）
+  - 最初の区間が来るまでは`--.- dBFS`（記録開始と統計リセットで`lastRecord = null`）。値の無い区間は`--.- dBFS（この区間は値なし）`、デジタル無音は`-∞ dBFS`。`?bands=off`・簡易モード・ビンなしでは値の代わりに凡例と同じ理由を出す
+  - ⚠読み上げ領域（`aria-live`）にしない。区間ごとに変わるので、読み上げ続けてほかの読み上げを妨げる（`test/ultra-now.test.js`が`aria-live`の数を見ている）
+- ⚠**画面の大きな数字（`#bigValue`）は、直近`METER_WINDOW_SAMPLES`（2048）サンプルの全帯域のRMSである**（48kHzで約43ミリ秒。`AnalyserNode`から毎フレーム読む）。高精度モードのCSVの`dbfs`は区間全体のエネルギー平均なので、窓が違う（⚠簡易モードのCSVの`dbfs`は、`animate()`が同じ窓から読んだ値をそのまま`recordFallbackInterval`へ渡しているので、窓の違いは無い。説明はどこでも「高精度モードの」と条件を付ける）。ときどき大きくなる音では、エネルギー平均が大きな瞬間に引っぱられるので、大きな数字のほうが低く見える時間が長い。README・ヘルプ・`#bigValue`のtitleの3か所で言う。サンプル数を変えたら3か所も直す（`test/ultra-now.test.js`が定数から組み立てた文字列で見ている）
+- ⚠**操作ボタン（第2弾c0、設計書§3のQ3）。**判定は`logic.js`（`startStopView`・`moreMenuNext`・`COMPACT_MEDIA_QUERY`）、`script.js`は属性を付け外しするだけ（`test/mobile-view.test.js`）
+  - 記録開始（`#startBtn`）と停止（`#stopBtn`）は隣に置き、`startStopView({ running, connecting })`で押せるほうだけを見せる（見せないほうは`hidden`）。接続中は停止（取り消し）を見せる。**IDは変えない**（テストと測定のスクリプトが使っている）。押したボタンが隠れたら、同じ場所に出たほうへフォーカスを移す（`renderStartStop`）
+  - CSV書き出しと統計リセットは`#moreMenu`に入れ、`#moreBtn`（「その他」、`aria-expanded`・`aria-controls`）の**直後**に置く。開閉は`aria-expanded`だけで持ち、CSSも`.more-btn[aria-expanded="false"] + .more-menu{display:none}`（480px以下）で同じ属性を見る。481px以上では`.more-btn{display:none}`・`.more-menu{display:contents}`で、これまでどおり1列に並ぶ。押せる条件は`updateButtonStates`のまま変えていない
+  - Escで閉じたらフォーカスを「その他」へ戻す。⚠戻すのはフォーカスが中身か「その他」にあったときだけで、Tabで外（ヘルプ・設定の入力欄など）へ移ったあとのEscは閉じるだけにする（`moreMenuNext`の`focusInside`・`focusOnToggle`）。外から移すと、設定の入力欄にいた利用者の画面が先頭まで戻る（第2弾c0の点検で直した）。481px以上とヘルプを開いているあいだはEscを受けない（`keydown`は捕獲で受け、ヘルプのEscより先に状態を見る）。外を押したら閉じる（⚠`pointerdown`ではなく`click`で受ける。押した瞬間に閉じると下の画面が上がり、指の下の要素が入れ替わる）。中身がどちらも押せなくなったら閉じる
 
 ### CSV v3
 
@@ -128,7 +138,8 @@ CIは`.github/workflows/test.yml`（pushとpull requestで`npm test`）。
 - **Microphone reconnection**: 停止と再開の間に300ms空ける（ブラウザーの状態の問題を避けるため。`lastStopTime`）
 - **High-DPI Canvas**: `devicePixelRatio`を使う。CSSのピクセル値を直に書き込まない
 - **Theme persistence**: localStorageの`theme`キー。既定はライト
-- **Mobile responsiveness**: 480pxで`handleMobileButtonLayout()`がボタンの親要素を付け替える。⚠この仕組みは壊れやすい（resizeが届かない経路で不整合が固定される）ので、3つ目のボタンをここへ乗せない
+- **Mobile responsiveness**: 幅480px以下では、記録開始／停止・「その他」・ヘルプ・テーマの切り替えを`.actions`の1行に並べ、CSV書き出しと統計リセットを「その他」に畳む（第2弾c0）。並びはstyle.cssだけで決める。⚠かつては`handleMobileButtonLayout()`が480pxでヘルプとテーマの親要素を付け替えていたが、resizeが届かない経路で不整合が固定される壊れやすい仕組みだったので、第2弾c0で廃止した。親要素を付け替える仕組みを戻さない。ボタンを足すときは本人の決定を経て、`test/stats-notice.test.js`のボタンの一覧を直す
+- **画面の高さ**: `vh`を使う箇所は、後ろに同じ値の`dvh`を書く（dvhを読めないブラウザーは前のvhのまま。`test/mobile-view.test.js`）。iOS Safariのvhはツールバーを畳んだときの高さなので、モーダルの下が画面の外へ出る。`viewport-fit=cover`は入れていない（セーフエリアの扱いは実機で`innerWidth × innerHeight`を測ってから決める）
 
 ## Documentation
 

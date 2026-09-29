@@ -15,7 +15,7 @@
   <!-- favicon を参照していないと、ブラウザーが /favicon.ico を取りにいって
        コンソールに404が残る。SVG 1枚で済ませる（外部への取得は発生しない） -->
   <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="./style.css?v=3.7" />
+  <link rel="stylesheet" href="./style.css?v=3.8" />
 </head>
 <body>
   <header class="app-header">
@@ -25,15 +25,19 @@
     </div>
   </header>
 
-  <!-- スマートフォン専用のヘルプ・テーマボタン配置エリア -->
-  <div class="mobile-controls" id="mobileControls"></div>
-
   <main class="container">
+    <!-- 操作ボタン（第2弾c0）。記録開始と停止は同じ場所に置き、そのとき押せるほうだけを見せる
+         （見せないほうはhidden。付け外しはscript.jsのupdateButtonStatesがlogic.jsのstartStopViewで決める）。
+         CSV書き出しと統計リセットは、幅480px以下では「その他」で開く#moreMenuに畳む（481px以上ではこれまでどおり並ぶ）。
+         ヘルプとテーマの切り替えは、どの幅でも同じ行に置く（親要素を付け替える仕組みは第2弾c0で廃止） -->
     <div class="actions">
-      <button id="startBtn" class="btn primary" title="マイクから音量の記録を開始します">記録開始</button>
-      <button id="stopBtn" class="btn" disabled title="音量の記録を停止します">停止</button>
-      <button id="exportBtn" class="btn" disabled title="記録した音量データをCSVファイルでダウンロードします">CSV書き出し</button>
-      <button id="resetBtn" class="btn" disabled title="ログ・統計・グラフ・注意書きをまとめてクリアします（記録を停止してから押せます）">統計リセット</button>
+      <button id="startBtn" class="btn primary run-btn" title="マイクから音量の記録を開始します">記録開始</button>
+      <button id="stopBtn" class="btn run-btn" hidden disabled title="音量の記録を停止します（マイクに接続中なら、接続を取り消します）">停止</button>
+      <button id="moreBtn" class="btn more-btn" type="button" aria-expanded="false" aria-controls="moreMenu" title="CSV書き出しと統計リセットを表示します">その他<span class="more-icon" aria-hidden="true">▼</span></button>
+      <div id="moreMenu" class="more-menu">
+        <button id="exportBtn" class="btn" disabled title="記録した音量データをCSVファイルでダウンロードします（記録を停止してから押せます）">CSV書き出し</button>
+        <button id="resetBtn" class="btn" disabled title="ログ・統計・グラフ・注意書きをまとめてクリアします（記録を停止してから押せます）">統計リセット</button>
+      </div>
       <button id="helpBtn" class="help-btn" aria-label="ヘルプ" title="使い方とヘルプを表示します">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"></circle>
@@ -61,7 +65,12 @@
     <section class="card grid">
       <div class="grid-item">
         <h2 class="section-title">現在の音量</h2>
-        <div id="bigValue" class="big-value" title="現在のマイク入力音量（dBFS: デシベル フルスケール）">--.- dBFS</div>
+        <!-- 大きな数字は直近2048サンプル（logic.jsのMETER_WINDOW_SAMPLES）の全帯域のRMS。高精度モードのCSVのdbfs（区間全体のエネルギー平均）とは窓が違う。
+             簡易モードのCSVのdbfsは、記録した瞬間にこの窓から読んだ値（第2弾c0） -->
+        <div id="bigValue" class="big-value" title="現在のマイク入力音量（dBFS）。直近2048サンプル（48kHzで約43ミリ秒。サンプルレートで変わる）の全帯域のRMSで、高精度モードのCSVのdbfs（区間全体のエネルギー平均）とは窓が違います。ときどき大きくなる音（扇風機のうなり・洗濯機など）では、エネルギー平均が大きな瞬間に引っぱられるので、この数字のほうがCSVの値より低く見える時間が長くなります。簡易モードでは、CSVのdbfsも記録した瞬間のこの窓の値です">--.- dBFS</div>
+        <!-- 超音波帯の現在値（第2弾c0）。最後に記録した区間のband_ultra_dbfs（CSVと同じ値）。文言はlogic.jsのultraNowText。
+             区間ごとに変わるので読み上げ領域（aria-live）にはしない -->
+        <div id="ultraNow" class="ultra-now" title="最後に記録した区間の、超音波帯（18〜22kHz）のエネルギー平均です（CSVのband_ultra_dbfsと同じ値）。区間の長さはログ間隔です。上の大きな数字（直近2048サンプルの全帯域のRMS。48kHzで約43ミリ秒で、サンプルレートで変わる）とは、窓も帯域も違います。数dBの小さな変化は、グラフよりこの数字で読んでください。その帯域に音のエネルギーがあったかの記録で、何の音かは分かりません">超音波帯（直近の区間）：--.- dBFS</div>
 
         <div class="meter" id="meter" title="音量レベルメーター（表示下限〜0dBFS）">
           <div class="meter-bar" id="meterBar"></div>
@@ -69,7 +78,7 @@
         <!-- 目盛りは .meter の外に置く（.meter は overflow:hidden で、中に置くと切られて見えない）。
              数字は表示下限に合わせて script.js が書き換える -->
         <div class="meter-scale" id="meterScale" aria-hidden="true">
-          <span>-90</span><span>-60</span><span>-30</span><span>0</span>
+          <span>-110</span><span>-73</span><span>-37</span><span>0</span>
         </div>
 
         <div class="controls-wrapper">
@@ -93,7 +102,7 @@
             </div>
             <div class="control">
               <label for="floorDb" title="表示する最小音量レベル">表示下限（dBFS）</label>
-              <input type="number" id="floorDb" min="-120" max="-1" step="1" value="-90" title="この値未満の音量は表示されません（既定-90dBFS。静かな部屋の暗騒音や、弱い高い音も見えるようにしています）。表示だけに効き、記録される値は変わりません">
+              <input type="number" id="floorDb" autocomplete="off" min="-120" max="-1" step="1" value="-110" title="この値未満の音量は下端に張り付いて表示されます（既定-110dBFS。?bands=offで開いたときは-90dBFS。静かな部屋の超音波帯や、弱い高い音も見えるようにしています）。表示だけの設定で、記録される値は変わりません">
             </div>
           </div>
         </div>
@@ -200,9 +209,9 @@
           <ol>
             <li><strong>「記録開始」</strong>ボタンを押してマイクアクセスを許可</li>
             <li>音量がリアルタイムで表示・記録されます</li>
-            <li><strong>「停止」</strong>で記録を停止（データは保持されます）</li>
-            <li><strong>「CSV書き出し」</strong>でデータをダウンロード</li>
-            <li><strong>「統計リセット」</strong>で、ログ・統計・グラフ・注意書きをまとめてクリア（記録を停止してから押せます）</li>
+            <li><strong>「停止」</strong>で記録を停止（データは保持されます）。「停止」は「記録開始」と同じ場所に出ます</li>
+            <li><strong>「CSV書き出し」</strong>でデータをダウンロード（スマートフォンなど幅480px以下では「その他」を押すと出ます）</li>
+            <li><strong>「統計リセット」</strong>で、ログ・統計・グラフ・注意書きをまとめてクリア（記録を停止してから押せます。幅480px以下では「その他」の中にあります）</li>
           </ol>
         </section>
 
@@ -210,7 +219,7 @@
           <h3>⚙️ 設定項目</h3>
           <ul>
             <li><strong>ログ間隔：</strong>記録する間隔（秒単位）。プリセットボタン（1s/3s/5s/10s/1m）で素早く設定可能</li>
-            <li><strong>表示下限：</strong>表示する最小音量レベル（既定-90dBFS）。これより静かな値は下端に張り付いて見えます。表示だけに効き、CSVに記録される値は動きません</li>
+            <li><strong>表示下限：</strong>表示する最小音量レベル。既定は-110dBFSで、<code>?bands=off</code>で開いたときは-90dBFSです（静かな部屋の超音波帯は-90dBFSより低いことがあり、-90では超音波帯の破線が下端に張り付いたため）。これより静かな値は下端に張り付いて見えます。表示だけの設定で、CSVに記録される値は動きません</li>
           </ul>
           <p><em>※ すべての設定は記録中でも変更可能で即座に反映されます</em></p>
           <p><em>※ スマートフォンでは「設定を表示」ボタンで設定項目を開閉できます</em></p>
@@ -219,6 +228,8 @@
         <section>
           <h3>📊 統計と表示</h3>
           <ul>
+            <li><strong>現在の音量（大きな数字）：</strong>直近2048サンプル（48kHzで約43ミリ秒。サンプルレートで変わる）の全帯域のRMSです。高精度モードのCSVの<code>dbfs</code>は区間全体のエネルギー平均なので、窓が違います。ときどき大きくなる音（扇風機のうなり・洗濯機など）では、エネルギー平均が大きな瞬間に引っぱられるので、大きな数字のほうがCSVの値より低く見える時間が長くなります。簡易モードでは、CSVの<code>dbfs</code>も記録した瞬間のこの窓の値です</li>
+            <li><strong>超音波帯（直近の区間）：</strong>大きな数字の下の1行です。最後に記録した区間の超音波帯（18〜22kHz）の値で、CSVの<code>band_ultra_dbfs</code>と同じです。区間の長さはログ間隔で、「超音波帯（直近1秒の区間）」のように添えます。大きな数字とは窓も帯域も違います。数dBの小さな変化は、グラフよりこの数字で読んでください。最初の区間が届くまでは「--.- dBFS」、値の無い区間では「（この区間は値なし）」と出ます。<code>?bands=off</code>・簡易モード・超音波帯を測れないサンプルレートでは、値の代わりに理由（「簡易モードでは測れません」など）が出ます。統計リセットで最初の状態に戻ります</li>
             <li><strong>稼働時間：</strong>記録開始からの経過時間</li>
             <li><strong>ログ件数：</strong>CSVに記録されたデータポイント総数</li>
             <li><strong>平均（Leq）：</strong>記録された行のエネルギー平均。⚠<strong>重みは行数ではなく区間長（秒）です。</strong>ログ間隔は記録中に変えられるので、1秒の区間と3秒の区間を同じ重みで平均すると実時間に比例しない値になります（手元の検算では最大9.3dBずれました）。dBは対数なので算術平均にも物理的な意味がなく、無音の行を-999などへ置き換えて平均すると数百dB外れます。無音の行は電力0として数えます。音が1つも届かなかった区間（CSVの<code>dbfs</code>が空欄の行）は、測っていないので入れません</li>
@@ -265,6 +276,7 @@
             <li><strong>レスポンシブ対応：</strong>スマートフォンとタブレットに最適化</li>
             <li><strong>タッチ操作：</strong>主要な操作ボタンは44px以上、プリセットなど補助的なボタンは24px以上（WCAG 2.2 の 2.5.8 に準拠）</li>
             <li><strong>設定の折りたたみ：</strong>「設定を表示/隠す」で画面を有効活用</li>
+            <li><strong>ボタンの配置：</strong>「記録開始」と「停止」は同じ場所に出て、そのとき押せるほうだけが見えます。幅480px以下では「CSV書き出し」と「統計リセット」を「その他」にまとめ、ヘルプとテーマの切り替えを同じ行に並べます。「その他」はEscキーでも閉じられます</li>
             <li><strong>バッテリー考慮：</strong>不要時は停止してバッテリー消費を抑制</li>
           </ul>
         </section>
@@ -283,7 +295,7 @@
     </div>
   </div>
 
-  <script src="./logic.js?v=3.7"></script>
-  <script src="./script.js?v=3.7"></script>
+  <script src="./logic.js?v=3.8"></script>
+  <script src="./script.js?v=3.8"></script>
 </body>
 </html>

@@ -28,6 +28,20 @@ const MicGainLogic = (() => {
     return 20 * Math.log10(rms);
   }
 
+  // 画面の大きな数字（現在の音量）の窓。AnalyserNodeから毎フレーム読む直近のサンプル数である。
+  // ⚠ 高精度モードのCSVのdbfs（区間全体のエネルギー平均）とは窓が違う（第2弾c0でヘルプ・title・READMEに書いた）。
+  //    ときどき大きくなる音では、エネルギー平均が大きな瞬間に引っぱられるので、
+  //    この窓の値のほうがCSVの値より低く見える時間が長くなる。
+  //    簡易モードのCSVのdbfsは、記録した瞬間にこの窓から読んだ値なので、窓の違いは無い
+  //    （script.jsのanimate()がcomputeDb()の値をそのままrecordFallbackIntervalへ渡している）
+  const METER_WINDOW_SAMPLES = 2048;
+
+  // 大きな数字の窓の長さ（ミリ秒）。サンプルレートで変わる（48kHzで約43ミリ秒）
+  function meterWindowMs(sampleRate) {
+    if (!(sampleRate > 0) || !Number.isFinite(sampleRate)) return null;
+    return METER_WINDOW_SAMPLES / sampleRate * 1000;
+  }
+
   // サンプル列の RMS
   function rmsOf(samples) {
     let sumSq = 0;
@@ -47,12 +61,28 @@ const MicGainLogic = (() => {
   // ⚠ 改修前（c7b6bad）は -60 だった。iPhone の実機テスト（2026-09-29）で、21kHz の
   //    トーン（-65dBFS）が静寂（-76dBFS）と同じく -60 に張り付いて表示され、
   //    「反応がない」と読まれた（CSVには正しく残っていた）。-90 にする（本人の判断）
+  // ⚠ 第2弾c0から、-90は帯域を計算しないとき（?bands=off）の既定である。
+  //    帯域を計算するときの既定はFLOOR_DB_DEFAULT_BANDS（-110）。決め方はfloorDbDefaultFor
   const FLOOR_DB_DEFAULT = -90;
+  // 帯域を計算するとき（?bands=offでないとき）の既定値（第2弾c0）。
+  // ⚠ b4（2026-09-29 本人のiPhone）で、静かな部屋の超音波帯は-93〜-107dBFS（行の中央値）だった。
+  //    既定の-90より下なので、グラフの超音波帯の破線がいつも下端に張り付き、
+  //    22kHzのトーン（静寂より+1.9dB）は画面で見えなかった（CSVには残っていた）。
+  //    -110にする（本人の判断）。数dBの変化は数字（ultraNowText）で読む
+  const FLOOR_DB_DEFAULT_BANDS = -110;
 
-  // 表示下限の入力値を数値へ（空欄・非数は既定値。範囲外は丸める）
-  function parseFloorDb(raw) {
+  // 表示下限の既定を、帯域を計算するかどうかで決める（第2弾c0）。
+  // bandsEnabledはbandsEnabledFromQueryの値。false（?bands=off）なら従来の-90、それ以外は-110
+  function floorDbDefaultFor(bandsEnabled) {
+    return bandsEnabled === false ? FLOOR_DB_DEFAULT : FLOOR_DB_DEFAULT_BANDS;
+  }
+
+  // 表示下限の入力値を数値へ（空欄・非数は既定値。範囲外は丸める）。
+  // fallbackは空欄・非数のときの値（floorDbDefaultForの値を渡す）。省略するとFLOOR_DB_DEFAULT
+  function parseFloorDb(raw, fallback) {
+    const def = Number.isFinite(fallback) ? clamp(fallback, FLOOR_DB_MIN, FLOOR_DB_MAX) : FLOOR_DB_DEFAULT;
     const v = parseFloat(raw);
-    if (Number.isNaN(v)) return FLOOR_DB_DEFAULT;
+    if (Number.isNaN(v)) return def;
     return clamp(v, FLOOR_DB_MIN, FLOOR_DB_MAX);
   }
 
@@ -419,6 +449,66 @@ const MicGainLogic = (() => {
       peak: '--.- dBFS',
       count: '0'
     };
+  }
+
+  // ---- 操作ボタン（第2弾c0）----
+  //
+  // 設計書§3のQ3（本人の決定 2026-09-29）＝開始と停止を1つの場所にまとめ、書き出しとリセットは「その他」へ寄せる。
+  // 改修前は幅430pxで、ヘッダーとボタンが画面の上から242.6px（26%）を使っていた
+  // （ヘッダー → ヘルプとテーマの行 → 記録開始・停止の行 → 書き出し・リセットの行）。
+  //
+  // ・記録開始（#startBtn）と停止（#stopBtn）は同じ場所に置き、そのとき押せるほうだけを見せる。
+  //   見せないほうはhidden属性で隠し、支援技術からも隠す。IDは変えない（テストと測定のスクリプトが使っている）
+  // ・CSV書き出し（#exportBtn）と統計リセット（#resetBtn）は、幅480px以下では「その他」（#moreBtn）で開く場所
+  //   （#moreMenu）へまとめる。481px以上ではこれまでどおり並べる。押せる条件は変えない
+  //   （script.jsのupdateButtonStates。記録中・接続中は押せない）
+  // ・ヘルプとテーマの切り替えは、幅480px以下でも同じ行に置く。改修前はhandleMobileButtonLayoutが
+  //   480pxを境に親要素を付け替えていたが、resizeが届かない経路で不整合が固定される壊れやすい仕組みだったので、
+  //   第2弾c0で廃止し、並びはCSSだけで決める
+
+  // 幅480px以下（「その他」で畳む幅）。style.cssの@media (max-width: 480px)と同じ値
+  const COMPACT_MEDIA_QUERY = '(max-width: 480px)';
+
+  // 記録開始と停止のどちらを見せるか。
+  // 接続中（許可ダイアログを待っているあいだ）は「停止」で取り消せるので、停止を見せる
+  function startStopView(flags) {
+    const f = flags || {};
+    const busy = !!(f.running || f.connecting);
+    return { start: !busy, stop: busy };
+  }
+
+  // 「その他」の開閉。state = { open, compact, modalOpen, itemsEnabled, focusInside, focusOnToggle }
+  // （focusInside＝フォーカスが中身（#moreMenu）にある、focusOnToggle＝フォーカスが「その他」にある）、
+  // event = 'toggle'（「その他」を押した）/ 'escape'（Esc）/ 'outside'（「その他」と中身の外を押した）
+  //       / 'items'（中のボタンの押せる状態が変わった）/ 'layout'（幅が変わった）。
+  // 戻り値 = { open, focusToggle }。focusToggleがtrueなら「その他」へフォーカスを戻す。
+  // ⚠ Escで閉じたら、フォーカスを「その他」に戻す（閉じた中身にフォーカスを残さない）。
+  //    戻すのは、フォーカスが中身か「その他」にあったときだけ。Tabで外（ヘルプ・設定の入力欄など）へ移ったあとの
+  //    Escでは、閉じるだけでフォーカスを動かさない（ほかの場所にある利用者のフォーカスを奪わない。
+  //    第2弾c0の点検で直した。外からでも「その他」へ移していたので、設定の入力欄にいた利用者の画面が先頭まで戻った）。
+  //    幅481px以上では「その他」を出さず中身を並べているので、Escでは何もしない。
+  //    ヘルプを開いているあいだのEscはヘルプを閉じるためのものなので、ここでは受けない。
+  // ⚠ 中のボタンがどちらも押せなくなったら（統計リセットのあと・記録を始めたとき）閉じる。
+  //    押せないボタンにフォーカスが残るので、中にフォーカスがあったときだけ「その他」へ戻す
+  function moreMenuNext(state, event) {
+    const s = state || {};
+    const open = !!s.open;
+    const stay = { open, focusToggle: false };
+    if (event === 'toggle') return { open: !open, focusToggle: false };
+    if (event === 'escape') {
+      if (!open || !s.compact || s.modalOpen) return stay;
+      return { open: false, focusToggle: !!(s.focusInside || s.focusOnToggle) };
+    }
+    if (event === 'outside') return { open: false, focusToggle: false };
+    if (event === 'items') {
+      if (!open || s.itemsEnabled) return stay;
+      return { open: false, focusToggle: !!(s.compact && s.focusInside) };
+    }
+    if (event === 'layout') {
+      if (!open || s.compact) return stay;
+      return { open: false, focusToggle: false };
+    }
+    return stay;
   }
 
   // ---- キャンバスの大きさ ----
@@ -924,6 +1014,35 @@ const MicGainLogic = (() => {
       ? `実線は音量（全帯域）、破線は超音波帯（${range}）の値`
       : `実線は音量（全帯域）。超音波帯（${range}）の線は描きません（${ultraStoppedReason(state)}）`;
     return `音量推移グラフ。${lines}。横軸は直近${GRAPH_WINDOW_SEC}秒、縦軸はdBFS`;
+  }
+
+  // 秒を画面の文言へ（小数3桁まで、末尾の0は付けない。1→'1'、0.2→'0.2'、60→'60'）
+  function formatSecLabel(sec) {
+    if (!Number.isFinite(sec) || !(sec > 0)) return '';
+    return String(Math.round(sec * 1000) / 1000);
+  }
+
+  // 超音波帯の現在値（第2弾c0）。大きな音量の数字の近くに1行で出す。
+  // 値は、最後に記録した区間（ワークレットが最後に送ってきた区間）のband_ultra_dbfsで、CSVに書く値と同じである。
+  // ⚠ 大きな数字（直近METER_WINDOW_SAMPLESサンプル＝48kHzで約43ミリ秒の全帯域のRMS）とは窓も帯域も違う。
+  //    窓が違うことが文言から分かるように、区間の長さ（その区間を実際に測ったログ間隔）を添える
+  //    （例：「超音波帯（直近1秒の区間）：-91.7 dBFS」）。区間がまだ無ければ長さは書かない。
+  // b4（2026-09-29）で本人の決定。静かな部屋の超音波帯は+2dBほどしか動かないことがあり、
+  // -110〜0dBFSの縦軸では高さの約2%にしかならないので、数字で読めるようにする。
+  //   state  ultraBandStateの値（凡例と同じ判定）。線を描かないとき（off・fallback・noBins）は、
+  //          値の代わりに描かない理由を出す（「止めています（?bands=off）」など）
+  //   rec    最後に記録した区間レコード。無ければ（記録前・記録開始直後・統計リセット後）「--.- dBFS」。
+  //          レコードに超音波帯の値が無ければ（数えたフレームが0の区間など）「--.- dBFS（この区間は値なし）」。
+  //          デジタル無音（-Infinity）は測った値なので「-∞ dBFS」
+  // ⚠ 読み上げ領域（aria-live）にはしない。区間ごとに変わる値を毎回読み上げると、ほかの読み上げを妨げる
+  function ultraNowText(state, rec) {
+    const sec = rec ? formatSecLabel(rec.intervalSec) : '';
+    const head = sec ? `超音波帯（直近${sec}秒の区間）：` : '超音波帯（直近の区間）：';
+    if (!ultraSwatchShown(state)) return `超音波帯（直近の区間）：${ultraStoppedReason(state)}`;
+    if (!rec) return `${head}--.- dBFS`;
+    const v = ultraDbOf(rec);
+    if (v === null) return `${head}--.- dBFS（この区間は値なし）`;
+    return `${head}${formatDbCell(v)}`;
   }
 
   // 帯域とサンプルレートに関わる注意の項目（セッションのメタだけから決まるもの）。
@@ -1884,8 +2003,12 @@ const MicGainLogic = (() => {
     formatHMS,
     rmsToDbfs,
     rmsOf,
+    METER_WINDOW_SAMPLES,
+    meterWindowMs,
     parseFloorDb,
     FLOOR_DB_DEFAULT,
+    FLOOR_DB_DEFAULT_BANDS,
+    floorDbDefaultFor,
     meterScaleLabels,
     FLOOR_DB_MIN,
     FLOOR_DB_MAX,
@@ -1908,6 +2031,9 @@ const MicGainLogic = (() => {
     noticeSummary,
     statsIntegrity,
     emptyStatsText,
+    COMPACT_MEDIA_QUERY,
+    startStopView,
+    moreMenuNext,
     canvasPixelSize,
     GRAPH_WINDOW_SEC,
     GRAPH_TOP_DB,
@@ -1984,6 +2110,8 @@ const MicGainLogic = (() => {
     ultraSwatchShown,
     ultraLegendText,
     graphAriaLabel,
+    formatSecLabel,
+    ultraNowText,
     bandNoticeItems,
     formatCsvDb,
     buildCsv,

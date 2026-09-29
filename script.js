@@ -5,8 +5,9 @@
 (() => {
   // 純粋ロジックは logic.js（DOM非依存）から取る
   const {
-    clamp, dbToPercent, formatHMS, rmsToDbfs, rmsOf,
-    parseFloorDb, parseIntervalSec, canvasPixelSize, meterScaleLabels,
+    clamp, dbToPercent, formatHMS, rmsToDbfs, rmsOf, METER_WINDOW_SAMPLES,
+    parseFloorDb, floorDbDefaultFor, parseIntervalSec, canvasPixelSize, meterScaleLabels,
+    COMPACT_MEDIA_QUERY, startStopView, moreMenuNext,
     GRAPH_WINDOW_SEC, GRAPH_TOP_DB, graphArea, timeToX, dbToY,
     timeTickStepSec, timeTicks, dbTickStep, dbTicks, pruneSeries, seriesPointOf,
     GRAPH_LINE_STYLES, graphLinePoints,
@@ -22,7 +23,7 @@
     readTrackState, isTrackLost, markDeviceLoss,
     buildIntervalRecord, buildFallbackRecord,
     bandPlan, bandsEnabledFromQuery,
-    upperLimitText, ultraBandState, ultraSwatchShown, ultraLegendText, graphAriaLabel,
+    upperLimitText, ultraBandState, ultraSwatchShown, ultraLegendText, graphAriaLabel, ultraNowText,
     buildCsv, csvFileName,
     csvTrailerLines, createHashChain, HASH_ALGO_LABEL
   } = MicGainLogic; // logic.js（classic script のグローバル束縛）
@@ -32,11 +33,16 @@
   const stopBtn = document.getElementById('stopBtn');
   const exportBtn = document.getElementById('exportBtn');
   const resetBtn = document.getElementById('resetBtn');
+  // 「その他」と、その中身（CSV書き出し・統計リセット）。幅480px以下でだけ畳む（第2弾c0）
+  const moreBtn = document.getElementById('moreBtn');
+  const moreMenuEl = document.getElementById('moreMenu');
   const themeToggle = document.getElementById('themeToggle');
   const helpBtn = document.getElementById('helpBtn');
   const helpModal = document.getElementById('helpModal');
 
   const bigValue = document.getElementById('bigValue');
+  // 超音波帯の現在値（第2弾c0）。大きな数字のすぐ下の1行
+  const ultraNowEl = document.getElementById('ultraNow');
   const meterEl = document.getElementById('meter');
   const meterBar = document.getElementById('meterBar');
   const meterScaleEl = document.getElementById('meterScale');
@@ -166,7 +172,7 @@
   //
   // 改修前はここに3つの不具合が同居していた。
   //  (1) rect.width が非整数のとき `new Array(WIDTH)` が RangeError を投げ、
-  //      呼び出し元の drawSeries() と handleMobileButtonLayout() まで止まった
+  //      呼び出し元のdrawSeries()とhandleMobileButtonLayout()（第2弾c0で廃止）まで止まった
   //  (2) canvas.style.width/height へ px を焼き込み、CSS のレスポンシブ規則を
   //      インラインスタイルで無効化していた（狭めたあと二度と広がらない）
   //  (3) (2) の結果、481〜915px でキャンバスが 800px のまま横へはみ出した
@@ -211,8 +217,11 @@
   const logs = []; // { ts: Date, db: number }
 
   // 設定
+  // 表示下限の既定は、帯域を計算するかどうかで決まる（第2弾c0。帯域あり-110、?bands=offは従来の-90）。
+  // 決め方はlogic.jsのfloorDbDefaultFor。空欄・非数のときもこの値に戻す
+  const floorDbDefault = floorDbDefaultFor(bandsOnPage);
   function getFloorDb() {
-    return parseFloorDb(floorDbInput.value);
+    return parseFloorDb(floorDbInput.value, floorDbDefault);
   }
 
   // メーターの目盛りと説明を、表示下限に合わせる。
@@ -228,8 +237,9 @@
     if (meterEl) meterEl.title = `音量レベルメーター（${labels[0]}dBFS〜0dBFS）`;
   }
 
-  // 音量計算
-  const buffer = new Float32Array(2048);
+  // 音量計算。大きな数字は直近METER_WINDOW_SAMPLES（2048）サンプルの全帯域のRMSである。
+  // ⚠ CSVのdbfs（区間全体のエネルギー平均）とは窓が違う（ヘルプ・title・READMEに書いた。第2弾c0）
+  const buffer = new Float32Array(METER_WINDOW_SAMPLES);
   function computeDb() {
     analyser.getFloatTimeDomainData(buffer);
     return rmsToDbfs(rmsOf(buffer));
@@ -386,6 +396,18 @@
     // 上限は記録を始めてから分かる（リセットで測定条件を捨てたら消す）
     if (upperLimitEl) upperLimitEl.textContent = upperLimitText(sessionMeta);
     canvas.setAttribute('aria-label', graphAriaLabel(state));
+    // 超音波帯の現在値も同じ判定で出す（線を描かないときは、値の代わりに理由を出す）
+    renderUltraNow();
+  }
+
+  // 超音波帯の現在値（第2弾c0）。最後に記録した区間（lastRecord）のband_ultra_dbfsを、
+  // 凡例と同じ判定（ultraBandState）とともにlogic.jsのultraNowTextへ渡し、文言を入れるだけ。
+  // ⚠ 読み上げ領域（aria-live）にはしない。区間ごとに変わる値を読み上げ続けないため
+  let lastRecord = null;
+  function renderUltraNow() {
+    if (!ultraNowEl) return;
+    const text = ultraNowText(ultraBandState(sessionMeta, bandsOnPage), lastRecord);
+    if (ultraNowEl.textContent !== text) ultraNowEl.textContent = text;
   }
 
   // 記録に穴があるかないかを、必ず1行で言い切る。
@@ -711,6 +733,9 @@
     //    表示用の db を使うと、表示下限を変えただけで統計が動いてしまう
     //    （addStatsRecord が rawDb を読む）
     updateStats(rec);
+    // 超音波帯の現在値は、記録した区間そのもの（CSVに書く値）から出す（第2弾c0）
+    lastRecord = rec;
+    renderUltraNow();
     // 件数は行が増えたら必ず出す。無音だけの区間が続いても 0 のままにしない
     countEl.textContent = String(logs.length);
   }
@@ -780,7 +805,7 @@
 
     // ⚠ キャッシュ用の版番号を index.html とそろえる。付けないと、公開直後に
     //    古いワークレットと新しい logic.js が組み合わさることがある
-    await audioCtx.audioWorklet.addModule('./worklet/meter-processor.js?v=3.7');
+    await audioCtx.audioWorklet.addModule('./worklet/meter-processor.js?v=3.8');
     workletNode = new AudioWorkletNode(audioCtx, 'meter-processor', {
       numberOfInputs: 1,
       numberOfOutputs: 1,
@@ -838,8 +863,7 @@
   function cancelConnect(message, kind) {
     attemptGate.cancel();
     finishConnecting();
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
+    setRunButtons(true);
     updateButtonStates();
     setStatus(message, kind || 'warn');
   }
@@ -850,8 +874,7 @@
     // この試行の世代番号。取り消されたら以降の処理をすべて捨てる
     const token = attemptGate.begin();
     connecting = true;
-    startBtn.disabled = true;
-    stopBtn.disabled = false;   // 接続中も「停止」で取り消せる
+    setRunButtons(false);       // 接続中も「停止」で取り消せる
     updateButtonStates();       // 接続中はリセットさせない
     setStatus('マイクに接続中…', 'warn');
 
@@ -919,7 +942,7 @@
       // 新しいAudioContextを作成
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 2048;
+      analyser.fftSize = METER_WINDOW_SAMPLES;
 
       sourceNode = audioCtx.createMediaStreamSource(mediaStream);
       sourceNode.connect(analyser);
@@ -940,6 +963,8 @@
       // 測定条件を1セッションぶん記録する（CSV の列は増やさない）。
       // 要求した制約ではなく、track.getSettings() の実値を残すのが要点である
       sessionMeta = captureSessionMeta();
+      // 超音波帯の現在値は、このセッションの最初の区間が届くまで「--.- dBFS」にする（前のセッションの値を残さない）
+      lastRecord = null;
       // 記録できる上限は、このセッションのサンプルレートで決まる（第2弾b3）
       renderBandInfo();
 
@@ -961,7 +986,7 @@
       lastLogTime = startedAt;
       running = true;
       graphFrozenMs = null;
-      stopBtn.disabled = false;
+      setRunButtons(false);
       updateButtonStates(); // ボタン状態を更新（記録中はCSV書き出し無効）
 
       setStatus('計測中', 'ok');
@@ -980,8 +1005,7 @@
       
       running = false;
       finishConnecting();
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
+      setRunButtons(true);
       updateButtonStates(); // エラー時にもボタン状態を更新
       await cleanup();
     }
@@ -1008,8 +1032,7 @@
       await cleanup();
     }, 100);
     
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
+    setRunButtons(true);
     updateButtonStates(); // 停止時にボタン状態を更新
   }
 
@@ -1235,6 +1258,8 @@
     deviceMuted = false;
     sessionMeta = null;
     startedAt = 0;
+    // 超音波帯の現在値も最初の状態に戻す（renderBandInfoが描き直す。第2弾c0）
+    lastRecord = null;
     closeNotice();
     renderRecordNotice();
     // 上限の表示も、捨てた測定条件から出ているので消す
@@ -1245,11 +1270,96 @@
 
   // ボタン状態の管理
   function updateButtonStates() {
+    // ⚠ Chromiumは押せなくなったボタンからその場でフォーカスを外す（統計リセットを押した直後など）。
+    //    「その他」の中にフォーカスがあったかは、押せる状態を変える前に見ておく（第2弾c0）
+    const menuHadFocus = !!moreMenuEl && moreMenuEl.contains(document.activeElement);
+
     // CSV書き出しボタンは記録停止中かつログが存在する場合のみ有効
     exportBtn.disabled = running || logs.length === 0;
 
     // リセットも記録を止めてから（接続中も押させない）。ログが無ければ押せない
     resetBtn.disabled = running || connecting || logs.length === 0;
+
+    // 記録開始と停止は同じ場所に置き、押せるほうだけを見せる（第2弾c0）
+    renderStartStop();
+    // 「その他」の中身がどちらも押せなくなったら閉じる（統計リセットのあと・記録を始めたとき）
+    applyMoreMenu('items', { focusInside: menuHadFocus });
+  }
+
+  // 記録開始と停止の押せる状態（第2弾c0で1か所にまとめた）。2つはいつも逆になる
+  // （記録前・停止後は記録開始だけ、接続中・記録中は停止だけが押せる）。
+  // ⚠ Chromiumは、フォーカスのあるボタンをdisabledにした瞬間にフォーカスを外す（document.activeElementがbodyになる。
+  //    手元のChromiumで確かめた）。出し分けのあとで「押したボタンにフォーカスがあったか」を見ても分からないので、
+  //    押せる状態を変える前に覚えておく（renderStartStopが使う）
+  let runFocusPending = false;
+  function setRunButtons(startEnabled) {
+    const focused = document.activeElement;
+    if (focused === startBtn || focused === stopBtn) runFocusPending = true;
+    startBtn.disabled = !startEnabled;
+    stopBtn.disabled = !!startEnabled;
+  }
+
+  // 記録開始と停止の出し分け（第2弾c0）。どちらを見せるかはlogic.jsのstartStopViewが決める
+  // （接続中は「停止」で取り消せるので、停止を見せる）。見せないほうはhiddenで支援技術からも隠す。
+  // ⚠ 押したボタンが隠れると、フォーカスが行き場を失う。同じ場所に出たほうへ移し、キーボードで続けて操作できるようにする
+  //    （フォーカスが記録開始か停止にあったときだけ。ほかの場所にある利用者のフォーカスは奪わない）
+  function renderStartStop() {
+    const view = startStopView({ running, connecting });
+    const focused = document.activeElement;
+    const hadFocus = runFocusPending || focused === startBtn || focused === stopBtn;
+    runFocusPending = false;
+    startBtn.hidden = !view.start;
+    stopBtn.hidden = !view.stop;
+    const shown = view.stop ? stopBtn : startBtn;
+    if (hadFocus && focused !== shown && !shown.disabled) shown.focus();
+  }
+
+  // 「その他」の開閉（第2弾c0）。開いているかはaria-expandedだけで持ち、CSSも同じ属性で中身を出し入れする。
+  // 判定はlogic.jsのmoreMenuNext（Escで閉じたら、フォーカスが中身か「その他」にあったときだけ「その他」へ戻す・
+  // 幅481px以上では何もしない など）
+  const compactQuery = (typeof window.matchMedia === 'function') ? window.matchMedia(COMPACT_MEDIA_QUERY) : null;
+  function moreMenuOpen() {
+    return !!moreBtn && moreBtn.getAttribute('aria-expanded') === 'true';
+  }
+  // seen.focusInsideを渡すと、いまのフォーカスの代わりにそれを使う（押せる状態を変える前に見た値）
+  function applyMoreMenu(event, seen) {
+    if (!moreBtn || !moreMenuEl) return;
+    const next = moreMenuNext({
+      open: moreMenuOpen(),
+      compact: !!(compactQuery && compactQuery.matches),
+      modalOpen: !!(helpModal && helpModal.classList.contains('show')),
+      itemsEnabled: !exportBtn.disabled || !resetBtn.disabled,
+      focusInside: (seen && typeof seen.focusInside === 'boolean')
+        ? seen.focusInside
+        : moreMenuEl.contains(document.activeElement),
+      // Escで「その他」へフォーカスを戻すのは、フォーカスが中身か「その他」にあるときだけ（外にあるフォーカスは奪わない）
+      focusOnToggle: document.activeElement === moreBtn
+    }, event);
+    if (moreMenuOpen() !== next.open) moreBtn.setAttribute('aria-expanded', String(next.open));
+    if (next.focusToggle) moreBtn.focus();
+  }
+
+  function setupMoreMenu() {
+    if (!moreBtn || !moreMenuEl) return;
+    moreBtn.addEventListener('click', () => applyMoreMenu('toggle'));
+    // ⚠ 捕獲（capture）で受ける。ヘルプのEsc（バブリング）より先に呼ばれるので、ヘルプが開いているかを
+    //    閉じられる前に見られる（ヘルプを閉じるEscで「その他」まで閉じて、フォーカスを奪わない）
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') applyMoreMenu('escape');
+    }, true);
+    // 「その他」と中身の外を押したら閉じる。⚠ pointerdownではなくclickで受ける。
+    //    押した瞬間に閉じると中身の行が消えて下の画面が上がり、指の下の要素が入れ替わって別のものを押してしまう
+    //    ⚠ 利用者の操作でないclick（isTrustedがfalse）では閉じない。CSV書き出しはダウンロードのために
+    //    リンクを作ってclick()を呼ぶので、それで閉じると、押した書き出しボタンが隠れてフォーカスを失う
+    document.addEventListener('click', (e) => {
+      if (!e.isTrusted) return;
+      if (moreBtn.contains(e.target) || moreMenuEl.contains(e.target)) return;
+      applyMoreMenu('outside');
+    });
+    // 幅481px以上へ広げたら閉じておく（中身は並んで見えている。狭めたときに開いたまま出てこないように）
+    if (compactQuery && typeof compactQuery.addEventListener === 'function') {
+      compactQuery.addEventListener('change', () => applyMoreMenu('layout'));
+    }
   }
 
   // テーマ切り替え
@@ -1408,55 +1518,31 @@
     });
   }
   
-  // モバイル用ボタン配置機能
-  function setupMobileButtonLayout() {
-    handleMobileButtonLayout();
-  }
-  
-  function handleMobileButtonLayout() {
-    const helpBtn = document.getElementById('helpBtn');
-    const themeToggle = document.getElementById('themeToggle');
-    const mobileControls = document.getElementById('mobileControls');
-    const actions = document.querySelector('.actions');
-    
-    if (!helpBtn || !themeToggle || !mobileControls || !actions) return;
-    
-    const isMobile = window.innerWidth <= 480;
-    
-    if (isMobile) {
-      // モバイルの場合：ヘルプとテーマボタンを mobile-controls エリアに移動
-      if (!mobileControls.contains(helpBtn)) {
-        mobileControls.appendChild(helpBtn);
-        mobileControls.appendChild(themeToggle);
-      }
-    } else {
-      // デスクトップの場合：ヘルプとテーマボタンを actions エリアに戻す
-      if (!actions.contains(helpBtn)) {
-        actions.appendChild(helpBtn);
-        actions.appendChild(themeToggle);
-      }
-    }
-  }
+  // ⚠ 幅480pxでヘルプとテーマのボタンの親要素を付け替える仕組み（handleMobileButtonLayout）は、
+  //    第2弾c0で廃止した。resizeが届かない経路で不整合が固定される壊れやすい仕組みだったので、
+  //    どの幅でも同じ.actionsに置き、並びはstyle.cssだけで決める
+
+  // 「その他」の開閉（第2弾c0）
+  setupMoreMenu();
 
   // ヘルプモーダル機能を初期化
   setupHelpModal();
   
   // コントロール折りたたみ機能を初期化
   setupControlsToggle();
-  
-  // モバイル用ボタン配置の初期化
-  setupMobileButtonLayout();
 
   // リサイズ対応
   window.addEventListener('resize', () => {
     resizeCanvas();
     drawSeries();
-    handleMobileButtonLayout();
   });
 
   // 初期
   renderEngineMode();
   renderBandInfo();
+  // 表示下限の既定を入れてから目盛りを描く（第2弾c0）。defaultValue（value属性）を書き換えるので、
+  // ブラウザーが入力欄の値を復元したとき（利用者が変えた値）は上書きしない
+  floorDbInput.defaultValue = String(floorDbDefault);
   renderMeterScale();
   applyTheme();
   resizeCanvas();
