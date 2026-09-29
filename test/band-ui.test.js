@@ -45,6 +45,11 @@ const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const script = fs.readFileSync(path.join(root, 'script.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+// 第2弾c1bでREADMEを入口にし、詳しい説明をdocs/へ分けた。「帯域の列」はdocs/csv.mdにある。
+// READMEとdocs/を合わせたものが、分ける前のREADMEにあたる
+const docsText = name => fs.readFileSync(path.join(root, 'docs', name), 'utf8');
+const csvDoc = docsText('csv.md');
+const readmeAndDocs = [readme, ...fs.readdirSync(path.join(root, 'docs')).filter(n => n.endsWith('.md')).map(docsText)].join('\n');
 
 const SR = 48000;
 const ANCHOR = { epoch: 0, audioTime: 0, wallMs: Date.UTC(2026, 8, 29, 0, 0, 0) };
@@ -667,22 +672,22 @@ test('ヘルプが帯域の線・統計・注意書き・上限・?bands=offを�
   assert.ok(block.includes('簡易モードで帯域を計算していないとき'), '簡易モードの注意書きの説明が無い');
 });
 
-test('「超音波帯の最大」は、デジタル無音と欠測の行に付いた値も数えることを、ヘルプ・統計のtitle・READMEの3か所で言う', () => {
+test('「超音波帯の最大」は、デジタル無音と欠測の行に付いた値も数えることを、ヘルプ・統計のtitle・docs/csv.mdの3か所で言う', () => {
   // 第2弾c3aで項目・枠に辞書のキー（data-i18n-rich・data-i18n-title）を付けたので、属性を許して見る
   const help = html.match(/<li[^>]*><strong>超音波帯の最大：<\/strong>([\s\S]*?)<\/li>/)[1];
   const title = html.match(/<div class="stat"[^>]*\stitle="([^"]*)">\s*<div class="stat-label"[^>]*>超音波帯の最大/)[1];
-  const readmeLine = readme.split('\n').find(l => l.includes('画面の統計「超音波帯の最大」は、デジタル無音の行に付いた帯域の値も数える'));
-  assert.ok(readmeLine, 'READMEの「帯域の列」に説明が無い');
-  for (const [where, text] of [['ヘルプ', help], ['統計のtitle', title], ['README', readmeLine]]) {
+  const readmeLine = csvDoc.split('\n').find(l => l.includes('画面の統計「超音波帯の最大」は、デジタル無音の行に付いた帯域の値も数える'));
+  assert.ok(readmeLine, 'docs/csv.mdの「帯域の列」に説明が無い');
+  for (const [where, text] of [['ヘルプ', help], ['統計のtitle', title], ['docs/csv.md', readmeLine]]) {
     assert.ok(text.includes('デジタル無音'), `${where}にデジタル無音の行の説明が無い`);
     assert.ok(text.includes('音が1つも届かなかった区間の行に付いた値も'), `${where}に欠測の行の説明が無い`);
   }
 });
 
-test('READMEが画面の帯域を説明し、「CSVにだけ出ます」を残していない', () => {
-  assert.ok(!readme.includes('帯域の3列は、いまはCSVにだけ出ます'), 'b2のときの説明が残っている');
+test('READMEとdocs/が画面の帯域を説明し、「CSVにだけ出ます」を残していない', () => {
+  assert.ok(!readmeAndDocs.includes('帯域の3列は、いまはCSVにだけ出ます'), 'b2のときの説明が残っている');
   for (const s of ['超音波帯の最大', 'この端末で記録できる上限', '破線', 'band-ui.test.js', '簡易モードでは測れません']) {
-    assert.ok(readme.includes(s), `READMEに「${s}」が無い`);
+    assert.ok(readmeAndDocs.includes(s), `READMEとdocs/に「${s}」が無い`);
   }
 });
 

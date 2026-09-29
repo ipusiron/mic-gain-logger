@@ -32,6 +32,10 @@ const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const script = fs.readFileSync(path.join(root, 'script.js'), 'utf8');
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+// 第2弾c1bでREADMEを入口にし、詳しい説明をdocs/へ分けた。READMEとdocs/を合わせたものが、分ける前のREADMEにあたる
+const docsText = name => fs.readFileSync(path.join(root, 'docs', name), 'utf8');
+const readmeAndDocs = [readme, ...fs.readdirSync(path.join(root, 'docs')).filter(n => n.endsWith('.md')).map(docsText)].join('\n');
+const features = docsText('features.md');
 
 const SR = 48000;
 const ANCHOR = { epoch: 0, audioTime: 0, wallMs: Date.UTC(2026, 8, 29, 0, 0, 0) };
@@ -209,9 +213,9 @@ test('⭐大きな数字の窓（2048サンプル・48kHzで約43ミリ秒）は
   const helpAt = html.indexOf('<strong>現在の音量（大きな数字）：</strong>');
   assert.ok(helpAt > 0, 'ヘルプに「現在の音量（大きな数字）：」が無い');
   const help = html.slice(helpAt, html.indexOf('</li>', helpAt));
-  const readmeLine = readme.split('\n').find(l => l.includes('画面の大きな数字は直近'));
-  assert.ok(readmeLine, 'READMEに大きな数字の窓の説明が無い');
-  for (const [where, text] of [['大きな数字のtitle', title], ['ヘルプ', help], ['README', readmeLine]]) {
+  const readmeLine = features.split('\n').find(l => l.includes('画面の大きな数字は直近'));
+  assert.ok(readmeLine, 'docs/features.mdに大きな数字の窓の説明が無い');
+  for (const [where, text] of [['大きな数字のtitle', title], ['ヘルプ', help], ['docs/features.md', readmeLine]]) {
     assert.ok(text.includes(n), `${where}に「${n}」が無い`);
     assert.ok(text.includes(w), `${where}に「${w}」が無い`);
     assert.ok(text.includes('エネルギー平均'), `${where}にCSVの値（エネルギー平均）との違いが無い`);
@@ -222,6 +226,12 @@ test('⭐大きな数字の窓（2048サンプル・48kHzで約43ミリ秒）は
     assert.ok(/簡易モードでは、CSVの(<code>|`)?dbfs(<\/code>|`)?も記録した瞬間のこの窓の値/.test(text),
       `${where}に、簡易モードのCSVは同じ窓の値だという説明が無い`);
   }
+  // READMEの「✨ 主な機能」の要約（第2弾c1bの点検で、2048を書き換えても落ちないと指摘された）。
+  // 要点なので例（48kHzでのミリ秒・揺れる音）は docs/features.md に任せ、サンプル数と、窓が違うのは高精度モードのCSVだけを見る
+  const summary = readme.split('\n').find(l => l.startsWith('- **リアルタイム表示**：'));
+  assert.ok(summary, 'READMEの主な機能に「リアルタイム表示」の項目が無い');
+  assert.ok(summary.includes(`大きな数字は直近${n}の値で、高精度モードのCSVの\`dbfs\`（区間全体のエネルギー平均）とは窓が違う`),
+    `READMEの主な機能の要約が、窓（${n}）と条件（高精度モードのCSV）を書いていない`);
   // 前提：簡易モードは、大きな数字と同じ値（computeDb＝直近METER_WINDOW_SAMPLESサンプルのRMS）を記録している。
   // これが変わったら、上の説明を書き直す
   const anim = bodyOf('animate');
@@ -235,9 +245,9 @@ test('超音波帯の現在値の説明（ヘルプ・title・README）が、窓
   assert.ok(helpAt > 0, 'ヘルプに「超音波帯（直近の区間）：」が無い');
   const help = html.slice(helpAt, html.indexOf('</li>', helpAt));
   const title = html.match(/<div id="ultraNow"[^>]*title="([^"]*)"/)[1];
-  const readmeLine = readme.split('\n').find(l => l.includes('超音波帯（直近1秒の区間）'));
-  assert.ok(readmeLine, 'READMEに超音波帯の現在値の説明が無い');
-  for (const [where, text] of [['ヘルプ', help], ['title', title], ['README', readmeLine]]) {
+  const readmeLine = features.split('\n').find(l => l.includes('超音波帯（直近1秒の区間）'));
+  assert.ok(readmeLine, 'docs/features.mdに超音波帯の現在値の説明が無い');
+  for (const [where, text] of [['ヘルプ', help], ['title', title], ['docs/features.md', readmeLine]]) {
     assert.ok(text.includes('band_ultra_dbfs'), `${where}にCSVの列名が無い`);
     assert.ok(text.includes('ログ間隔'), `${where}に区間の長さの説明が無い`);
     assert.ok(/窓も帯域も違|窓が違/.test(text), `${where}に大きな数字との窓の違いが無い`);

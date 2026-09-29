@@ -28,6 +28,10 @@ const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const script = fs.readFileSync(path.join(root, 'script.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+// 第2弾c1bでREADMEを入口にし、詳しい説明をdocs/へ分けた。READMEとdocs/を合わせたものが、分ける前のREADMEにあたる
+const docsText = name => fs.readFileSync(path.join(root, 'docs', name), 'utf8');
+const readmeAndDocs = [readme, ...fs.readdirSync(path.join(root, 'docs')).filter(n => n.endsWith('.md')).map(docsText)].join('\n');
+const features = docsText('features.md');
 
 // コメントを外した関数の本体（次のfunction宣言の手前まで）
 function bodyOf(name) {
@@ -350,7 +354,7 @@ test('viewport-fit=coverは入れない（セーフエリアの扱いは実機�
 
 // ---- ヘルプ・README ----
 
-test('ヘルプとREADMEが、ボタンの配置（同じ場所の記録開始と停止・「その他」）を説明している', () => {
+test('ヘルプとREADME・docs/features.mdが、ボタンの配置（同じ場所の記録開始と停止・「その他」）を説明している', () => {
   // 第2弾c3aで見出しに辞書のキー（data-i18n）を付けたので、属性を許して探す
   const mobile = html.slice(html.search(/<h3[^>]*>📱 モバイル利用について<\/h3>/), html.search(/<h3[^>]*>⚠️ 重要な注意事項<\/h3>/));
   assert.match(mobile, /<strong>ボタンの配置：<\/strong>[^<]*「その他」/);
@@ -360,5 +364,6 @@ test('ヘルプとREADMEが、ボタンの配置（同じ場所の記録開始�
   assert.match(basic, /「CSV書き出し」<\/strong>[^<]*「その他」/);
   assert.match(basic, /「統計リセット」<\/strong>[^<]*「その他」/);
   assert.match(readme, /「その他」/);
-  assert.ok(readme.includes('記録開始と停止は同じ場所'), 'READMEに記録開始と停止の置き方が無い');
+  assert.match(features, /「その他」/);
+  assert.ok(features.includes('記録開始と停止は同じ場所'), 'docs/features.mdに記録開始と停止の置き方が無い');
 });

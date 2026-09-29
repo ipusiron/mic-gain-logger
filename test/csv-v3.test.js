@@ -34,7 +34,8 @@ const crypto = require('node:crypto');
 
 const root = path.join(__dirname, '..');
 const SOURCE = fs.readFileSync(path.join(root, 'worklet', 'meter-processor.js'), 'utf8');
-const README = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+// 第2弾c1bで、検証器・見本・Excelの手順はdocs/csv.mdへ移した（READMEは入口）
+const CSV_DOC = fs.readFileSync(path.join(root, 'docs', 'csv.md'), 'utf8');
 const V2_SAMPLE = fs.readFileSync(path.join(__dirname, 'fixtures', 'sample_v2.csv'), 'utf8');
 const {
   BAND_DEFS, bandPlan, CSV_COLUMNS, csvDataFields, buildCsv, buildIntervalRecord,
@@ -339,29 +340,29 @@ test('⭐列のヘッダー行はハッシュの材料に入らない。検証�
   assert.match(verifyLikeReadme(swapped.replace('# format=mic-gain-logger/3', '# format=mic-gain-logger/9')), /^1行目から合いません/);
 });
 
-test('README の検証器の KNOWN（版ごとの列）が、実装の列と v2 の見本の列と同じ', () => {
+test('docs/csv.md の検証器の KNOWN（版ごとの列）が、実装の列と v2 の見本の列と同じ', () => {
   const blocks = [];
   const re = /```[a-z]*\n([\s\S]*?)```/g;
   let m;
-  while ((m = re.exec(README)) !== null) blocks.push(m[1]);
+  while ((m = re.exec(CSV_DOC)) !== null) blocks.push(m[1]);
   const py = blocks.find(b => b.includes('verify_mic_gain_log.py'));
-  assert.ok(py, 'README に検証器が無い');
+  assert.ok(py, 'docs/csv.md に検証器が無い');
   const known = {};
   for (const k of py.matchAll(/^\s*"(# format=[^"]+)": "([^"]+)",?$/gm)) known[k[1]] = k[2];
-  assert.deepEqual(known, KNOWN, 'README の検証器の KNOWN が、実装の列・v2 の見本の列と食い違っている');
+  assert.deepEqual(known, KNOWN, 'docs/csv.md の検証器の KNOWN が、実装の列・v2 の見本の列と食い違っている');
   // 版の列と比べるのは、行ごとの計算より先（合わないまま行を計算しても意味が無い）
   const check = py.indexOf('列のヘッダー行が # format= の版の列と合いません');
   assert.notEqual(check, -1, '検証器が列のヘッダー行を版の列と比べていない');
   assert.ok(check < py.indexOf('for i, line in enumerate(data, 1)'), '版の列との比較が、行ごとの計算より後ろにある');
 });
 
-test('README の検証器は hash の位置を列のヘッダー行から読み、v2 の列を決め打ちしていない', () => {
+test('docs/csv.md の検証器は hash の位置を列のヘッダー行から読み、v2 の列を決め打ちしていない', () => {
   const blocks = [];
   const re = /```[a-z]*\n([\s\S]*?)```/g;
   let m;
-  while ((m = re.exec(README)) !== null) blocks.push(m[1]);
+  while ((m = re.exec(CSV_DOC)) !== null) blocks.push(m[1]);
   const py = blocks.find(b => b.includes('verify_mic_gain_log.py'));
-  assert.ok(py, 'README に検証器が無い');
+  assert.ok(py, 'docs/csv.md に検証器が無い');
   assert.ok(py.includes('.index("hash")'), 'hash の位置を列のヘッダー行から読んでいない');
   assert.ok(!py.includes('COLUMNS = "timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,hash"'), 'v2 の列を決め打ちしている');
   assert.ok(!/cells\[6\]|\[:6\]/.test(py), 'v2 の hash の位置（7列目）を決め打ちしている');

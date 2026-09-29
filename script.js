@@ -889,7 +889,7 @@
 
     // ⚠ キャッシュ用の版番号を index.html とそろえる。付けないと、公開直後に
     //    古いワークレットと新しい logic.js が組み合わさることがある
-    await audioCtx.audioWorklet.addModule('./worklet/meter-processor.js?v=3.9');
+    await audioCtx.audioWorklet.addModule('./worklet/meter-processor.js?v=3.10');
     workletNode = new AudioWorkletNode(audioCtx, 'meter-processor', {
       numberOfInputs: 1,
       numberOfOutputs: 1,

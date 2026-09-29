@@ -27,6 +27,10 @@ const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const script = fs.readFileSync(path.join(root, 'script.js'), 'utf8');
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+// 第2弾c1bでREADMEを入口にし、詳しい説明をdocs/へ分けた。READMEとdocs/を合わせたものが、分ける前のREADMEにあたる
+const docsText = name => fs.readFileSync(path.join(root, 'docs', name), 'utf8');
+const readmeAndDocs = [readme, ...fs.readdirSync(path.join(root, 'docs')).filter(n => n.endsWith('.md')).map(docsText)].join('\n');
+const troubleshooting = docsText('troubleshooting.md');
 const css = fs.readFileSync(path.join(root, 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 
 test('⭐目盛りは .meter の外（兄弟）に置く', () => {
@@ -182,11 +186,14 @@ test('メーターの説明に -60 を決め打ちしない', () => {
   assert.doesNotMatch(meter[0], /-60dBFS/);
 });
 
-test('READMEとヘルプも、既定の表示下限を-110（?bands=offは-90）と書いている', () => {
-  assert.ok(readme.includes(`表示下限（既定${FLOOR_DB_DEFAULT_BANDS}dBFS。\`?bands=off\`では${FLOOR_DB_DEFAULT}dBFS）`),
-    'READMEのトラブルシューティングの既定が古い');
-  assert.doesNotMatch(readme, /表示下限（既定-90dBFS）/);
-  assert.doesNotMatch(readme, /表示下限（既定-60dBFS）/);
+test('README・docs/とヘルプも、既定の表示下限を-110（?bands=offは-90）と書いている', () => {
+  assert.ok(troubleshooting.includes(`表示下限（既定${FLOOR_DB_DEFAULT_BANDS}dBFS。\`?bands=off\`では${FLOOR_DB_DEFAULT}dBFS）`),
+    'docs/troubleshooting.mdの既定が古い');
+  // READMEの使い方にも同じ既定を書いている
+  assert.ok(readme.includes(`表示下限の既定は${FLOOR_DB_DEFAULT_BANDS}dBFS（\`?bands=off\`で開いたときは${FLOOR_DB_DEFAULT}dBFS）`),
+    'READMEの使い方の既定が古い');
+  assert.doesNotMatch(readmeAndDocs, /表示下限（既定-90dBFS）/);
+  assert.doesNotMatch(readmeAndDocs, /表示下限（既定-60dBFS）/);
   const at = html.indexOf('<strong>表示下限：</strong>');
   const help = html.slice(at, html.indexOf('</li>', at));
   assert.ok(help.includes(`既定は${FLOOR_DB_DEFAULT_BANDS}dBFS`), 'ヘルプの既定が-110でない');

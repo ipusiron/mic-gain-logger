@@ -15,7 +15,7 @@
   <!-- favicon を参照していないと、ブラウザーが /favicon.ico を取りにいって
        コンソールに404が残る。SVG 1枚で済ませる（外部への取得は発生しない） -->
   <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="./style.css?v=3.9" />
+  <link rel="stylesheet" href="./style.css?v=3.10" />
 </head>
 <body>
   <header class="app-header">
@@ -249,7 +249,7 @@
             <li data-i18n-rich="help.stats.meter"><strong>音量メーター：</strong>現在の音量を色分けで表示（緑→黄→赤）</li>
           </ul>
           <p><em data-i18n="help.stats.noteRows">※ 統計はCSVに書き出される行（区間）だけから計算します</em></p>
-          <p><em data-i18n-rich="help.stats.noteCsv">※ CSVから同じ値を出せますが、条件があります。区間長はtimestamp（区間の終わり）の差で作れる一方、トレーラーの<code>#&nbsp;sessionStartAt=</code>と<code>#&nbsp;clockBreakAt=</code>に並ぶseqの行だけは差を使えません。記録を止めて再開した境界では差に休止時間がまるごと入り、時刻のアンカーを取り直した行では跳んだぶんが入るためです。その行は<code>#&nbsp;intervalSec=</code>のログ間隔を重みにしてください（<code>1@0+3@12</code>＝seq&nbsp;0から1秒、seq&nbsp;12から3秒）。手元の実測では、この置き換えをしないと17行の記録で6.49dB外れ、置き換えると小数10桁まで一致しました。音が1つも届かなかった区間（<code>dbfs</code>が空欄の行）は統計に入れていないので、その行の重みは0にしてください。手順はREADMEにあります</em></p>
+          <p><em data-i18n-rich="help.stats.noteCsv">※ CSVから同じ値を出せますが、条件があります。区間長はtimestamp（区間の終わり）の差で作れる一方、トレーラーの<code>#&nbsp;sessionStartAt=</code>と<code>#&nbsp;clockBreakAt=</code>に並ぶseqの行だけは差を使えません。記録を止めて再開した境界では差に休止時間がまるごと入り、時刻のアンカーを取り直した行では跳んだぶんが入るためです。その行は<code>#&nbsp;intervalSec=</code>のログ間隔を重みにしてください（<code>1@0+3@12</code>＝seq&nbsp;0から1秒、seq&nbsp;12から3秒）。手元の実測では、この置き換えをしないと17行の記録で6.49dB外れ、置き換えると小数10桁まで一致しました。音が1つも届かなかった区間（<code>dbfs</code>が空欄の行）は統計に入れていないので、その行の重みは0にしてください。手順は<code>docs/csv.md</code>にあります</em></p>
           <p><em data-i18n="help.stats.noteSessions">※ 複数回の記録セッション（記録開始→停止→記録開始）でデータは累積されます</em></p>
         </section>
 
@@ -258,7 +258,7 @@
           <ul>
             <li data-i18n-rich="help.data.noRecording"><strong>録音なし：</strong>音声は一切記録されず、音量データのみを扱います</li>
             <li data-i18n-rich="help.data.csv"><strong>CSV形式：</strong>10列（timestamp・dbfs・seq・peak_dbfs・clip・valid_ratio・band_ultra_dbfs・band_audible_dbfs・band_valid_ratio・hash）を、測定条件のヘッダー行と、行数・ログ間隔・セッションの境界・無音の有無を残すトレーラー行（どちらも「#」から始まる）で挟んで出力。音が1つも届かなかった区間は<code>dbfs</code>を空欄にします（デジタル無音の<code>-Infinity</code>とは別です）</li>
-            <li data-i18n-rich="help.data.chain"><strong>ハッシュチェーン：</strong>各行のハッシュに前の行のハッシュを混ぜています。CSVがそのまま渡ってきたときに、うっかりの破損・部分的な欠落・順序の入れ替わりを見つけられます。⚠<strong>意図的な改変には、相手が誰であっても耐えません。</strong>鎖の作り方をREADMEで公開しているので、値を書き換えたあとにハッシュを計算し直せば検証は通ります。記録が正しいことの証明には使えません</li>
+            <li data-i18n-rich="help.data.chain"><strong>ハッシュチェーン：</strong>各行のハッシュに前の行のハッシュを混ぜています。CSVがそのまま渡ってきたときに、うっかりの破損・部分的な欠落・順序の入れ替わりを見つけられます。⚠<strong>意図的な改変には、相手が誰であっても耐えません。</strong>鎖の作り方を<code>docs/csv.md</code>で公開しているので、値を書き換えたあとにハッシュを計算し直せば検証は通ります。記録が正しいことの証明には使えません</li>
             <li data-i18n-rich="help.data.cumulative"><strong>累積記録：</strong>停止→再開しても前回データは保持されます</li>
             <li data-i18n-rich="help.data.privacy"><strong>プライバシー配慮：</strong>すべての処理はブラウザー内で完結</li>
           </ul>
@@ -301,8 +301,8 @@
   </div>
 
   <!-- 画面の文言の辞書（第2弾c3a）。logic.jsが文言を組み立てるときに使うので、logic.jsより先に読む -->
-  <script src="./messages.js?v=3.9"></script>
-  <script src="./logic.js?v=3.9"></script>
-  <script src="./script.js?v=3.9"></script>
+  <script src="./messages.js?v=3.10"></script>
+  <script src="./logic.js?v=3.10"></script>
+  <script src="./script.js?v=3.10"></script>
 </body>
 </html>

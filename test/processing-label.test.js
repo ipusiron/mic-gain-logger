@@ -22,6 +22,10 @@ const {
 const root = path.join(__dirname, '..');
 const script = fs.readFileSync(path.join(root, 'script.js'), 'utf8');
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+// 第2弾c1bでREADMEを入口にし、詳しい説明をdocs/へ分けた。READMEとdocs/を合わせたものが、分ける前のREADMEにあたる
+const docsText = name => fs.readFileSync(path.join(root, 'docs', name), 'utf8');
+const readmeAndDocs = [readme, ...fs.readdirSync(path.join(root, 'docs')).filter(n => n.endsWith('.md')).map(docsText)].join('\n');
+const csvDoc = docsText('csv.md');
 
 const metaOf = (settings) => buildSessionMeta({ id: 's1', settings });
 
@@ -112,9 +116,12 @@ test('script.js はヘッダーと注意書きを logic.js の関数で組み立
   assert.match(render, /recordNoticeItems\(\{\s*deviceLoss, deviceMuted, sessionMeta, clockBreaks, stats, lang\s*\}\)/);
 });
 
-test('README の processing の説明が3つの書き方と過去の版の誤りを言っている', () => {
-  const row = readme.split('\n').find(l => l.startsWith('| `processing` |'));
+test('docs/csv.md の processing の説明が3つの書き方を言い、過去の版の書き方には触れていない', () => {
+  const row = csvDoc.split('\n').find(l => l.startsWith('| `processing` |'));
   assert.ok(row, 'processing の行が無い');
   for (const w of ['off', 'active:', 'unknown:']) assert.ok(row.includes(w), `${w} が無い`);
-  assert.match(readme, /c7b6bad[^\n]*processing=off/);
+  // 第2弾c1bで、過去の版の説明（c7b6bad までの版は報告しない項目があっても off と書いていた）を消した。
+  // README・docs/ にはいまの版で正しいことだけを書く（本人の指示 2026-09-29）。経緯は CLAUDE.md にある
+  assert.doesNotMatch(readmeAndDocs, /c7b6bad[^\n]*processing=off/);
+  assert.ok(!row.includes('までの版'), 'processing の行に過去の版の説明が残っている');
 });

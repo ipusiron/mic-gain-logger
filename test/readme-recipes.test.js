@@ -11,6 +11,7 @@
 // あわせてREADMEの「📱 実機テスト」の表と矛盾しないことを見る（第2弾c1の点検で、全文を縛るよう直した）。
 // ⚠ 実機のCSVはリポジトリーの外にある。レシピか実機の記録を変えたら、動かし直して REAL_OUT とREADMEを写し直す。
 // レシピは標準ライブラリーだけで書く（pandasを使わない。本人の指示）。
+// 第2弾c1bで、見本CSV・レシピ・Excelの手順はdocs/csv.md、実機テストの表はdocs/real-device-test.mdへ移した（READMEは入口）。
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -19,12 +20,17 @@ const path = require('node:path');
 
 const root = path.join(__dirname, '..');
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+// 第2弾c1bでREADMEを入口にし、詳しい説明をdocs/へ分けた。READMEとdocs/を合わせたものが、分ける前のREADMEにあたる
+const docsText = name => fs.readFileSync(path.join(root, 'docs', name), 'utf8');
+const readmeAndDocs = [readme, ...fs.readdirSync(path.join(root, 'docs')).filter(n => n.endsWith('.md')).map(docsText)].join('\n');
+const csvDoc = docsText('csv.md');
+const realDoc = docsText('real-device-test.md');
 
 function fencedBlocks() {
   const out = [];
   const re = /```([a-z]*)\n([\s\S]*?)```/g;
   let m;
-  while ((m = re.exec(readme)) !== null) out.push({ lang: m[1], body: m[2] });
+  while ((m = re.exec(csvDoc)) !== null) out.push({ lang: m[1], body: m[2] });
   return out;
 }
 const BLOCKS = fencedBlocks();
@@ -196,9 +202,9 @@ test('week.py の出力が、時刻（日本時間）×曜日の Leq の表と�
   // 見本の長さの説明が、見本の実際の長さ（1秒×4行）と合っている（第2弾c1の点検で「1時間ぶん」の誤りを直した）
   const first = SAMPLE.rows[0], last = SAMPLE.rows[SAMPLE.rows.length - 1];
   assert.equal((last.end - first.start) / 1000, 4);
-  assert.ok(readme.includes('見本は約4秒ぶんなので1行だけです'), 'hourly.py の説明');
-  assert.ok(readme.includes('見本は約4秒ぶん（12時台に収まる）なので、火曜の12時の1マスだけです'), 'week.py の説明');
-  assert.ok(!readme.includes('見本は1時間ぶん'), '古い説明が残っている');
+  assert.ok(csvDoc.includes('見本は約4秒ぶんなので1行だけです'), 'hourly.py の説明');
+  assert.ok(csvDoc.includes('見本は約4秒ぶん（12時台に収まる）なので、火曜の12時の1マスだけです'), 'week.py の説明');
+  assert.ok(!readmeAndDocs.includes('見本は1時間ぶん'), '古い説明が残っている');
 });
 
 test('ultra_only.py を見本CSVにかけると、中央値の行だけが出る', () => {
@@ -224,7 +230,7 @@ test('memo.py の出力が、見本CSVの行とメモを時刻の順に並べた
 });
 
 test('Excel の日本時間の式を見本の1行目に当てると、README に書いた時刻になる', () => {
-  const m = readme.match(/=DATEVALUE\(LEFT\(A2,(\d+)\)\)\+TIMEVALUE\(MID\(A2,(\d+),(\d+)\)\)\+MID\(A2,(\d+),(\d+)\)\/86400000\+9\/24/);
+  const m = csvDoc.match(/=DATEVALUE\(LEFT\(A2,(\d+)\)\)\+TIMEVALUE\(MID\(A2,(\d+),(\d+)\)\)\+MID\(A2,(\d+),(\d+)\)\/86400000\+9\/24/);
   assert.ok(m, 'Excel の式が無い');
   const [, left, t0, tn, f0, fn] = m.map(Number);
   const a2 = SAMPLE.rows[0].timestamp;
@@ -239,15 +245,15 @@ test('Excel の日本時間の式を見本の1行目に当てると、README に
   const d = new Date(ms);
   const shown = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} `
     + `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}.${pad(d.getUTCMilliseconds(), 3)}`;
-  assert.ok(readme.includes(`見本の1行目は\`${shown}\`になる`), `README の時刻が ${shown} でない`);
-  assert.ok(readme.includes('Excel・Google Sheetsの実物では確かめていない'), '確かめた範囲を書いていない');
+  assert.ok(csvDoc.includes(`見本の1行目は\`${shown}\`になる`), `docs/csv.md の時刻が ${shown} でない`);
+  assert.ok(csvDoc.includes('Excel・Google Sheetsの実物では確かめていない'), '確かめた範囲を書いていない');
 });
 
 // ---- 実機のCSVにかけた出力（計算し直せないので、実機テストの表と矛盾しないことを見る） ----
 
 // 実機テストの階段シーケンスの表（周波数 → 行・全帯域）
 function stepTable() {
-  const lines = readme.split('\n');
+  const lines = realDoc.split('\n');
   const i = lines.indexOf('| 周波数 | 行（`seq`） | 全帯域 | 超音波帯 | 静寂との差（超音波帯） | 可聴帯 |');
   assert.notEqual(i, -1);
   const out = {};
@@ -287,7 +293,7 @@ test('over.py +10 の実機の出力が、実機テストの表の全帯域の�
 test('compare.py の実機の出力が、実機テストの扇風機の表（扇風機オン・スピーカーオフ）と同じ値を出している', () => {
   const out = output('python compare.py iphone18pm_noise_fan-on_spk-off_20260929.csv iphone18pm_noise_fan-off_spk-on_20260929.csv '
     + 'iphone18pm_noise_fan-off_spk-on_tab-closed_20260929.csv iphone18pm_noise_fan-off_spk-on_stream-active_20260929.csv');
-  const row = readme.split('\n').find(l => l.startsWith('| 扇風機オン・スピーカーオフ |'));
+  const row = realDoc.split('\n').find(l => l.startsWith('| 扇風機オン・スピーカーオフ |'));
   const [full, audible, ultra] = row.split('|').slice(2, 5).map(s => Number(s.trim()));
   const target = key => Number(out.match(new RegExp(`^${key} の中央値  平時 \\S+  調べる記録 (\\S+)`, 'm'))[1]);
   assert.equal(target('dbfs'), full);
@@ -297,10 +303,10 @@ test('compare.py の実機の出力が、実機テストの扇風機の表（扇
   // 第2弾c1の点検で、unknown: どうしを「測定条件の違い=なし」と出し、同じ条件だと読めると指摘された
   assert.match(out, /^ヘッダーの違い=なし$/m);
   assert.match(out, /^注意：加工が切れていたと確かめられない記録がある（processing=unknown:autoGainControl\+noiseSuppression）$/m);
-  assert.ok(!readme.includes('測定条件の違い=なし'), '古い出力が残っている');
+  assert.ok(!readmeAndDocs.includes('測定条件の違い=なし'), '古い出力が残っている');
   assert.match(out, /^平時 3本 /m);
   // 本文とREADMEの活用例に、SafariではAGCが切れていたかを確かめられないことを添えている
-  assert.ok(readme.includes('「ヘッダーの違い=なし」は、測定条件が同じだったことの保証ではない'));
+  assert.ok(csvDoc.includes('「ヘッダーの違い=なし」は、測定条件が同じだったことの保証ではない'));
 });
 
 // ---- 実機のCSVにかけた出力の全文（動かし直して写した。実機のCSVはリポジトリーの外） ----
@@ -356,12 +362,75 @@ test('帯域の値がない記録で、ultra_only.py と over.py の + 付きが
 test('PowerShellの手順に、BOMとCRLFが付くことと、BOMを付けない書き方を添えている', () => {
   // 第2弾c1の点検で、Set-Content -Encoding UTF8（Windows PowerShell 5.1）はBOMを付けると指摘された。
   // 見本CSVにかけ、Set-Content は先頭が EF BB BF・CRが5つ、WriteAllLines はBOMなし・CRが5つで、CRを除くと grep の出力と同じだった
-  assert.ok(readme.includes('`-Encoding UTF8`はファイルの先頭にBOM（3バイト）を付け、改行はCRLFになります'));
-  assert.ok(readme.includes('`encoding="utf-8-sig"`'));
-  assert.ok(readme.includes('[IO.File]::WriteAllLines("$PWD\\table.csv", [string[]]$rows)'));
+  assert.ok(csvDoc.includes('`-Encoding UTF8`はファイルの先頭にBOM（3バイト）を付け、改行はCRLFになります'));
+  assert.ok(csvDoc.includes('`encoding="utf-8-sig"`'));
+  assert.ok(csvDoc.includes('[IO.File]::WriteAllLines("$PWD\\table.csv", [string[]]$rows)'));
 });
 
 // ---- コードの約束 ----
+
+// ---- コードそのもの ----
+//
+// 出力は、見本CSVにかけたものをJavaScriptで計算し直して比べている。ただし、レシピのコード（たとえば mgl.py の
+// leq の 10 ** (db / 10)）を書き換えても、JavaScriptの計算は変わらないので落ちない（第2弾c1bの点検で指摘された）。
+// そこで、出力を写したときのコードの SHA-256 を持つ。
+// ⚠ レシピを変えたら、見本CSVと実機のCSVで動かし直し、docs/csv.md と REAL_OUT を写し直してから、ここの値を直す。
+const crypto = require('node:crypto');
+const sha256 = s => crypto.createHash('sha256').update(s, 'utf8').digest('hex');
+const RECIPE_SHA256 = {
+  'mgl.py': '3f6d91b9e50d6b2ecb0b9187bb1df59622033f8622e08b8d606b19499629aa81',
+  'check.py': '136914c1d1fc2d3e98bcaf34e5c045f3e468a02c780593d900b4829deac09d4f',
+  'to_jst.py': '9929bb78f6d36322d15161d7e101ef3a356809e9dfe32f394432a3660cd982e4',
+  'hourly.py': '06761cfb5e9fdcd85b3641921dac287494420497f683bf12a57c2fb71b58d610',
+  'over.py': 'd502df0430107b7b656af9d906e3dac602cbbd5ec52034596c05fce88563508e',
+  'week.py': '18b73d754da71203244db69b6f47d8c3fa531d3c2a678966a41b3c465ba11356',
+  'ultra_only.py': 'b47a08abc1cde44e0a6a48ef590740dea560df3ffb83f6da8386e5238d88d59c',
+  'compare.py': '6bc2efc96a67658939238a7446e7fb74758819cb6e95fbe538069b49eee38da5',
+  'memo.py': 'f0382eeea43f4c24df069bbd3fe6aa9c937de8880788e237304f5677b3e37750'
+};
+
+test('レシピのコードが、出力を写したときのコードと同じ', () => {
+  for (const [n, sha] of Object.entries(RECIPE_SHA256)) {
+    assert.equal(sha256(code(n)), sha, `${n} のコードが、出力を写したときのものと違う（変えたなら動かし直して出力を写し直す）`);
+  }
+  // docs/csv.md の Python は、この9本と検証器（test/chain-claim.test.js が見る）だけ
+  const names = BLOCKS.filter(b => b.lang === 'python').map(b => b.body.split('\n')[0].match(/^# (\S+)/)[1]);
+  assert.deepEqual([...names].sort(), [...Object.keys(RECIPE_SHA256), 'verify_mic_gain_log.py'].sort());
+  // 結果を決める行（エネルギー平均と中央値）
+  const mgl = code('mgl.py');
+  assert.ok(mgl.includes('    power = sum(sec * 10 ** (db / 10) for sec, db in pairs) / total\n'), 'leq が電力の区間長重み付き平均でない');
+  assert.ok(mgl.includes('    return 10 * math.log10(power) if power > 0 else -math.inf\n'));
+  assert.ok(mgl.includes('    return vals[mid] if len(vals) % 2 else (vals[mid - 1] + vals[mid]) / 2\n'));
+});
+
+test('Pythonのブロックで、トップレベルの関数の前後に空行が2行ある（PEP 8。読者がそのまま写すコード）', () => {
+  // 第2弾c1bでREADMEからdocs/へ分けたとき、連続した空行が1行に詰まった（14か所。動作は同じ）。点検で指摘されたので戻した
+  const found = {};
+  for (const b of BLOCKS.filter(x => x.lang === 'python')) {
+    const name = b.body.split('\n')[0].match(/^# (\S+)/)[1];
+    const ls = b.body.split('\n');
+    let inDef = false;
+    const blanksBefore = i => { let n = 0; while (i - n - 1 >= 0 && ls[i - n - 1] === '') n++; return n; };
+    ls.forEach((l, i) => {
+      if (l === '' || /^\s/.test(l)) return;
+      if (l.startsWith('def ')) {
+        (found[name] = found[name] || []).push(l.match(/^def (\w+)/)[1]);
+        assert.equal(blanksBefore(i), 2, `${name} の「${l}」の前の空行が2行でない`);
+        inDef = true;
+      } else if (inDef) {
+        assert.equal(blanksBefore(i), 2, `${name} の関数のあとの「${l}」の前の空行が2行でない`);
+        inDef = false;
+      }
+    });
+    assert.ok(!/\n\n\n\n/.test(b.body), `${name} に3行以上続く空行がある`);
+  }
+  assert.deepEqual(found, {
+    'verify_mic_gain_log.py': ['h', 'hash_cell'],
+    'mgl.py': ['parse_time', 'jst', 'num', 'read_log', 'leq', 'median', 'spans'],
+    'ultra_only.py': ['rise'],
+    'compare.py': ['load']
+  });
+});
 
 test('レシピは標準ライブラリーだけを使い、1本のCSVを1回で読むモジュール（mgl.py）を共有している', () => {
   const names = ['mgl.py', 'check.py', 'to_jst.py', 'hourly.py', 'over.py', 'week.py', 'ultra_only.py', 'compare.py', 'memo.py'];
@@ -384,5 +453,5 @@ test('レシピは標準ライブラリーだけを使い、1本のCSVを1回で
     'python over.py sample.csv -30', 'python week.py sample.csv', 'python memo.py sample.csv memo.txt']) {
     assert.ok(output(c).length > 0, `出力が空: ${c}`);
   }
-  assert.ok(readme.includes('出力は、実際に動かしたものをそのまま写しています。'), '出力の出どころを書いていない');
+  assert.ok(csvDoc.includes('出力は、実際に動かしたものをそのまま写しています。'), '出力の出どころを書いていない');
 });

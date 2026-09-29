@@ -12,6 +12,14 @@
 // 本文の「約7.3dB」「+1.9dB」「約36〜38dB」「約34〜36dB」「約3.8dB・約3.4dB」は、表の値から計算し直して確かめる
 // （手で丸めた値が表と食い違わないように）。22kHzが帯域の端で低く出るぶん（約2dB）は、bandPlanのビンの割り当てと
 // 周期型Hann窓から計算し直す（第2弾c1の点検で、36〜38dBをまるごと音源側か受音側のせいにしていたと指摘された）。
+// 第2弾c1bで、実機テストの節はdocs/real-device-test.mdへ移した（READMEは入口。ブラウザー対応状況はREADMEに残る）。
+// 過去の版の説明を消したので、画面で見えなかった理由は「記録した版（090648f）の表示下限」と条件で書き、
+// いまの表示下限の既定は、変えた経緯ではなく、いまの設定として書く。
+// 確かめていない画面は、開発の段階名（第2弾c0・第2弾c3a）ではなく「実機テストの版（090648f）より後に入れた画面」
+// 「日英の切り替え」と書く（段階名はREADME・docs/のどこにも説明が無いため。第2弾c1bの点検で直した）。
+// READMEのブラウザー対応状況は、である調の箇条書きにした（行数と valid_ratio の値は docs/real-device-test.md）。
+// 叩いたときの超音波帯（帯域ありの seq 17）と、c7b6bad の記録のクリップ（8区間・延べ385サンプル）も、
+// 実機の記録の値と同じかを見る（第2弾c1bの点検で、書き換えてもテストが落ちないと指摘された）。
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -22,10 +30,15 @@ const { bandPlan } = require('../logic.js');
 
 const root = path.join(__dirname, '..');
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+// 第2弾c1bでREADMEを入口にし、詳しい説明をdocs/へ分けた。READMEとdocs/を合わせたものが、分ける前のREADMEにあたる
+const docsText = name => fs.readFileSync(path.join(root, 'docs', name), 'utf8');
+const readmeAndDocs = [readme, ...fs.readdirSync(path.join(root, 'docs')).filter(n => n.endsWith('.md')).map(docsText)].join('\n');
+const roadmapText = docsText('roadmap.md');
+const realDoc = docsText('real-device-test.md');
 
 // 見出しから、同じか上の階層の次の見出しまで（コードブロックの中の `#` 行は見出しに数えない）
-function section(head) {
-  const lines = readme.split('\n');
+function section(text, head) {
+  const lines = text.split('\n');
   const start = lines.indexOf(head);
   assert.notEqual(start, -1, `見出しが無い: ${head}`);
   const level = head.match(/^#+/)[0].length;
@@ -74,8 +87,8 @@ function ultraShare(f) {
   return sum;
 }
 
-const HEAD = '## 📱 実機テスト（iPhone 18 Pro Max）';
-const REAL = section(HEAD);
+const HEAD = '# 📱 実機テスト（iPhone 18 Pro Max）';
+const REAL = section(realDoc, HEAD);
 
 // ---- 実機の記録（2026-09-29の測定メモ）から写した値 ----
 
@@ -113,6 +126,12 @@ const FAN = [
   ['扇風機オン・スピーカーオフ', -75.92, -76.47, -104.02],
   ['扇風機オフ・スピーカーオン', -79.67, -79.84, -105.05]
 ];
+
+// 叩いたとき。帯域ありの記録（60行）の seq 17 の band_ultra_dbfs と、c7b6bad の版で採った別の記録のクリップ
+// （CSVは残っていない。測定メモの値）
+const TAP_ULTRA_SEQ = 17;
+const TAP_ULTRA = -93.93;
+const C7B6BAD_CLIP = { intervals: 8, samples: 385 };
 
 const SETTINGS_RAW = '# settingsRaw=echoCancellation:false;autoGainControl:unreported;noiseSuppression:unreported;sampleRate:48000;channelCount:unreported';
 const PROCESSING = '# processing=unknown:autoGainControl+noiseSuppression';
@@ -204,7 +223,7 @@ test('本文の数値が、表の値から計算した値と合う', () => {
   const fanAudible = (FAN[1][2] - FAN[2][2]).toFixed(1);
   assert.deepEqual([fanFull, fanAudible], ['3.8', '3.4']);
   assert.ok(REAL.includes(`全帯域を約${fanFull}dB、可聴帯を約${fanAudible}dB上げる`));
-  assert.ok(!readme.includes('全帯域と可聴帯を約4dB'), '可聴帯まで約4dBとまとめた古い記述が残っている');
+  assert.ok(!readmeAndDocs.includes('全帯域と可聴帯を約4dB'), '可聴帯まで約4dBとまとめた古い記述が残っている');
 });
 
 test('Safariが報告した測定条件を、実物のメタ行で載せている', () => {
@@ -219,40 +238,81 @@ test('使った端末と条件・22kHzの原因・画面で見えなかった理
     'iPhone 18 Pro Max（1台）のSafari', '`090648f`', '| ログ間隔 | 1秒 |', 'スピーカーの正面10cm以内',
     '扇風機・PCのファン・別室の洗濯機の音がある部屋',
     '22kHzで落ちている原因が音源側か受音側かは、分けられない', '48000Hzどうし',
-    '当時の表示下限の既定（-90dBFS）より下なので、グラフの下端に張り付いて見えなかった',
-    '表示下限の既定を-110dBFSにし', '上限の0dBFSまで30dB以上あり',
+    '記録した版（`090648f`）の表示下限の既定（-90dBFS）より下なので、グラフの下端に張り付いて見えなかった',
+    '表示下限の既定は-110dBFS（`?bands=off`では-90dBFS）', '上限の0dBFSまで30dB以上あり',
     '何の音かは分からなかった', '約0.84秒'
   ]) {
     assert.ok(REAL.includes(s), `実機テストの節に「${s}」が無い`);
   }
 });
 
+test('叩いたときの本文の値が、実機の記録と表の値に合う', () => {
+  const gate = label => GATE.find(g => g[0] === label);
+  // 叩いた行の peak_dbfs（帯域あり・?bands=off の6つ）は -31〜-50dBFS で、0dBFS まで30dB以上ある
+  const peaks = [...gate('叩いた行の`peak_dbfs`')[1], ...gate('叩いた行の`peak_dbfs`')[2]];
+  assert.deepEqual([Math.round(Math.max(...peaks)), Math.floor(Math.min(...peaks))], [-31, -50]);
+  assert.ok(0 - Math.max(...peaks) >= 30, '叩いた行の peak_dbfs が 0dBFS まで30dB以上ない');
+  assert.ok(REAL.includes('`peak_dbfs`は-31〜-50dBFSで、上限の0dBFSまで30dB以上あり、クリップした行はありませんでした'));
+  assert.deepEqual(gate('`clip`が0でない行').slice(1), [[0], [0]]);
+  // 叩いた音は超音波帯にも少し出る。静かな行の超音波帯の中央値（-101.74）より約8dB上
+  const up = Math.round(TAP_ULTRA - gate('静かな行の超音波帯の中央値')[1][0]);
+  assert.equal(up, 8);
+  assert.ok(REAL.includes(`帯域ありのseq ${TAP_ULTRA_SEQ}で${TAP_ULTRA.toFixed(2)}dBFS、静かな行より約${up}dB上`),
+    '叩いたときの超音波帯の値が、実機の記録と違う');
+  // c7b6bad の版で採った別の記録のクリップ
+  assert.ok(REAL.includes(`クリップが${C7B6BAD_CLIP.intervals}区間・延べ${C7B6BAD_CLIP.samples}サンプル出ていました`),
+    'c7b6bad の記録のクリップの値が、測定メモと違う');
+  assert.ok(REAL.includes('そのときのCSVは残っていないので、原因は確かめられていません'));
+});
+
 test('画面の見え方は筆者の記憶として書き、CSVで確かめたことと分けている', () => {
   // 第2弾c1の点検で、画面の超音波帯の線を「実機のCSVで確かめた」と書いていたと指摘された（CSVに描画の記録は無い）
   assert.ok(REAL.includes('（筆者の記憶によります。CSVの値から考えても、同じ見え方になります）'));
-  const browser = section('### ブラウザー対応状況');
+  const browser = section(readme, '### ブラウザー対応状況');
   assert.ok(!browser.includes('CSV v3・画面の超音波帯の線'), '画面の線をCSVで確かめたと書いている');
-  assert.ok(browser.includes('画面の超音波帯の破線は、CSVでは確かめられません'));
-  assert.ok(browser.includes('筆者が見ています（記憶によります）'));
+  // READMEのブラウザー対応状況は、である調の箇条書き（第2弾c1bの点検で、1段落1,390字を分けた）
+  const seen = browser.split('\n').find(l => l.startsWith('- **画面で見たこと（筆者の記憶による）**：'));
+  assert.ok(seen, 'ブラウザー対応状況に「画面で見たこと（筆者の記憶による）」の項目が無い');
+  assert.ok(seen.includes('画面の超音波帯の破線は、CSVでは確かめられない'));
+  assert.ok(seen.includes('22kHzでは記録した版の表示下限（-90dBFS）の下端に張り付いて見えなかった'));
+  // CSVで確かめたことの項目に、画面の見え方を混ぜない
+  const csvLine = browser.split('\n').find(l => l.startsWith('- **実機のCSVで確かめたこと**：'));
+  assert.ok(csvLine, 'ブラウザー対応状況に「実機のCSVで確かめたこと」の項目が無い');
+  assert.ok(!/破線|画面で/.test(csvLine), 'CSVで確かめたことの項目に、画面の見え方が入っている');
 });
 
 // ---- 確かめていないこと・古い記述 ----
 
-// 第2弾c3aで、日英の切り替え（デスクトップのChromiumでだけ確かめた）を足した
-const UNVERIFIED = ['Android', '画面ロック中・バックグラウンド', '長時間の記録', 'ほかのiPhone', '第2弾c0の画面の変更',
-  '第2弾c3aの日英の切り替え'];
+// 第2弾c3aで、日英の切り替え（デスクトップのChromiumでだけ確かめた）を足した。
+// 第2弾c1bの点検で、開発の段階名（第2弾c0・第2弾c3a）を、機能の名前と確かめた版との前後の書き方に直した
+const UNVERIFIED = ['Android', '画面ロック中・バックグラウンド', '長時間の記録', 'ほかのiPhone',
+  '実機テストの版（`090648f`）より後に入れた画面（表示下限の既定-110dBFS・超音波帯の現在値・ボタンの配置）',
+  '日英の切り替え（デスクトップのChromiumでだけ確かめた）'];
 
 test('実機で確かめていないことを、実機テストの節とブラウザー対応状況の両方に書いている', () => {
-  const list = section('### 実機で確かめていないこと');
-  const browser = section('### ブラウザー対応状況');
+  const list = section(realDoc, '## 実機で確かめていないこと');
+  const browser = section(readme, '### ブラウザー対応状況');
+  const notYet = browser.split('\n').find(l => l.startsWith('- **確かめていないこと**：'));
+  assert.ok(notYet, 'ブラウザー対応状況に「確かめていないこと」の項目が無い');
   for (const s of UNVERIFIED) {
     assert.ok(list.includes(s), `実機テストの節に「${s}」が無い`);
-    assert.ok(browser.includes(s), `ブラウザー対応状況に「${s}」が無い`);
+    assert.ok(notYet.includes(s), `ブラウザー対応状況の「確かめていないこと」に「${s}」が無い`);
   }
 });
 
+test('READMEとdocs/に、説明の無い開発の段階名（第2弾c0・第2弾c3aなど）を書いていない', () => {
+  const m = readmeAndDocs.match(/第\d弾[a-z]\d[a-z]?/);
+  assert.equal(m, null, `開発の段階名がある: ${m && m[0]}`);
+  // 「第1弾」「第2弾b」も、読む人には説明が無い。確かめた公開版はコミットの番号で示す。
+  // 段階ごとに何を入れたかを書く将来案の資料（docs/roadmap.md）だけは、段階の名前を使う
+  // README の中で roadmap.md の中身（見出し）を説明する行も、将来案の資料の話なので外す
+  const outside = readmeAndDocs.replace(roadmapText, '').split('\n').filter(l => !l.includes('roadmap.md')).join('\n');
+  const s = outside.match(/第\d弾[a-z]?/);
+  assert.equal(s, null, `将来案の資料の外に段階名がある: ${s && s[0]}`);
+});
+
 test('ブラウザー対応状況に、第2弾bを実機で確かめていないという古い記述が残っていない', () => {
-  const browser = section('### ブラウザー対応状況');
+  const browser = section(readme, '### ブラウザー対応状況');
   for (const s of [
     '実機ではまだ確かめていません。とくに、FFTを足したことで',
     'iPhoneの実機のCSVではまだ確かめていない',
@@ -260,23 +320,23 @@ test('ブラウザー対応状況に、第2弾bを実機で確かめていない
   ]) {
     assert.ok(!browser.includes(s), `古い記述が残っている: ${s}`);
   }
-  assert.ok(browser.includes('`090648f`（第2弾b）'), '第2弾bの版で確かめたことが書かれていない');
-  assert.ok(!readme.includes('第2弾の帯域の値で測り直します'), '将来案に「測り直します」が残っている');
+  assert.ok(browser.includes('`090648f`'), '帯域の記録が入った公開版で確かめたことが書かれていない');
+  assert.ok(!readmeAndDocs.includes('第2弾の帯域の値で測り直します'), '将来案に「測り直します」が残っている');
 });
 
 // ---- Tone Sweep と実機のCSV ----
 
 test('Tone Sweep へのリンクはまだ張らず、公開したら張ることを書いている', () => {
   // 本人の指示（2026-09-29）。単体のツールとして公開したら、ここを「リンクがある」に変える
-  assert.ok(readme.includes('Tone Sweep'), 'Tone Sweep に触れていない');
+  assert.ok(readmeAndDocs.includes('Tone Sweep'), 'Tone Sweep に触れていない');
   assert.ok(REAL.includes('後日、単体のツールとして公開する予定で、公開したらここにリンクを張ります'));
-  for (const m of readme.matchAll(/\[([^\]]*)\]\(([^)]*)\)/g)) {
+  for (const m of readmeAndDocs.matchAll(/\[([^\]]*)\]\(([^)]*)\)/g)) {
     assert.ok(!/tone|sweep/i.test(m[1]) && !/tone|sweep/i.test(m[2]), `Tone Sweep へのリンクがある: ${m[0]}`);
   }
   // Markdownのリンクだけでなく、HTMLの<a>と、GitHubがリンクにするむき出しのURLも見る（第2弾c1の点検で追加）
-  assert.ok(!/href="[^"]*(tone|sweep)/i.test(readme), 'HTMLの<a>で Tone Sweep へのリンクがある');
-  assert.ok(!/https?:\/\/\S*(tone|sweep)/i.test(readme), 'Tone Sweep のURLがある');
-  assert.ok(!readme.includes('tone_sweep.html'), '内部のページのファイル名が残っている');
+  assert.ok(!/href="[^"]*(tone|sweep)/i.test(readmeAndDocs), 'HTMLの<a>で Tone Sweep へのリンクがある');
+  assert.ok(!/https?:\/\/\S*(tone|sweep)/i.test(readmeAndDocs), 'Tone Sweep のURLがある');
+  assert.ok(!readmeAndDocs.includes('tone_sweep.html'), '内部のページのファイル名が残っている');
 });
 
 test('実機のCSVをリポジトリーに入れていない', () => {
@@ -297,10 +357,10 @@ test('実機のCSVをリポジトリーに入れていない', () => {
   // 時刻では見分けない（実機のv2のCSVはUTCの20時台で、05時台・06時台だけを見ていた。第2弾c1の点検で直した）。
   // データ行の形（timestamp,dbfs,seq,…）の行が、見本CSV（# format=mic-gain-logger/3 のブロック）の4行のほかに無いことを見る
   const ROW = /^\d{4}-\d\d-\d\dT[\d:.]+Z,[^,]*,\d+,/;
-  const sample = readme.match(/```\n(# format=mic-gain-logger\/3\n[\s\S]*?)```/)[1];
+  const sample = readmeAndDocs.match(/```\n(# format=mic-gain-logger\/3\n[\s\S]*?)```/)[1];
   const allowed = new Set(sample.split('\n').filter(l => ROW.test(l)));
   assert.equal(allowed.size, 4, '見本CSVのデータ行が4行でない');
-  for (const l of readme.split('\n').filter(x => ROW.test(x))) {
+  for (const l of readmeAndDocs.split('\n').filter(x => ROW.test(x))) {
     assert.ok(allowed.has(l), `見本CSVにない行がREADMEにある: ${l}`);
   }
 });
