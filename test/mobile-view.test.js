@@ -351,11 +351,12 @@ test('viewport-fit=coverは入れない（セーフエリアの扱いは実機�
 // ---- ヘルプ・README ----
 
 test('ヘルプとREADMEが、ボタンの配置（同じ場所の記録開始と停止・「その他」）を説明している', () => {
-  const mobile = html.slice(html.indexOf('<h3>📱 モバイル利用について</h3>'), html.indexOf('<h3>⚠️ 重要な注意事項</h3>'));
+  // 第2弾c3aで見出しに辞書のキー（data-i18n）を付けたので、属性を許して探す
+  const mobile = html.slice(html.search(/<h3[^>]*>📱 モバイル利用について<\/h3>/), html.search(/<h3[^>]*>⚠️ 重要な注意事項<\/h3>/));
   assert.match(mobile, /<strong>ボタンの配置：<\/strong>[^<]*「その他」/);
   assert.match(mobile, /同じ場所/);
   assert.match(mobile, /Esc/);
-  const basic = html.slice(html.indexOf('<h3>🎯 基本的な使い方</h3>'), html.indexOf('<h3>⚙️ 設定項目</h3>'));
+  const basic = html.slice(html.search(/<h3[^>]*>🎯 基本的な使い方<\/h3>/), html.search(/<h3[^>]*>⚙️ 設定項目<\/h3>/));
   assert.match(basic, /「CSV書き出し」<\/strong>[^<]*「その他」/);
   assert.match(basic, /「統計リセット」<\/strong>[^<]*「その他」/);
   assert.match(readme, /「その他」/);

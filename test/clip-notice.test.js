@@ -116,9 +116,10 @@ test('「連続」の区切りは3サンプルで、README とヘルプも同じ
 
 test('「真のピーク」を「サンプルピーク」と呼ぶ（トゥルーピークとは別物）', () => {
   assert.doesNotMatch(html, /真のピーク/, 'index.html に「真のピーク」が残っている');
-  assert.match(html, /<div class="stat-label">サンプルピーク<\/div>/);
+  // 第2弾c3aで見出しに辞書のキー（data-i18n）を付けたので、属性を許して見る
+  assert.match(html, /<div class="stat-label"[^>]*>サンプルピーク<\/div>/);
   // 別物であることを説明に書く
-  const m = html.match(/<div class="stat"[^>]*title="([^"]*)"[^>]*>\s*<div class="stat-label">サンプルピーク/);
+  const m = html.match(/<div class="stat"[^>]*\stitle="([^"]*)"[^>]*>\s*<div class="stat-label"[^>]*>サンプルピーク/);
   assert.ok(m, 'サンプルピークの枠に title が無い');
   assert.match(m[1], /トゥルーピーク/);
   assert.doesNotMatch(readme, /真のピーク/, 'README に「真のピーク」が残っている');

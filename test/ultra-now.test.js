@@ -172,7 +172,8 @@ function bodyOf(name) {
 }
 
 test('⭐script.js：記録した区間で描き直し、記録開始とリセットで最初の状態に戻す', () => {
-  assert.match(bodyOf('renderUltraNow'), /ultraNowText\(ultraBandState\(sessionMeta, bandsOnPage\), lastRecord\)/);
+  // 第2弾c3aから、画面の言語（lang）で組み立てる
+  assert.match(bodyOf('renderUltraNow'), /ultraNowText\(ultraBandState\(sessionMeta, bandsOnPage\), lastRecord, lang\)/);
   // 区間を記録したら、その区間（CSVに書くレコード）で描き直す
   const push = bodyOf('pushRecord');
   const i = push.indexOf('lastRecord = rec;');

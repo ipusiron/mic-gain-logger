@@ -15,7 +15,8 @@ The tool records **relative** levels. dBFS is not dB SPL, and its output must no
 Client-side only web application (vanilla JavaScript, no build step):
 
 ```
-index.html ──> logic.js                      純ロジック（DOMに触らない・Nodeから読める）
+index.html ──> messages.js                   画面の文言の辞書（日本語・英語）と言語の決め方（DOMに触らない・Nodeから読める）
+           ──> logic.js                      純ロジック（DOMに触らない・Nodeから読める）
            ──> script.js                     DOMとブラウザーAPI（IIFE・logic.jsを読む）
            ──> style.css                     テーマとレイアウト
            ──> worklet/meter-processor.js    オーディオスレッドでの区間集計
@@ -24,8 +25,9 @@ test/                                        node:test（依存パッケージ�
 
 ### どこに何を書くか（この約束を崩さない）
 
-- **`logic.js`**: 純ロジックだけを置く。`document`・`window`・`navigator`・`localStorage`に触らない。Nodeから`require`できる状態を保つ（末尾の`module.exports`が命綱）。新しい計算・整形・判定はまずここへ書き、テストを付ける
-- **`script.js`**: DOMとブラウザーAPI。単一のIIFE。計算をここに書かない。`logic.js`から取り出した関数を呼ぶだけにする
+- **`logic.js`**: 純ロジックだけを置く。`document`・`window`・`navigator`・`localStorage`に触らない。Nodeから`require`できる状態を保つ（末尾の`module.exports`が命綱）。新しい計算・整形・判定はまずここへ書き、テストを付ける。画面に出る文言は書かず、`messages.js`の辞書から引く（下の「画面の日英対応」）
+- **`messages.js`**（第2弾c3a）: 画面に出る文言の辞書（`DICTIONARIES.ja`・`DICTIONARIES.en`）と、表示の言語の決め方（`initialLang`）。`logic.js`と同じ形（classic scriptのIIFE＋末尾の`module.exports`）で、`document`・`window`・`navigator`・`localStorage`に触らない。`index.html`は`logic.js`より先に読む
+- **`script.js`**: DOMとブラウザーAPI。単一のIIFE。計算をここに書かない。`logic.js`から取り出した関数を呼ぶだけにする。画面に出る文言（日本語も英語も）を書かず、辞書のキーで引く（コメントは日本語のままでよい）
 - **`worklet/meter-processor.js`**: `AudioWorkletProcessor`。区間の集計だけを行い、dBFSへの換算はしない（換算は`logic.js`）。別スレッドなので`logic.js`を読み込めない。共有したい値は両方に書くのではなく`processorOptions`で渡す
 - **`test/`**: `npm test`（`node --test`）。1ファイル＝1テーマ。冒頭のコメントに「どの段階で何を直したか」を書く
 - **`package.json`**: 依存パッケージを増やさない。`node --test`だけで完結させる
@@ -113,6 +115,65 @@ test/                                        node:test（依存パッケージ�
 - ⚠⚠**「CSVから同じ値が出る」は条件つきで書く。**画面のヘルプは「画面の値とCSVから計算し直した値は一致します」と無条件に言い切っていたが、停止→再開をまたぐと嘘になる。成り立つ条件（区間長の取り方、境界の行の扱い）を添える
 - **README・画面のヘルプ・テスト・このCLAUDE.mdの4か所をそろえる。**READMEの検算値は`test/session-weight.test.js`が表を読んで実際の計算と比べるので、**値を書き換えるときは必ず計算し直す**
 
+### 画面の日英対応（第2弾c3a）
+
+- ⚠**画面に出る文言は`messages.js`の辞書から出す。**`DICTIONARIES.ja`と`DICTIONARIES.en`は、キーの集合と置き換える値（`{name}`）の名前をそろえる。英語の値に日本語の文字（ひらがな・カタカナ・漢字・全角の記号・「※」）を入れない。`script.js`と`logic.js`のコメントの外に日本語の文字列を書かない（`test/i18n.test.js`がJSの文字列リテラルを読んで見ている）。`console.warn`の文言も英語で書く
+- 引き方は`t(lang, key, params)`。知らない言語・キー・足りない値は例外にする（黙って日本語や空文字を出さない）。`{n|one|other}`は英語の単数・複数のためで、`n`が1ならone、それ以外ならotherを出す（数そのものは別に`{n}`で出す）
+  - ⚠**数で決まる名詞・指示語を、英語の値に決め打ちで書かない。**最初の実装は、1区間でも「valid sample ratio 1.000 in all 1 interval」「Part of the sound in those intervals」「In 1 of them」と出ていた（点検で見つかった。記録を始めて最初の区間で必ず出る文）。`{rows|that interval|those intervals}`のように数で選ぶか、「in {known} of {known} …」「each affected interval」のように数によらない言い方にする。`{n|one|other}`の中に`{…}`は書けない（`t`の正規表現が`[^|{}]*`のため）。`test/i18n.test.js`が、状態を網羅した英語の文言で「1 intervals」「all 1」「2 interval」などが無いことと、該当が1区間の注意書きに「those intervals」「of them」が無いことを見ている
+- ⭐**`logic.js`の文言を返す関数は、言語を最後の引数で受け取る**（`statsWarningItems(stats, lang)`・`statsWarnings`・`noticeSummary(items, lang)`・`statsIntegrity(stats, lang)`・`bandRangeLabel(def, lang)`・`upperLimitText(meta, lang)`・`ultraLegendText(state, lang)`・`graphAriaLabel(state, lang)`・`ultraNowText(state, rec, lang)`・`bandNoticeItems(meta, lang)`、`recordNoticeItems`は`input.lang`）。省略すると日本語で、これまでと同じ文言を返す
+  - 「キー＋値を返し、`script.js`が辞書で文にする」形にしなかった理由：①既存のテストの多く（`band-ui`・`ultra-now`・`stats-notice`・`clip-notice`・`processing-label`・`device`・`clock`など）が、これらの関数を言語なしで呼んで日本語の文を確かめている。言語の引数は省略できるので、どれも書き換えずに通る（キー＋値にすると、文の組み立てを確かめるテストをすべて書き直すことになる）②`statsIntegrity`や注意書きのように、条件で部分をつないで1文にする関数をキー＋値にすると、つなぎ方の判定が`script.js`へ漏れる。言語を受け取る形なら判定も組み立ても`logic.js`に残り、`script.js`は「DOMに入れるだけ」の約束を守れる③言語は引数で渡すデータなので、`logic.js`は純ロジックのまま（`navigator`も`localStorage`も読まない）
+  - 注意書きの項目の`kind`、記録の穴の`level`、凡例の状態（`ultraBandState`）は言語によらない。判定を言語と切り離しておく
+- **初期言語は`?lang=ja|en` → 保存した選択 → ブラウザーの言語**（`messages.js`の`initialLang`）。`navigator.languages`の先頭が`ja`・`ja-JP`などなら日本語、それ以外（空を含む）は英語。`ja`・`en`以外の値は無視して次へ進む。保存のキーは`localStorage`の`mic-gain-logger-lang`で、ボタンで選んだときだけ書く（`?lang=`で開いただけでは書かない）。読み書きは`try/catch`で囲み、使えない環境でも動く（テーマの`theme`も同じく囲んだ。囲まないと例外で初期化が止まる）
+  - ボタンで切り替えたとき、URLに`?lang=`があれば`history.replaceState`で書き換える（`searchWithLang`。再読み込みで元の言語に戻らないように）。`?bands=off`などほかの値は変えない。`?lang=`が無ければURLに足さない
+- **`index.html`の日本語は残す**（スクリプトが動く前の表示と、動かないとき用）。差し替える場所は属性で指す：`data-i18n`（文字だけ。子要素を持たない要素に付ける）、`data-i18n-rich`（`<strong>`・`<code>`・`<em>`を含む文字。入れ子にしない。`script.js`は`richSegments`の結果から要素を作り、`innerHTML`は使わない）、`data-i18n-title`・`data-i18n-aria-label`・`data-i18n-content`など（`I18N_ATTRS`）。⚠**HTMLの日本語と`ja`の値は同じにする**（`test/i18n.test.js`が比べる。片方だけ直すと落ちる）
+  - ⚠**文言を差し替える要素と隣の要素のあいだに、空白の文字を置かない。**空白の文字は言語によらず残るので、最初の実装ではフッターの英語が「GitHub repository ( ipusiron/mic-gain-logger )」と括弧の内側に空白が入った（HEADの日本語の「（ … ）」の空白がそのまま残っていた）。空白が要る言語だけ、辞書の値に入れる（`footer.repoLead`の日本語は末尾に、`footer.repoTail`の日本語は先頭に半角の空白。HTMLの中身も同じ文字にする）
+  - ⚠**`data-i18n-title`などは、訳す属性の直前に置く。**既存のテストの`[^>]*title="(…)"`は貪欲なので、後ろに置くと`data-i18n-title`の値（キー）を拾う
+  - 起動時に`logic.js`の関数で書き換える4か所（`#ultraNow`・`#legendUltraText`・キャンバスの`aria-label`・メーターの`title`）はキーを付けず、`script.js`の描画関数が言語を渡して描く。HTMLの値は、その関数の日本語の結果とそろえる（メーターの`title`だけは表示下限の数字が入るので、一般の言い方にしてある）
+  - 状態の1行（`#status`）と設定の開閉の文字は、`setMessage(el, key, params)`でキーと値を要素に残す。言語を切り替えたら`applyStaticText`が同じキーで入れ直す。エラーの文の`err.message`はブラウザーから来る文字列なので訳さない
+- **言語の切り替えは表示だけを変える。**`applyLanguage`は`<html lang>`・静的な文言・メーターの説明・計測エンジン・凡例・上限・キャンバスの説明・超音波帯の現在値・記録の穴・注意書きを描き直すだけで、`logs`・`stats`・`series`・ハッシュチェーン・セッションのメタには触らない（`test/i18n.test.js`）。⚠計測エンジンの表示は記録開始と`applyLanguage`でしか描かないので、停止したあとに切り替えると、`applyLanguage`が描き直さない限り日本語のまま残る。`test/i18n.test.js`は、偽のマイクとaudioWorkletの無い`AudioContext`で簡易モードの記録を3行作って止め、切り替えたあとの計測エンジン・記録の穴・注意書きを`logic.js`の英語の結果と比べる（点検で、待機中のページだけのテストでは、この3つの描き直しを外しても通ると指摘された）。⚠**CSVの中身（ヘッダーの`key=value`・列名）と書き出すファイル名は、言語によらず同じにする**（`buildCsv`・`csvHeaderLines`・`csvTrailerLines`・`chainHeaderMeta`・`csvFileName`などは辞書を使わない）。マイクの名前（`# device=`）など端末から来る文字列は訳さない
+- **言語の切り替えボタン（`#langToggle`）はヘッダーの右上に置き、`.actions`の行には入れない。**幅320pxでは、行の中身（英語の`Start recording`が約104px・`More`が約60px・ヘルプ44px・テーマ44px・すき間24px）で残りが約20pxしかなく、44pxのボタンを足すと2行に折り返すため（第2弾c0で1行にまとめた行を崩さない）。文字は切り替え先の言語（日本語の表示では`EN`、英語の表示では`JA`）。⚠**名前（`aria-label`）は見えている文字で始める**（`EN：表示を英語に切り替えます`／`JA: Switch the display to Japanese`。WCAG 2.5.3 Label in Name。最初の実装は見えている文字を名前に含めず、音声操作で「JAを押す」と言っても一致しなかった。`test/i18n.test.js`が日英の辞書とHTMLで見ている）。481px以上は38px（ヘルプ・テーマと同じ）で、右端を`.container`の右の余白とそろえる。480px以下は44pxにし、見出しの行の高さを44pxにして、副題がボタンの下から始まるようにした（副題の1行目とボタンが重ならない）
+- 英語の`Start recording`は`Stop`より長いので、481px以上では`html[lang="en"] .run-btn{min-width:9em}`で幅をそろえる（入れ替えたときに右のボタンが横へずれない。Chromiumで`Start recording`は約117px）。480px以下は`.run-btn`が残りの幅を取るので要らない
+- ⚠英語の表示では、幅481〜489pxで`.actions`の行が約5px足りず、テーマの切り替えが次の行の頭へ落ちた（最初の実装。ブラウザーで測って見つけた）。幅481〜560pxのときだけ、英語のボタンの左右の余白を14pxから10pxに詰める（`@media (min-width: 481px) and (max-width: 560px)`）。日本語は481pxで約17px余るので変えていない
+- `messages.js`を足したので、キャッシュ用の版番号は`index.html`の4か所（`style.css`・`messages.js`・`logic.js`・`script.js`）と`script.js`の`addModule`でそろえる（`test/cleanup.test.js`）。第2弾c3aで3.9にした
+- ⚠英語版のREADME（`README.en.md`）と英語の画面のスクリーンショットは、第2弾c3b・c2で作る。READMEの`[English](README.en.md)`のリンクもそのときに足す
+- ⚠スクリプトが動く前の一瞬は、HTMLの日本語が出る（英語を選んでいても）。`<head>`で先に`<html lang>`と文言を変える仕組みはファイルが増えるので入れていない
+
+### 用語の一覧
+
+英語の画面とREADME.en.md（第2弾c3b）で同じ語を使う。`test/i18n.test.js`が、この表の英語が英語の辞書に出てくることと、ボタンの名前が表の語そのものであることに加え、**キーごとの対応**を見ている。表の日本語を含むキーは、英語の値（タグを除き、小文字にし、ハイフンを空白にそろえたもの）に表の英語の核（括弧の注記を除いたもの）を含むこと。表のもっと長い語（超音波帯の最大）の一部として出ている日本語は、その長い語の行で見る。当てはまらないキーは、テストの`TERM_EXCEPTIONS`に理由つきで書く（いまは「記録開始からの経過時間」の2キーだけ。時点を指す名詞で、ボタンの名前ではないため）。dBFS・Leq・CSV・AudioWorkletは訳さない。
+
+| 日本語 | English | 備考 |
+|---|---|---|
+| 記録開始 | Start recording | ボタン |
+| 停止 | Stop | ボタン |
+| CSV書き出し | Export CSV | ボタン |
+| 統計リセット | Reset stats | ボタン |
+| その他 | More | ボタン（幅480px以下） |
+| 超音波帯 | ultrasonic band (18–22 kHz) | 範囲は`band.range`（英語は`18–22 kHz`、日本語は`18〜22kHz`）。「超音波帯の線」もultrasonic band line（ultrasonic lineと略さない） |
+| 可聴帯 | audible band | |
+| 有効サンプル率 | valid sample ratio | CSVの`valid_ratio` |
+| 帯域の有効率 | band valid ratio | CSVの`band_valid_ratio` |
+| 表示下限 | display floor | |
+| サンプルピーク | sample peak | ITU-R BS.1770のtrue peakとは別物 |
+| 記録の注意 | recording notes | 注意書きの要約の頭 |
+| 記録の穴 | recording gaps | 「記録の穴なし」はNo recording gaps |
+| 簡易モード | fallback mode | |
+| 高精度モード | high-precision mode (AudioWorklet) | |
+| 計測エンジン | engine | 画面では「Engine: …」 |
+| ログ間隔 | log interval | |
+| 区間 | interval | |
+| デジタル無音 | digital silence | |
+| 超音波帯の最大 | Ultrasonic max | 統計の見出し |
+| 現在の音量 | Current level | 見出し |
+| 平均（Leq） | Average (Leq) | |
+| この端末で記録できる上限 | recordable limit on this device | |
+| 時刻の跳び | clock jump | |
+| 音の加工 | audio processing | AGC・ノイズ抑制・エコーキャンセル |
+| ハッシュチェーン | hash chain | tamperやdetectは使わない（名乗りは破損・欠落・入れ替わりまで） |
+| ヘッダー行 | header lines | CSVの上の`#`行 |
+| トレーラー行 | trailer lines | CSVの下の`#`行 |
+| 表示の言語 | display language | |
+
 ## Development Commands
 
 ```bash
@@ -137,8 +198,9 @@ CIは`.github/workflows/test.yml`（pushとpull requestで`npm test`）。
 - **Microphone acquisition**: 20秒のタイムアウトと取り消しを入れてある（許可プロンプト放置でUIが固まっていた）
 - **Microphone reconnection**: 停止と再開の間に300ms空ける（ブラウザーの状態の問題を避けるため。`lastStopTime`）
 - **High-DPI Canvas**: `devicePixelRatio`を使う。CSSのピクセル値を直に書き込まない
-- **Theme persistence**: localStorageの`theme`キー。既定はライト
-- **Mobile responsiveness**: 幅480px以下では、記録開始／停止・「その他」・ヘルプ・テーマの切り替えを`.actions`の1行に並べ、CSV書き出しと統計リセットを「その他」に畳む（第2弾c0）。並びはstyle.cssだけで決める。⚠かつては`handleMobileButtonLayout()`が480pxでヘルプとテーマの親要素を付け替えていたが、resizeが届かない経路で不整合が固定される壊れやすい仕組みだったので、第2弾c0で廃止した。親要素を付け替える仕組みを戻さない。ボタンを足すときは本人の決定を経て、`test/stats-notice.test.js`のボタンの一覧を直す
+- **Theme persistence**: localStorageの`theme`キー。既定はライト。読み書きは`try/catch`で囲む（使えない環境でも初期化を止めない。第2弾c3a）
+- **Language persistence**: localStorageの`mic-gain-logger-lang`キー（ボタンで選んだときだけ書く）。初期言語は`?lang=` → 保存 → ブラウザーの言語。詳しくは上の「画面の日英対応」
+- **Mobile responsiveness**: 幅480px以下では、記録開始／停止・「その他」・ヘルプ・テーマの切り替えを`.actions`の1行に並べ、CSV書き出しと統計リセットを「その他」に畳む（第2弾c0）。並びはstyle.cssだけで決める。言語の切り替え（`#langToggle`）は`.actions`に入れず、ヘッダーの右上に置く（第2弾c3a。幅320pxの英語で行の残りが約20pxのため）。⚠かつては`handleMobileButtonLayout()`が480pxでヘルプとテーマの親要素を付け替えていたが、resizeが届かない経路で不整合が固定される壊れやすい仕組みだったので、第2弾c0で廃止した。親要素を付け替える仕組みを戻さない。ボタンを足すときは本人の決定を経て、`test/stats-notice.test.js`のボタンの一覧を直す
 - **画面の高さ**: `vh`を使う箇所は、後ろに同じ値の`dvh`を書く（dvhを読めないブラウザーは前のvhのまま。`test/mobile-view.test.js`）。iOS Safariのvhはツールバーを畳んだときの高さなので、モーダルの下が画面の外へ出る。`viewport-fit=cover`は入れていない（セーフエリアの扱いは実機で`innerWidth × innerHeight`を測ってから決める）
 
 ## Documentation
@@ -162,4 +224,4 @@ CIは`.github/workflows/test.yml`（pushとpull requestで`npm test`）。
 
 ## Browser Requirements
 
-Requires Web Audio API and `getUserMedia`. iOS Safari needs iOS 13+. AudioWorkletが使えない環境は簡易モードで動く。実機で確かめたのはiPhone 18 Pro Max（iOS Safari）の1台だけである（2026-09-29、公開版`c7b6bad`と`090648f`）。Android・実機の画面ロック中・バックグラウンド・長時間の記録と、第2弾c0の画面の変更は確かめていない。範囲はREADMEの「ブラウザー対応状況」に1か所でまとめる。
+Requires Web Audio API and `getUserMedia`. iOS Safari needs iOS 13+. AudioWorkletが使えない環境は簡易モードで動く。実機で確かめたのはiPhone 18 Pro Max（iOS Safari）の1台だけである（2026-09-29、公開版`c7b6bad`と`090648f`）。Android・実機の画面ロック中・バックグラウンド・長時間の記録と、第2弾c0の画面の変更、第2弾c3aの日英の切り替えは確かめていない（日英の切り替えはデスクトップのChromiumでだけ確かめた）。範囲はREADMEの「ブラウザー対応状況」に1か所でまとめる。

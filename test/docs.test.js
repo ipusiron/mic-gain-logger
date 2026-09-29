@@ -500,8 +500,9 @@ test('ヘルプの簡易モードが file:// に触れている', () => {
 test('ヘルプの「統計と表示」が、画面に出している値をすべて説明している', () => {
   // ⚠ 第2弾で足した3値（サンプルピーク・クリップ数・有効サンプル率）が
   //    ヘルプの一覧に無かった。画面に出ているものは、画面で説明する
-  const head = html.indexOf('<h3>📊 統計と表示</h3>');
-  const tail = html.indexOf('<h3>💾 データの取り扱い</h3>');
+  // 第2弾c3aで見出しに辞書のキー（data-i18n）を付けたので、属性を許して探す
+  const head = html.search(/<h3[^>]*>📊 統計と表示<\/h3>/);
+  const tail = html.search(/<h3[^>]*>💾 データの取り扱い<\/h3>/);
   assert.ok(head !== -1 && tail > head, 'ヘルプの「統計と表示」が見つからない');
   const block = html.slice(head, tail);
   for (const label of ['稼働時間', 'ログ件数', '平均（Leq）', '最大/最小/変動幅', 'サンプルピーク', '記録の穴']) {
@@ -524,8 +525,8 @@ test('ヘルプの「CSVから同じ値が出る」が、成り立つ条件つ�
     !html.includes('画面の値とCSVから計算し直した値は一致します'),
     '無条件に一致すると言い切ったままになっている'
   );
-  const head = html.indexOf('<h3>📊 統計と表示</h3>');
-  const tail = html.indexOf('<h3>💾 データの取り扱い</h3>');
+  const head = html.search(/<h3[^>]*>📊 統計と表示<\/h3>/);
+  const tail = html.search(/<h3[^>]*>💾 データの取り扱い<\/h3>/);
   const block = html.slice(head, tail);
   assert.ok(block.includes('sessionStartAt'), '境界の行の見つけ方が画面に無い');
   assert.ok(block.includes('clockBreakAt'), 'アンカーを取り直した行の扱いが画面に無い');

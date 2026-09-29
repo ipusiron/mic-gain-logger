@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Mic Gain Logger - Day041</title>
-  <meta name="description" content="Web Audio API を使ったマイク音量ロガー（録音なし／リアルタイム表示／CSV出力）" />
+  <meta name="description" data-i18n-content="app.description" content="Web Audio API を使ったマイク音量ロガー（録音なし／リアルタイム表示／CSV出力）" />
   <!-- GitHub Pages はレスポンスヘッダーを設定できないので、CSP は meta で入れる。
        connect-src 'none' は「音も測定値も外部へ送らない」という説明を、
        文章ではなくブラウザーの機能で担保するためのものである。
@@ -15,14 +15,18 @@
   <!-- favicon を参照していないと、ブラウザーが /favicon.ico を取りにいって
        コンソールに404が残る。SVG 1枚で済ませる（外部への取得は発生しない） -->
   <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="./style.css?v=3.8" />
+  <link rel="stylesheet" href="./style.css?v=3.9" />
 </head>
 <body>
   <header class="app-header">
     <div class="title-wrap">
       <h1>Mic Gain Logger</h1>
-      <p class="subtitle">マイク音量ロガー（録音なし・リアルタイム表示・CSV出力）</p>
+      <p class="subtitle" data-i18n="app.subtitle">マイク音量ロガー（録音なし・リアルタイム表示・CSV出力）</p>
     </div>
+    <!-- 表示の言語の切り替え（第2弾c3a）。文字は切り替え先（日本語のときEN、英語のときJA）。
+         .actionsの行（幅480px以下で1行にまとめた。第2弾c0）には入れず、ヘッダーの右上（ヘルプ・テーマのボタンの真上）に置く。
+         初期言語の決め方（?lang= → 保存した選択 → ブラウザーの言語）はmessages.jsのinitialLang -->
+    <button id="langToggle" class="lang-toggle" type="button" data-i18n-aria-label="lang.toggle.aria" aria-label="EN：表示を英語に切り替えます" data-i18n-title="lang.toggle.title" title="表示を英語に切り替えます（English）" data-i18n="lang.toggle">EN</button>
   </header>
 
   <main class="container">
@@ -31,21 +35,21 @@
          CSV書き出しと統計リセットは、幅480px以下では「その他」で開く#moreMenuに畳む（481px以上ではこれまでどおり並ぶ）。
          ヘルプとテーマの切り替えは、どの幅でも同じ行に置く（親要素を付け替える仕組みは第2弾c0で廃止） -->
     <div class="actions">
-      <button id="startBtn" class="btn primary run-btn" title="マイクから音量の記録を開始します">記録開始</button>
-      <button id="stopBtn" class="btn run-btn" hidden disabled title="音量の記録を停止します（マイクに接続中なら、接続を取り消します）">停止</button>
-      <button id="moreBtn" class="btn more-btn" type="button" aria-expanded="false" aria-controls="moreMenu" title="CSV書き出しと統計リセットを表示します">その他<span class="more-icon" aria-hidden="true">▼</span></button>
+      <button id="startBtn" class="btn primary run-btn" data-i18n-title="btn.start.title" title="マイクから音量の記録を開始します" data-i18n="btn.start">記録開始</button>
+      <button id="stopBtn" class="btn run-btn" hidden disabled data-i18n-title="btn.stop.title" title="音量の記録を停止します（マイクに接続中なら、接続を取り消します）" data-i18n="btn.stop">停止</button>
+      <button id="moreBtn" class="btn more-btn" type="button" aria-expanded="false" aria-controls="moreMenu" data-i18n-title="btn.more.title" title="CSV書き出しと統計リセットを表示します"><span data-i18n="btn.more">その他</span><span class="more-icon" aria-hidden="true">▼</span></button>
       <div id="moreMenu" class="more-menu">
-        <button id="exportBtn" class="btn" disabled title="記録した音量データをCSVファイルでダウンロードします（記録を停止してから押せます）">CSV書き出し</button>
-        <button id="resetBtn" class="btn" disabled title="ログ・統計・グラフ・注意書きをまとめてクリアします（記録を停止してから押せます）">統計リセット</button>
+        <button id="exportBtn" class="btn" disabled data-i18n-title="btn.export.title" title="記録した音量データをCSVファイルでダウンロードします（記録を停止してから押せます）" data-i18n="btn.export">CSV書き出し</button>
+        <button id="resetBtn" class="btn" disabled data-i18n-title="btn.reset.title" title="ログ・統計・グラフ・注意書きをまとめてクリアします（記録を停止してから押せます）" data-i18n="btn.reset">統計リセット</button>
       </div>
-      <button id="helpBtn" class="help-btn" aria-label="ヘルプ" title="使い方とヘルプを表示します">
+      <button id="helpBtn" class="help-btn" data-i18n-aria-label="btn.help.aria" aria-label="ヘルプ" data-i18n-title="btn.help.title" title="使い方とヘルプを表示します">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"></circle>
           <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
           <line x1="12" y1="17" x2="12.01" y2="17"></line>
         </svg>
       </button>
-      <button id="themeToggle" class="theme-toggle" aria-label="テーマ切り替え" title="ダークモード/ライトモードを切り替えます">
+      <button id="themeToggle" class="theme-toggle" data-i18n-aria-label="btn.theme.aria" aria-label="テーマ切り替え" data-i18n-title="btn.theme.title" title="ダークモード/ライトモードを切り替えます">
         <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="5"></circle>
           <line x1="12" y1="1" x2="12" y2="3"></line>
@@ -64,13 +68,13 @@
     </div>
     <section class="card grid">
       <div class="grid-item">
-        <h2 class="section-title">現在の音量</h2>
+        <h2 class="section-title" data-i18n="level.heading">現在の音量</h2>
         <!-- 大きな数字は直近2048サンプル（logic.jsのMETER_WINDOW_SAMPLES）の全帯域のRMS。高精度モードのCSVのdbfs（区間全体のエネルギー平均）とは窓が違う。
              簡易モードのCSVのdbfsは、記録した瞬間にこの窓から読んだ値（第2弾c0） -->
-        <div id="bigValue" class="big-value" title="現在のマイク入力音量（dBFS）。直近2048サンプル（48kHzで約43ミリ秒。サンプルレートで変わる）の全帯域のRMSで、高精度モードのCSVのdbfs（区間全体のエネルギー平均）とは窓が違います。ときどき大きくなる音（扇風機のうなり・洗濯機など）では、エネルギー平均が大きな瞬間に引っぱられるので、この数字のほうがCSVの値より低く見える時間が長くなります。簡易モードでは、CSVのdbfsも記録した瞬間のこの窓の値です">--.- dBFS</div>
+        <div id="bigValue" class="big-value" data-i18n-title="level.bigValue.title" title="現在のマイク入力音量（dBFS）。直近2048サンプル（48kHzで約43ミリ秒。サンプルレートで変わる）の全帯域のRMSで、高精度モードのCSVのdbfs（区間全体のエネルギー平均）とは窓が違います。ときどき大きくなる音（扇風機のうなり・洗濯機など）では、エネルギー平均が大きな瞬間に引っぱられるので、この数字のほうがCSVの値より低く見える時間が長くなります。簡易モードでは、CSVのdbfsも記録した瞬間のこの窓の値です">--.- dBFS</div>
         <!-- 超音波帯の現在値（第2弾c0）。最後に記録した区間のband_ultra_dbfs（CSVと同じ値）。文言はlogic.jsのultraNowText。
              区間ごとに変わるので読み上げ領域（aria-live）にはしない -->
-        <div id="ultraNow" class="ultra-now" title="最後に記録した区間の、超音波帯（18〜22kHz）のエネルギー平均です（CSVのband_ultra_dbfsと同じ値）。区間の長さはログ間隔です。上の大きな数字（直近2048サンプルの全帯域のRMS。48kHzで約43ミリ秒で、サンプルレートで変わる）とは、窓も帯域も違います。数dBの小さな変化は、グラフよりこの数字で読んでください。その帯域に音のエネルギーがあったかの記録で、何の音かは分かりません">超音波帯（直近の区間）：--.- dBFS</div>
+        <div id="ultraNow" class="ultra-now" data-i18n-title="ultraNow.title" title="最後に記録した区間の、超音波帯（18〜22kHz）のエネルギー平均です（CSVのband_ultra_dbfsと同じ値）。区間の長さはログ間隔です。上の大きな数字（直近2048サンプルの全帯域のRMS。48kHzで約43ミリ秒で、サンプルレートで変わる）とは、窓も帯域も違います。数dBの小さな変化は、グラフよりこの数字で読んでください。その帯域に音のエネルギーがあったかの記録で、何の音かは分かりません">超音波帯（直近の区間）：--.- dBFS</div>
 
         <div class="meter" id="meter" title="音量レベルメーター（表示下限〜0dBFS）">
           <div class="meter-bar" id="meterBar"></div>
@@ -83,31 +87,31 @@
 
         <div class="controls-wrapper">
           <button class="controls-toggle" id="controlsToggle">
-            <span class="toggle-text">設定を表示</span>
+            <span class="toggle-text" data-i18n="controls.show">設定を表示</span>
             <span class="toggle-icon">▼</span>
           </button>
           <div class="controls collapsed" id="controls">
             <div class="control">
-              <label for="logInterval" title="CSVログに記録する間隔（秒単位）">ログ間隔（秒）</label>
+              <label for="logInterval" data-i18n-title="settings.interval.labelTitle" title="CSVログに記録する間隔（秒単位）" data-i18n="settings.interval.label">ログ間隔（秒）</label>
               <div class="interval-controls">
-                <input type="number" id="logInterval" min="0.2" step="0.1" value="1.0" title="音量データをログに記録する間隔を指定します（短いほど詳細、長いほどファイルサイズ小）">
+                <input type="number" id="logInterval" min="0.2" step="0.1" value="1.0" data-i18n-title="settings.interval.inputTitle" title="音量データをログに記録する間隔を指定します（短いほど詳細、長いほどファイルサイズ小）">
                 <div class="interval-presets">
-                  <button type="button" class="preset-btn" data-interval="1" title="1秒間隔">1s</button>
-                  <button type="button" class="preset-btn" data-interval="3" title="3秒間隔">3s</button>
-                  <button type="button" class="preset-btn" data-interval="5" title="5秒間隔">5s</button>
-                  <button type="button" class="preset-btn" data-interval="10" title="10秒間隔">10s</button>
-                  <button type="button" class="preset-btn" data-interval="60" title="1分間隔">1m</button>
+                  <button type="button" class="preset-btn" data-interval="1" data-i18n-title="preset.1.title" title="1秒間隔">1s</button>
+                  <button type="button" class="preset-btn" data-interval="3" data-i18n-title="preset.3.title" title="3秒間隔">3s</button>
+                  <button type="button" class="preset-btn" data-interval="5" data-i18n-title="preset.5.title" title="5秒間隔">5s</button>
+                  <button type="button" class="preset-btn" data-interval="10" data-i18n-title="preset.10.title" title="10秒間隔">10s</button>
+                  <button type="button" class="preset-btn" data-interval="60" data-i18n-title="preset.60.title" title="1分間隔">1m</button>
                 </div>
               </div>
             </div>
             <div class="control">
-              <label for="floorDb" title="表示する最小音量レベル">表示下限（dBFS）</label>
-              <input type="number" id="floorDb" autocomplete="off" min="-120" max="-1" step="1" value="-110" title="この値未満の音量は下端に張り付いて表示されます（既定-110dBFS。?bands=offで開いたときは-90dBFS。静かな部屋の超音波帯や、弱い高い音も見えるようにしています）。表示だけの設定で、記録される値は変わりません">
+              <label for="floorDb" data-i18n-title="settings.floor.labelTitle" title="表示する最小音量レベル" data-i18n="settings.floor.label">表示下限（dBFS）</label>
+              <input type="number" id="floorDb" autocomplete="off" min="-120" max="-1" step="1" value="-110" data-i18n-title="settings.floor.inputTitle" title="この値未満の音量は下端に張り付いて表示されます（既定-110dBFS。?bands=offで開いたときは-90dBFS。静かな部屋の超音波帯や、弱い高い音も見えるようにしています）。表示だけの設定で、記録される値は変わりません">
             </div>
           </div>
         </div>
 
-        <div id="status" class="status ok" aria-live="polite">待機中</div>
+        <div id="status" class="status ok" aria-live="polite" data-i18n="status.idle">待機中</div>
         <div id="engineMode" class="engine-mode" aria-live="polite"></div>
         <div id="recordNotice" class="record-notice"></div>
         <!-- 読み上げは、注意書きの要約が変わったときだけ流す（中身の割合は区間ごとに変わるため、
@@ -116,74 +120,74 @@
       </div>
 
       <div class="grid-item">
-        <h2 class="section-title">リアルタイムグラフ</h2>
+        <h2 class="section-title" data-i18n="graph.heading">リアルタイムグラフ</h2>
         <!-- aria-labelはscript.jsがlogic.jsのgraphAriaLabelで差し替える（?bands=off・簡易モード・超音波帯にビンが無いときは、超音波帯の線を描かない） -->
-        <canvas id="levelCanvas" width="800" height="220" role="img" aria-label="音量推移グラフ。実線は音量（全帯域）、破線は超音波帯（18〜22kHz）の値。横軸は直近60秒、縦軸はdBFS" title="音量推移グラフ（横軸=-60s〜0s＝いまから何秒前、縦軸=音量レベル dBFS。線の見分け方はグラフの下の凡例にあります）"></canvas>
+        <canvas id="levelCanvas" width="800" height="220" role="img" aria-label="音量推移グラフ。実線は音量（全帯域）、破線は超音波帯（18〜22kHz）の値。横軸は直近60秒、縦軸はdBFS" data-i18n-title="graph.canvas.title" title="音量推移グラフ（横軸=-60s〜0s＝いまから何秒前、縦軸=音量レベル dBFS。線の見分け方はグラフの下の凡例にあります）"></canvas>
         <!-- 凡例はキャンバスの外に置く（第2弾b3）。色と線の形（実線・破線）の両方で示し、文字でも「実線」「破線」と書く。
              破線の間隔はlogic.jsのGRAPH_LINE_STYLES.ultra.dashと同じ（test/band-ui.test.jsが見ている）。
              超音波帯の線を描かないときは、見本の線を隠して描かない理由を出す（logic.jsのultraBandState） -->
-        <ul class="graph-legend" aria-label="グラフの凡例">
-          <li class="legend-item" title="区間ごとの音量（全帯域のエネルギー平均。CSVのdbfs）。音が1つも届かなかった区間は線を切り、デジタル無音は下端に描きます">
+        <ul class="graph-legend" data-i18n-aria-label="graph.legend.aria" aria-label="グラフの凡例">
+          <li class="legend-item" data-i18n-title="graph.legend.level.title" title="区間ごとの音量（全帯域のエネルギー平均。CSVのdbfs）。音が1つも届かなかった区間は線を切り、デジタル無音は下端に描きます">
             <svg class="legend-swatch legend-level" width="28" height="8" viewBox="0 0 28 8" aria-hidden="true" focusable="false"><line x1="0" y1="4" x2="28" y2="4" stroke="currentColor" stroke-width="2"></line></svg>
-            <span>実線：音量（全帯域）</span>
+            <span data-i18n="graph.legend.level">実線：音量（全帯域）</span>
           </li>
-          <li class="legend-item" id="legendUltra" title="超音波帯（18,000〜22,000Hz）の、区間ごとのエネルギー平均（CSVのband_ultra_dbfs）。その帯域に音のエネルギーがあったかの記録で、何の音かは分かりません。値の無い区間は線を切ります">
+          <li class="legend-item" id="legendUltra" data-i18n-title="graph.legend.ultra.title" title="超音波帯（18,000〜22,000Hz）の、区間ごとのエネルギー平均（CSVのband_ultra_dbfs）。その帯域に音のエネルギーがあったかの記録で、何の音かは分かりません。値の無い区間は線を切ります">
             <svg class="legend-swatch legend-ultra" width="28" height="8" viewBox="0 0 28 8" aria-hidden="true" focusable="false"><line x1="0" y1="4" x2="28" y2="4" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4"></line></svg>
             <span id="legendUltraText">破線：超音波帯（18〜22kHz）</span>
           </li>
         </ul>
         <!-- 記録を始めると「この端末で記録できる上限：約◯◯kHz」が入る（空のあいだは隠れる） -->
-        <p id="upperLimit" class="graph-limit" title="AudioContextとマイクの音声トラックのサンプルレートの、小さいほうの半分です。サンプルレートで決まる上限で、マイクがその高さの音を拾えることは示しません"></p>
+        <p id="upperLimit" class="graph-limit" data-i18n-title="graph.upperLimit.title" title="AudioContextとマイクの音声トラックのサンプルレートの、小さいほうの半分です。サンプルレートで決まる上限で、マイクがその高さの音を拾えることは示しません"></p>
       </div>
 
       <div class="grid-item stats">
-        <h2 class="section-title">統計</h2>
+        <h2 class="section-title" data-i18n="stats.heading">統計</h2>
         <div class="stats-grid">
-          <div class="stat" title="記録開始からの経過時間">
-            <div class="stat-label">稼働時間</div>
+          <div class="stat" data-i18n-title="stats.uptime.title" title="記録開始からの経過時間">
+            <div class="stat-label" data-i18n="stats.uptime">稼働時間</div>
             <div id="uptime" class="stat-value">00:00:00</div>
           </div>
-          <div class="stat" title="CSVに記録されたデータポイントの総数">
-            <div class="stat-label">ログ件数</div>
+          <div class="stat" data-i18n-title="stats.count.title" title="CSVに記録されたデータポイントの総数">
+            <div class="stat-label" data-i18n="stats.count">ログ件数</div>
             <div id="count" class="stat-value">0</div>
           </div>
-          <div class="stat" title="記録された行のエネルギー平均（Leq）。重みは行数ではなく区間長（秒）である。無音の行は電力0として数える">
-            <div class="stat-label">平均（Leq）</div>
+          <div class="stat" data-i18n-title="stats.avg.title" title="記録された行のエネルギー平均（Leq）。重みは行数ではなく区間長（秒）である。無音の行は電力0として数える">
+            <div class="stat-label" data-i18n="stats.avg">平均（Leq）</div>
             <div id="avgDb" class="stat-value">--.- dBFS</div>
           </div>
-          <div class="stat" title="記録された行のうち、有限値の行での最大音量レベル">
-            <div class="stat-label">最大</div>
+          <div class="stat" data-i18n-title="stats.max.title" title="記録された行のうち、有限値の行での最大音量レベル">
+            <div class="stat-label" data-i18n="stats.max">最大</div>
             <div id="maxDb" class="stat-value">--.- dBFS</div>
           </div>
-          <div class="stat" title="記録された行のうち、有限値の行での最小音量レベル">
-            <div class="stat-label">最小</div>
+          <div class="stat" data-i18n-title="stats.min.title" title="記録された行のうち、有限値の行での最小音量レベル">
+            <div class="stat-label" data-i18n="stats.min">最小</div>
             <div id="minDb" class="stat-value">--.- dBFS</div>
           </div>
-          <div class="stat" title="最大値と最小値の差（有限値の行での変動幅）">
-            <div class="stat-label">変動幅</div>
+          <div class="stat" data-i18n-title="stats.range.title" title="最大値と最小値の差（有限値の行での変動幅）">
+            <div class="stat-label" data-i18n="stats.range">変動幅</div>
             <div id="rangeDb" class="stat-value">--.- dB</div>
           </div>
-          <div class="stat" title="区間内の標本点の最大絶対振幅（サンプルピーク）のうち、最も大きかったもの。上の「最大」はRMSなので別の値になる。ITU-R BS.1770 のトゥルーピーク（標本の間のピーク）とは別物で、トゥルーピークはこれ以上になる。0 dBFSを超えることがある（浮動小数点の音声なので、上流のリサンプリングの跳ね返りで振幅が1.0を超える）。簡易モードでは測れないため「--.-」のまま">
-            <div class="stat-label">サンプルピーク</div>
+          <div class="stat" data-i18n-title="stats.peak.title" title="区間内の標本点の最大絶対振幅（サンプルピーク）のうち、最も大きかったもの。上の「最大」はRMSなので別の値になる。ITU-R BS.1770 のトゥルーピーク（標本の間のピーク）とは別物で、トゥルーピークはこれ以上になる。0 dBFSを超えることがある（浮動小数点の音声なので、上流のリサンプリングの跳ね返りで振幅が1.0を超える）。簡易モードでは測れないため「--.-」のまま">
+            <div class="stat-label" data-i18n="stats.peak">サンプルピーク</div>
             <div id="peakDb" class="stat-value">--.- dBFS</div>
           </div>
-          <div class="stat" title="超音波帯（18〜22kHz）の区間ごとの値（CSVのband_ultra_dbfs）のうち、最も大きかったもの。その帯域に音のエネルギーがあったかの記録で、何の音かは分からない。デジタル無音の行に付いた値も数える（区間の境目の前の約21ミリ秒の実際の音が、後ろの区間に入るため）。音が1つも届かなかった区間の行に付いた値も、同じ理由で数える。簡易モードと?bands=offでは測れないため「--.-」のまま">
-            <div class="stat-label">超音波帯の最大</div>
+          <div class="stat" data-i18n-title="stats.ultraMax.title" title="超音波帯（18〜22kHz）の区間ごとの値（CSVのband_ultra_dbfs）のうち、最も大きかったもの。その帯域に音のエネルギーがあったかの記録で、何の音かは分からない。デジタル無音の行に付いた値も数える（区間の境目の前の約21ミリ秒の実際の音が、後ろの区間に入るため）。音が1つも届かなかった区間の行に付いた値も、同じ理由で数える。簡易モードと?bands=offでは測れないため「--.-」のまま">
+            <div class="stat-label" data-i18n="stats.ultraMax">超音波帯の最大</div>
             <div id="ultraMaxDb" class="stat-value">--.- dBFS</div>
           </div>
         </div>
-        <div id="integrityNote" class="integrity-note" role="status" aria-live="polite" title="クリップした区間と、有効サンプル率が1.000未満だった区間の数。どちらも0なら「穴なし」と出る"></div>
+        <div id="integrityNote" class="integrity-note" role="status" aria-live="polite" data-i18n-title="stats.integrity.title" title="クリップした区間と、有効サンプル率が1.000未満だった区間の数。どちらも0なら「穴なし」と出る"></div>
       </div>
     </section>
 
     <section class="card">
       <details>
-        <summary>説明と注意事項</summary>
+        <summary data-i18n="notes.summary">説明と注意事項</summary>
         <ul class="notes">
-          <li>本ツールは<strong>録音しません</strong>。音量（dBFS）を可視化・記録します。</li>
-          <li>表示は機器・環境に依存します。絶対値ではなく<strong>相対変化</strong>の把握を主目的としてください。</li>
-          <li>CSVには10列（時刻・音量・区間の通し番号・ピーク・クリップ数・有効サンプル率・超音波帯と可聴帯の値・帯域の有効率・ハッシュ）が出力されます。データ行の上には測定条件のヘッダー行、下には行数や無音の有無を残すトレーラー行が、どちらも「#」から始まる形で付きます。帯域の値は、その帯域に音のエネルギーがあったかの記録で、何の音かは分かりません。</li>
-          <li><strong>停止直後の再開について：</strong>ブラウザーの仕様により、停止直後に「記録開始」を押してもマイクダイアログが表示されない場合があります。その場合は、URL付近のマイクアイコンを押してマイクダイアログを再表示するか、ページをリロードしてください。</li>
+          <li data-i18n-rich="notes.noRecording">本ツールは<strong>録音しません</strong>。音量（dBFS）を可視化・記録します。</li>
+          <li data-i18n-rich="notes.relative">表示は機器・環境に依存します。絶対値ではなく<strong>相対変化</strong>の把握を主目的としてください。</li>
+          <li data-i18n-rich="notes.csv">CSVには10列（時刻・音量・区間の通し番号・ピーク・クリップ数・有効サンプル率・超音波帯と可聴帯の値・帯域の有効率・ハッシュ）が出力されます。データ行の上には測定条件のヘッダー行、下には行数や無音の有無を残すトレーラー行が、どちらも「#」から始まる形で付きます。帯域の値は、その帯域に音のエネルギーがあったかの記録で、何の音かは分かりません。</li>
+          <li data-i18n-rich="notes.restart"><strong>停止直後の再開について：</strong>ブラウザーの仕様により、停止直後に「記録開始」を押してもマイクダイアログが表示されない場合があります。その場合は、URL付近のマイクアイコンを押してマイクダイアログを再表示するか、ページをリロードしてください。</li>
         </ul>
       </details>
     </section>
@@ -191,7 +195,7 @@
 
   <footer>
     <div class="footer">
-      🔗 GitHubリポジトリはこちら（ <a href="https://github.com/ipusiron/mic-gain-logger" target="_blank" rel="noopener">ipusiron/mic-gain-logger</a> ）
+      <span data-i18n="footer.repoLead">🔗 GitHubリポジトリはこちら（ </span><a href="https://github.com/ipusiron/mic-gain-logger" target="_blank" rel="noopener">ipusiron/mic-gain-logger</a><span data-i18n="footer.repoTail"> ）</span>
     </div>
   </footer>
 
@@ -200,102 +204,105 @@
     <div class="modal-backdrop"></div>
     <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle">
       <div class="modal-header">
-        <h2 id="helpModalTitle">ヘルプ - Mic Gain Logger</h2>
-        <button class="modal-close" aria-label="閉じる">&times;</button>
+        <h2 id="helpModalTitle" data-i18n="help.title">ヘルプ - Mic Gain Logger</h2>
+        <button class="modal-close" data-i18n-aria-label="help.close.aria" aria-label="閉じる">&times;</button>
       </div>
       <div class="modal-body">
         <section>
-          <h3>🎯 基本的な使い方</h3>
+          <h3 data-i18n="help.basic.heading">🎯 基本的な使い方</h3>
           <ol>
-            <li><strong>「記録開始」</strong>ボタンを押してマイクアクセスを許可</li>
-            <li>音量がリアルタイムで表示・記録されます</li>
-            <li><strong>「停止」</strong>で記録を停止（データは保持されます）。「停止」は「記録開始」と同じ場所に出ます</li>
-            <li><strong>「CSV書き出し」</strong>でデータをダウンロード（スマートフォンなど幅480px以下では「その他」を押すと出ます）</li>
-            <li><strong>「統計リセット」</strong>で、ログ・統計・グラフ・注意書きをまとめてクリア（記録を停止してから押せます。幅480px以下では「その他」の中にあります）</li>
+            <li data-i18n-rich="help.basic.start"><strong>「記録開始」</strong>ボタンを押してマイクアクセスを許可</li>
+            <li data-i18n="help.basic.live">音量がリアルタイムで表示・記録されます</li>
+            <li data-i18n-rich="help.basic.stop"><strong>「停止」</strong>で記録を停止（データは保持されます）。「停止」は「記録開始」と同じ場所に出ます</li>
+            <li data-i18n-rich="help.basic.export"><strong>「CSV書き出し」</strong>でデータをダウンロード（スマートフォンなど幅480px以下では「その他」を押すと出ます）</li>
+            <li data-i18n-rich="help.basic.reset"><strong>「統計リセット」</strong>で、ログ・統計・グラフ・注意書きをまとめてクリア（記録を停止してから押せます。幅480px以下では「その他」の中にあります）</li>
           </ol>
         </section>
 
         <section>
-          <h3>⚙️ 設定項目</h3>
+          <h3 data-i18n="help.settings.heading">⚙️ 設定項目</h3>
           <ul>
-            <li><strong>ログ間隔：</strong>記録する間隔（秒単位）。プリセットボタン（1s/3s/5s/10s/1m）で素早く設定可能</li>
-            <li><strong>表示下限：</strong>表示する最小音量レベル。既定は-110dBFSで、<code>?bands=off</code>で開いたときは-90dBFSです（静かな部屋の超音波帯は-90dBFSより低いことがあり、-90では超音波帯の破線が下端に張り付いたため）。これより静かな値は下端に張り付いて見えます。表示だけの設定で、CSVに記録される値は動きません</li>
+            <li data-i18n-rich="help.settings.interval"><strong>ログ間隔：</strong>記録する間隔（秒単位）。プリセットボタン（1s/3s/5s/10s/1m）で素早く設定可能</li>
+            <li data-i18n-rich="help.settings.floor"><strong>表示下限：</strong>表示する最小音量レベル。既定は-110dBFSで、<code>?bands=off</code>で開いたときは-90dBFSです（静かな部屋の超音波帯は-90dBFSより低いことがあり、-90では超音波帯の破線が下端に張り付いたため）。これより静かな値は下端に張り付いて見えます。表示だけの設定で、CSVに記録される値は動きません</li>
+            <li data-i18n-rich="help.settings.lang"><strong>表示の言語：</strong>右上のボタン（日本語の表示ではEN、英語の表示ではJA）で日本語と英語を切り替えます。URLに<code>?lang=en</code>か<code>?lang=ja</code>を付けて開いても選べます。ボタンで選んだ言語はこのブラウザーに保存し、次に開いたときに使います（<code>?lang=</code>があればそちらを優先し、どちらも無ければブラウザーの言語に合わせます）。記録・統計・CSVの中身は、言語によって変わりません</li>
           </ul>
-          <p><em>※ すべての設定は記録中でも変更可能で即座に反映されます</em></p>
-          <p><em>※ スマートフォンでは「設定を表示」ボタンで設定項目を開閉できます</em></p>
+          <p><em data-i18n="help.settings.noteLive">※ すべての設定は記録中でも変更可能で即座に反映されます</em></p>
+          <p><em data-i18n="help.settings.noteMobile">※ スマートフォンでは「設定を表示」ボタンで設定項目を開閉できます</em></p>
         </section>
 
         <section>
-          <h3>📊 統計と表示</h3>
+          <h3 data-i18n="help.stats.heading">📊 統計と表示</h3>
           <ul>
-            <li><strong>現在の音量（大きな数字）：</strong>直近2048サンプル（48kHzで約43ミリ秒。サンプルレートで変わる）の全帯域のRMSです。高精度モードのCSVの<code>dbfs</code>は区間全体のエネルギー平均なので、窓が違います。ときどき大きくなる音（扇風機のうなり・洗濯機など）では、エネルギー平均が大きな瞬間に引っぱられるので、大きな数字のほうがCSVの値より低く見える時間が長くなります。簡易モードでは、CSVの<code>dbfs</code>も記録した瞬間のこの窓の値です</li>
-            <li><strong>超音波帯（直近の区間）：</strong>大きな数字の下の1行です。最後に記録した区間の超音波帯（18〜22kHz）の値で、CSVの<code>band_ultra_dbfs</code>と同じです。区間の長さはログ間隔で、「超音波帯（直近1秒の区間）」のように添えます。大きな数字とは窓も帯域も違います。数dBの小さな変化は、グラフよりこの数字で読んでください。最初の区間が届くまでは「--.- dBFS」、値の無い区間では「（この区間は値なし）」と出ます。<code>?bands=off</code>・簡易モード・超音波帯を測れないサンプルレートでは、値の代わりに理由（「簡易モードでは測れません」など）が出ます。統計リセットで最初の状態に戻ります</li>
-            <li><strong>稼働時間：</strong>記録開始からの経過時間</li>
-            <li><strong>ログ件数：</strong>CSVに記録されたデータポイント総数</li>
-            <li><strong>平均（Leq）：</strong>記録された行のエネルギー平均。⚠<strong>重みは行数ではなく区間長（秒）です。</strong>ログ間隔は記録中に変えられるので、1秒の区間と3秒の区間を同じ重みで平均すると実時間に比例しない値になります（手元の検算では最大9.3dBずれました）。dBは対数なので算術平均にも物理的な意味がなく、無音の行を-999などへ置き換えて平均すると数百dB外れます。無音の行は電力0として数えます。音が1つも届かなかった区間（CSVの<code>dbfs</code>が空欄の行）は、測っていないので入れません</li>
-            <li><strong>最大/最小/変動幅：</strong>記録された行のうち、有限値の行での最大・最小とその差。無音（-∞ dBFS）の区間は外します</li>
-            <li><strong>サンプルピーク：</strong>区間内の標本点の最大絶対振幅のうち、最も大きかったもの。上の「最大」はRMSなので別の値になります。ITU-R BS.1770 のトゥルーピーク（標本の間のピーク）とは別物で、トゥルーピークはこれ以上になります。0 dBFSを超えることがあります（上流のリサンプリングの跳ね返りで振幅が1.0を超えるため）。簡易モードでは測れないため「--.-」のままです</li>
-            <li><strong>超音波帯の最大：</strong>CSVの<code>band_ultra_dbfs</code>（超音波帯18〜22kHzの、区間ごとの値）のうち、最も大きかったもの。その帯域に音のエネルギーがあったかの記録で、何の音かは分かりません。デジタル無音の行（<code>dbfs</code>が<code>-Infinity</code>）に付いた値も数えます。区間の境目の前の約21ミリ秒の実際の音が後ろの区間に入るためで、架空の値ではありません。音が1つも届かなかった区間の行に付いた値も、同じ理由で数えます。簡易モードと<code>?bands=off</code>では測れないため「--.-」のままです</li>
-            <li><strong>記録の穴：</strong>統計の下に1行で出ます。<strong>クリップした区間</strong>（|振幅|が1.0に届いたサンプルを含む区間。1〜2サンプルの単発なら区間の値への影響は小さく、3サンプル以上続いていれば波形がつぶれて値は本来の音と違います。注意書きには、記録した全サンプルに対する割合も出ます）と、<strong>有効サンプル率</strong>（届いたサンプル数÷期待サンプル数。1.000未満＝その区間の音の一部が届いていない）の区間数を示します。どちらも0なら「記録の穴なし」と出ます</li>
-            <li><strong>リアルタイムグラフ：</strong>時系列での音量推移を可視化。実線が音量（全帯域）、破線が超音波帯（18〜22kHz）の値です（グラフの下の凡例に、色と線の形があります）。音が1つも届かなかった区間と、帯域の値が無い区間は線を切ります。デジタル無音は下端に描きます。簡易モード・<code>?bands=off</code>・超音波帯を測れないサンプルレートでは超音波帯の線を描かず、凡例に見本の線の代わりに理由（「簡易モードでは測れません」など）が出ます</li>
-            <li><strong>記録できる上限：</strong>記録を始めると、凡例の下に「この端末で記録できる上限：約◯◯kHz」と出ます。AudioContextとマイクの音声トラックのサンプルレートの、小さいほうの半分です（トラックがサンプルレートを報告しないときはAudioContextの半分で、「トラックの値は不明」と添えます）。サンプルレートで決まる上限で、マイクがその高さの音を拾えることは示しません</li>
-            <li><strong>帯域の注意書き：</strong>次のときに、記録の注意として出ます。帯域の有効率（CSVの<code>band_valid_ratio</code>）が1.0を下回った区間があるとき（件数と最小値）。マイクの音声トラックとAudioContextのサンプルレートが違うとき（サンプルレートの変換で、上限に近い高い音は低く記録されます）。サンプルレートが低くて超音波帯を測れないとき。<code>?bands=off</code>で帯域の計算を止めているとき。簡易モードで帯域を計算していないとき</li>
-            <li><strong>?bands=off：</strong>URLの末尾に<code>?bands=off</code>を付けて開くと、帯域の計算を止めます（帯域あり・なしで有効サンプル率を比べるためのものです）。凡例と注意書きに「止めています」と出て、超音波帯の線は描かれず、「超音波帯の最大」は「--.-」のままです。CSVの帯域の3列は空欄になります</li>
-            <li><strong>音量メーター：</strong>現在の音量を色分けで表示（緑→黄→赤）</li>
+            <li data-i18n-rich="help.stats.bigValue"><strong>現在の音量（大きな数字）：</strong>直近2048サンプル（48kHzで約43ミリ秒。サンプルレートで変わる）の全帯域のRMSです。高精度モードのCSVの<code>dbfs</code>は区間全体のエネルギー平均なので、窓が違います。ときどき大きくなる音（扇風機のうなり・洗濯機など）では、エネルギー平均が大きな瞬間に引っぱられるので、大きな数字のほうがCSVの値より低く見える時間が長くなります。簡易モードでは、CSVの<code>dbfs</code>も記録した瞬間のこの窓の値です</li>
+            <li data-i18n-rich="help.stats.ultraNow"><strong>超音波帯（直近の区間）：</strong>大きな数字の下の1行です。最後に記録した区間の超音波帯（18〜22kHz）の値で、CSVの<code>band_ultra_dbfs</code>と同じです。区間の長さはログ間隔で、「超音波帯（直近1秒の区間）」のように添えます。大きな数字とは窓も帯域も違います。数dBの小さな変化は、グラフよりこの数字で読んでください。最初の区間が届くまでは「--.- dBFS」、値の無い区間では「（この区間は値なし）」と出ます。<code>?bands=off</code>・簡易モード・超音波帯を測れないサンプルレートでは、値の代わりに理由（「簡易モードでは測れません」など）が出ます。統計リセットで最初の状態に戻ります</li>
+            <li data-i18n-rich="help.stats.uptime"><strong>稼働時間：</strong>記録開始からの経過時間</li>
+            <li data-i18n-rich="help.stats.count"><strong>ログ件数：</strong>CSVに記録されたデータポイント総数</li>
+            <li data-i18n-rich="help.stats.avg"><strong>平均（Leq）：</strong>記録された行のエネルギー平均。⚠<strong>重みは行数ではなく区間長（秒）です。</strong>ログ間隔は記録中に変えられるので、1秒の区間と3秒の区間を同じ重みで平均すると実時間に比例しない値になります（手元の検算では最大9.3dBずれました）。dBは対数なので算術平均にも物理的な意味がなく、無音の行を-999などへ置き換えて平均すると数百dB外れます。無音の行は電力0として数えます。音が1つも届かなかった区間（CSVの<code>dbfs</code>が空欄の行）は、測っていないので入れません</li>
+            <li data-i18n-rich="help.stats.maxMin"><strong>最大/最小/変動幅：</strong>記録された行のうち、有限値の行での最大・最小とその差。無音（-∞ dBFS）の区間は外します</li>
+            <li data-i18n-rich="help.stats.peak"><strong>サンプルピーク：</strong>区間内の標本点の最大絶対振幅のうち、最も大きかったもの。上の「最大」はRMSなので別の値になります。ITU-R BS.1770 のトゥルーピーク（標本の間のピーク）とは別物で、トゥルーピークはこれ以上になります。0 dBFSを超えることがあります（上流のリサンプリングの跳ね返りで振幅が1.0を超えるため）。簡易モードでは測れないため「--.-」のままです</li>
+            <li data-i18n-rich="help.stats.ultraMax"><strong>超音波帯の最大：</strong>CSVの<code>band_ultra_dbfs</code>（超音波帯18〜22kHzの、区間ごとの値）のうち、最も大きかったもの。その帯域に音のエネルギーがあったかの記録で、何の音かは分かりません。デジタル無音の行（<code>dbfs</code>が<code>-Infinity</code>）に付いた値も数えます。区間の境目の前の約21ミリ秒の実際の音が後ろの区間に入るためで、架空の値ではありません。音が1つも届かなかった区間の行に付いた値も、同じ理由で数えます。簡易モードと<code>?bands=off</code>では測れないため「--.-」のままです</li>
+            <li data-i18n-rich="help.stats.integrity"><strong>記録の穴：</strong>統計の下に1行で出ます。<strong>クリップした区間</strong>（|振幅|が1.0に届いたサンプルを含む区間。1〜2サンプルの単発なら区間の値への影響は小さく、3サンプル以上続いていれば波形がつぶれて値は本来の音と違います。注意書きには、記録した全サンプルに対する割合も出ます）と、<strong>有効サンプル率</strong>（届いたサンプル数÷期待サンプル数。1.000未満＝その区間の音の一部が届いていない）の区間数を示します。どちらも0なら「記録の穴なし」と出ます</li>
+            <li data-i18n-rich="help.stats.graph"><strong>リアルタイムグラフ：</strong>時系列での音量推移を可視化。実線が音量（全帯域）、破線が超音波帯（18〜22kHz）の値です（グラフの下の凡例に、色と線の形があります）。音が1つも届かなかった区間と、帯域の値が無い区間は線を切ります。デジタル無音は下端に描きます。簡易モード・<code>?bands=off</code>・超音波帯を測れないサンプルレートでは超音波帯の線を描かず、凡例に見本の線の代わりに理由（「簡易モードでは測れません」など）が出ます</li>
+            <li data-i18n-rich="help.stats.upperLimit"><strong>記録できる上限：</strong>記録を始めると、凡例の下に「この端末で記録できる上限：約◯◯kHz」と出ます。AudioContextとマイクの音声トラックのサンプルレートの、小さいほうの半分です（トラックがサンプルレートを報告しないときはAudioContextの半分で、「トラックの値は不明」と添えます）。サンプルレートで決まる上限で、マイクがその高さの音を拾えることは示しません</li>
+            <li data-i18n-rich="help.stats.bandNotice"><strong>帯域の注意書き：</strong>次のときに、記録の注意として出ます。帯域の有効率（CSVの<code>band_valid_ratio</code>）が1.0を下回った区間があるとき（件数と最小値）。マイクの音声トラックとAudioContextのサンプルレートが違うとき（サンプルレートの変換で、上限に近い高い音は低く記録されます）。サンプルレートが低くて超音波帯を測れないとき。<code>?bands=off</code>で帯域の計算を止めているとき。簡易モードで帯域を計算していないとき</li>
+            <li data-i18n-rich="help.stats.bandsOff"><strong>?bands=off：</strong>URLの末尾に<code>?bands=off</code>を付けて開くと、帯域の計算を止めます（帯域あり・なしで有効サンプル率を比べるためのものです）。凡例と注意書きに「止めています」と出て、超音波帯の線は描かれず、「超音波帯の最大」は「--.-」のままです。CSVの帯域の3列は空欄になります</li>
+            <li data-i18n-rich="help.stats.meter"><strong>音量メーター：</strong>現在の音量を色分けで表示（緑→黄→赤）</li>
           </ul>
-          <p><em>※ 統計はCSVに書き出される行（区間）だけから計算します</em></p>
-          <p><em>※ CSVから同じ値を出せますが、条件があります。区間長はtimestamp（区間の終わり）の差で作れる一方、トレーラーの<code>#&nbsp;sessionStartAt=</code>と<code>#&nbsp;clockBreakAt=</code>に並ぶseqの行だけは差を使えません。記録を止めて再開した境界では差に休止時間がまるごと入り、時刻のアンカーを取り直した行では跳んだぶんが入るためです。その行は<code>#&nbsp;intervalSec=</code>のログ間隔を重みにしてください（<code>1@0+3@12</code>＝seq&nbsp;0から1秒、seq&nbsp;12から3秒）。手元の実測では、この置き換えをしないと17行の記録で6.49dB外れ、置き換えると小数10桁まで一致しました。音が1つも届かなかった区間（<code>dbfs</code>が空欄の行）は統計に入れていないので、その行の重みは0にしてください。手順はREADMEにあります</em></p>
-          <p><em>※ 複数回の記録セッション（記録開始→停止→記録開始）でデータは累積されます</em></p>
+          <p><em data-i18n="help.stats.noteRows">※ 統計はCSVに書き出される行（区間）だけから計算します</em></p>
+          <p><em data-i18n-rich="help.stats.noteCsv">※ CSVから同じ値を出せますが、条件があります。区間長はtimestamp（区間の終わり）の差で作れる一方、トレーラーの<code>#&nbsp;sessionStartAt=</code>と<code>#&nbsp;clockBreakAt=</code>に並ぶseqの行だけは差を使えません。記録を止めて再開した境界では差に休止時間がまるごと入り、時刻のアンカーを取り直した行では跳んだぶんが入るためです。その行は<code>#&nbsp;intervalSec=</code>のログ間隔を重みにしてください（<code>1@0+3@12</code>＝seq&nbsp;0から1秒、seq&nbsp;12から3秒）。手元の実測では、この置き換えをしないと17行の記録で6.49dB外れ、置き換えると小数10桁まで一致しました。音が1つも届かなかった区間（<code>dbfs</code>が空欄の行）は統計に入れていないので、その行の重みは0にしてください。手順はREADMEにあります</em></p>
+          <p><em data-i18n="help.stats.noteSessions">※ 複数回の記録セッション（記録開始→停止→記録開始）でデータは累積されます</em></p>
         </section>
 
         <section>
-          <h3>💾 データの取り扱い</h3>
+          <h3 data-i18n="help.data.heading">💾 データの取り扱い</h3>
           <ul>
-            <li><strong>録音なし：</strong>音声は一切記録されず、音量データのみを扱います</li>
-            <li><strong>CSV形式：</strong>10列（timestamp・dbfs・seq・peak_dbfs・clip・valid_ratio・band_ultra_dbfs・band_audible_dbfs・band_valid_ratio・hash）を、測定条件のヘッダー行と、行数・ログ間隔・セッションの境界・無音の有無を残すトレーラー行（どちらも「#」から始まる）で挟んで出力。音が1つも届かなかった区間は<code>dbfs</code>を空欄にします（デジタル無音の<code>-Infinity</code>とは別です）</li>
-            <li><strong>ハッシュチェーン：</strong>各行のハッシュに前の行のハッシュを混ぜています。CSVがそのまま渡ってきたときに、うっかりの破損・部分的な欠落・順序の入れ替わりを見つけられます。⚠<strong>意図的な改変には、相手が誰であっても耐えません。</strong>鎖の作り方をREADMEで公開しているので、値を書き換えたあとにハッシュを計算し直せば検証は通ります。記録が正しいことの証明には使えません</li>
-            <li><strong>累積記録：</strong>停止→再開しても前回データは保持されます</li>
-            <li><strong>プライバシー配慮：</strong>すべての処理はブラウザー内で完結</li>
-          </ul>
-        </section>
-
-        <section>
-          <h3>🔧 トラブルシューティング</h3>
-          <ul>
-            <li><strong>マイクダイアログが表示されない：</strong>ブラウザーのURL付近のマイクアイコンを押すか、ページをリロード</li>
-            <li><strong>音量が「--.- dBFS」のまま：</strong>マイクが正しく接続・選択されているか確認</li>
-            <li><strong>計測エンジンの表示：</strong>「高精度モード」はオーディオスレッドで区間ごとに集計するため、タブが背面になっても記録が途切れません。「簡易モード」はAudioWorkletのモジュールを読み込めないときの代替で、描画が止まると記録も欠けます。ブラウザーが未対応のときより、file:// で直接開いたときのほうが遭遇しやすいので、https または localhost 経由で開き直してください。なお file:// で落ちるのはモジュールの読み込みだけで、ハッシュのほうは file:// でも計算されます</li>
-            <li><strong>グラフが表示されない：</strong>ページをリロードして再試行</li>
-            <li><strong>スマートフォンで操作しにくい：</strong>画面を縦向きにして使用してください</li>
+            <li data-i18n-rich="help.data.noRecording"><strong>録音なし：</strong>音声は一切記録されず、音量データのみを扱います</li>
+            <li data-i18n-rich="help.data.csv"><strong>CSV形式：</strong>10列（timestamp・dbfs・seq・peak_dbfs・clip・valid_ratio・band_ultra_dbfs・band_audible_dbfs・band_valid_ratio・hash）を、測定条件のヘッダー行と、行数・ログ間隔・セッションの境界・無音の有無を残すトレーラー行（どちらも「#」から始まる）で挟んで出力。音が1つも届かなかった区間は<code>dbfs</code>を空欄にします（デジタル無音の<code>-Infinity</code>とは別です）</li>
+            <li data-i18n-rich="help.data.chain"><strong>ハッシュチェーン：</strong>各行のハッシュに前の行のハッシュを混ぜています。CSVがそのまま渡ってきたときに、うっかりの破損・部分的な欠落・順序の入れ替わりを見つけられます。⚠<strong>意図的な改変には、相手が誰であっても耐えません。</strong>鎖の作り方をREADMEで公開しているので、値を書き換えたあとにハッシュを計算し直せば検証は通ります。記録が正しいことの証明には使えません</li>
+            <li data-i18n-rich="help.data.cumulative"><strong>累積記録：</strong>停止→再開しても前回データは保持されます</li>
+            <li data-i18n-rich="help.data.privacy"><strong>プライバシー配慮：</strong>すべての処理はブラウザー内で完結</li>
           </ul>
         </section>
 
         <section>
-          <h3>📱 モバイル利用について</h3>
+          <h3 data-i18n="help.trouble.heading">🔧 トラブルシューティング</h3>
           <ul>
-            <li><strong>レスポンシブ対応：</strong>スマートフォンとタブレットに最適化</li>
-            <li><strong>タッチ操作：</strong>主要な操作ボタンは44px以上、プリセットなど補助的なボタンは24px以上（WCAG 2.2 の 2.5.8 に準拠）</li>
-            <li><strong>設定の折りたたみ：</strong>「設定を表示/隠す」で画面を有効活用</li>
-            <li><strong>ボタンの配置：</strong>「記録開始」と「停止」は同じ場所に出て、そのとき押せるほうだけが見えます。幅480px以下では「CSV書き出し」と「統計リセット」を「その他」にまとめ、ヘルプとテーマの切り替えを同じ行に並べます。「その他」はEscキーでも閉じられます</li>
-            <li><strong>バッテリー考慮：</strong>不要時は停止してバッテリー消費を抑制</li>
+            <li data-i18n-rich="help.trouble.dialog"><strong>マイクダイアログが表示されない：</strong>ブラウザーのURL付近のマイクアイコンを押すか、ページをリロード</li>
+            <li data-i18n-rich="help.trouble.noValue"><strong>音量が「--.- dBFS」のまま：</strong>マイクが正しく接続・選択されているか確認</li>
+            <li data-i18n-rich="help.trouble.engine"><strong>計測エンジンの表示：</strong>「高精度モード」はオーディオスレッドで区間ごとに集計するため、タブが背面になっても記録が途切れません。「簡易モード」はAudioWorkletのモジュールを読み込めないときの代替で、描画が止まると記録も欠けます。ブラウザーが未対応のときより、file:// で直接開いたときのほうが遭遇しやすいので、https または localhost 経由で開き直してください。なお file:// で落ちるのはモジュールの読み込みだけで、ハッシュのほうは file:// でも計算されます</li>
+            <li data-i18n-rich="help.trouble.graph"><strong>グラフが表示されない：</strong>ページをリロードして再試行</li>
+            <li data-i18n-rich="help.trouble.phone"><strong>スマートフォンで操作しにくい：</strong>画面を縦向きにして使用してください</li>
           </ul>
         </section>
 
         <section>
-          <h3>⚠️ 重要な注意事項</h3>
+          <h3 data-i18n="help.mobile.heading">📱 モバイル利用について</h3>
           <ul>
-            <li><strong>録音機能なし：</strong>音声そのものは保存されません（音量レベルのみ）</li>
-            <li><strong>環境依存：</strong>表示値は機器・環境により変動するため、絶対値でなく相対変化を参考に</li>
-            <li><strong>用途制限：</strong>本ツールは物理セキュリティ・音響監視の補助用途を想定</li>
-            <li><strong>証明には使えません：</strong>CSVのハッシュチェーンは、うっかりの破損や欠落に気づくためのものです。意図的な改変には耐えないため、記録が正しいことの証明には使えません</li>
-            <li><strong>法的配慮：</strong>使用時は適用される法律・規制を遵守してください。音量のみの記録でも、記録する場所と目的によっては制約がかかります</li>
+            <li data-i18n-rich="help.mobile.responsive"><strong>レスポンシブ対応：</strong>スマートフォンとタブレットに最適化</li>
+            <li data-i18n-rich="help.mobile.touch"><strong>タッチ操作：</strong>主要な操作ボタンは44px以上、プリセットなど補助的なボタンは24px以上（WCAG 2.2 の 2.5.8 に準拠）</li>
+            <li data-i18n-rich="help.mobile.collapse"><strong>設定の折りたたみ：</strong>「設定を表示/隠す」で画面を有効活用</li>
+            <li data-i18n-rich="help.mobile.buttons"><strong>ボタンの配置：</strong>「記録開始」と「停止」は同じ場所に出て、そのとき押せるほうだけが見えます。幅480px以下では「CSV書き出し」と「統計リセット」を「その他」にまとめ、ヘルプとテーマの切り替えを同じ行に並べます。「その他」はEscキーでも閉じられます</li>
+            <li data-i18n-rich="help.mobile.battery"><strong>バッテリー考慮：</strong>不要時は停止してバッテリー消費を抑制</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3 data-i18n="help.caution.heading">⚠️ 重要な注意事項</h3>
+          <ul>
+            <li data-i18n-rich="help.caution.noRecording"><strong>録音機能なし：</strong>音声そのものは保存されません（音量レベルのみ）</li>
+            <li data-i18n-rich="help.caution.env"><strong>環境依存：</strong>表示値は機器・環境により変動するため、絶対値でなく相対変化を参考に</li>
+            <li data-i18n-rich="help.caution.purpose"><strong>用途制限：</strong>本ツールは物理セキュリティ・音響監視の補助用途を想定</li>
+            <li data-i18n-rich="help.caution.proof"><strong>証明には使えません：</strong>CSVのハッシュチェーンは、うっかりの破損や欠落に気づくためのものです。意図的な改変には耐えないため、記録が正しいことの証明には使えません</li>
+            <li data-i18n-rich="help.caution.legal"><strong>法的配慮：</strong>使用時は適用される法律・規制を遵守してください。音量のみの記録でも、記録する場所と目的によっては制約がかかります</li>
           </ul>
         </section>
       </div>
     </div>
   </div>
 
-  <script src="./logic.js?v=3.8"></script>
-  <script src="./script.js?v=3.8"></script>
+  <!-- 画面の文言の辞書（第2弾c3a）。logic.jsが文言を組み立てるときに使うので、logic.jsより先に読む -->
+  <script src="./messages.js?v=3.9"></script>
+  <script src="./logic.js?v=3.9"></script>
+  <script src="./script.js?v=3.9"></script>
 </body>
 </html>

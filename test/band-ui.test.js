@@ -597,7 +597,8 @@ test('script.jsのstrokeSeriesは、線の形を反映し、gapで線を切り�
 });
 
 test('統計の「超音波帯の最大」を、統計の更新とリセットの両方で描き直す', () => {
-  assert.match(html, /<div class="stat-label">超音波帯の最大<\/div>\s*<div id="ultraMaxDb" class="stat-value">--\.- dBFS<\/div>/);
+  // 第2弾c3aで見出しに辞書のキー（data-i18n）を付けたので、属性を許して見る
+  assert.match(html, /<div class="stat-label"[^>]*>超音波帯の最大<\/div>\s*<div id="ultraMaxDb" class="stat-value">--\.- dBFS<\/div>/);
   assert.match(bodyOf('renderUltraStat'), /formatUltraMax\(stats\)/);
   assert.match(bodyOf('updateStats'), /renderUltraStat\(\)/);
   assert.match(bodyOf('resetStats'), /renderUltraStat\(\)/);
@@ -606,9 +607,10 @@ test('統計の「超音波帯の最大」を、統計の更新とリセット�
 test('⭐凡例・キャンバスの説明は、セッションのメタとページのURLから決めた1つの状態で描き直す', () => {
   const info = bodyOf('renderBandInfo');
   assert.match(info, /const state = ultraBandState\(sessionMeta, bandsOnPage\);/);
-  assert.match(info, /legendUltraTextEl\.textContent = ultraLegendText\(state\)/);
-  assert.match(info, /upperLimitEl\.textContent = upperLimitText\(sessionMeta\)/);
-  assert.match(info, /canvas\.setAttribute\('aria-label', graphAriaLabel\(state\)\)/);
+  // 第2弾c3aから、文言は画面の言語（lang）で組み立てる
+  assert.match(info, /legendUltraTextEl\.textContent = ultraLegendText\(state, lang\)/);
+  assert.match(info, /upperLimitEl\.textContent = upperLimitText\(sessionMeta, lang\)/);
+  assert.match(info, /canvas\.setAttribute\('aria-label', graphAriaLabel\(state, lang\)\)/);
   // 見本の線を隠すクラスは、線を描かないときに付ける。付け外しの向きと、CSSのクラス名を合わせて縛る
   const toggle = info.match(/legendUltraEl\.classList\.toggle\('([\w-]+)', !ultraSwatchShown\(state\)\)/);
   assert.ok(toggle, '凡例の見本の線の付け外しが、ultraSwatchShownの逆になっていない');
@@ -652,8 +654,9 @@ test('超音波帯の色は両テーマのトークンで、凡例の規則は�
 });
 
 test('ヘルプが帯域の線・統計・注意書き・上限・?bands=offを説明している', () => {
-  const head = html.indexOf('<h3>📊 統計と表示</h3>');
-  const tail = html.indexOf('<h3>💾 データの取り扱い</h3>');
+  // 第2弾c3aで見出しに辞書のキー（data-i18n）を付けたので、属性を許して探す
+  const head = html.search(/<h3[^>]*>📊 統計と表示<\/h3>/);
+  const tail = html.search(/<h3[^>]*>💾 データの取り扱い<\/h3>/);
   const block = html.slice(head, tail);
   for (const label of ['超音波帯の最大：', 'リアルタイムグラフ：', '記録できる上限：', '帯域の注意書き：', '?bands=off：']) {
     assert.ok(block.includes('<strong>' + label + '</strong>'), `ヘルプに「${label}」が無い`);
@@ -665,8 +668,9 @@ test('ヘルプが帯域の線・統計・注意書き・上限・?bands=offを�
 });
 
 test('「超音波帯の最大」は、デジタル無音と欠測の行に付いた値も数えることを、ヘルプ・統計のtitle・READMEの3か所で言う', () => {
-  const help = html.match(/<li><strong>超音波帯の最大：<\/strong>([\s\S]*?)<\/li>/)[1];
-  const title = html.match(/<div class="stat" title="([^"]*)">\s*<div class="stat-label">超音波帯の最大/)[1];
+  // 第2弾c3aで項目・枠に辞書のキー（data-i18n-rich・data-i18n-title）を付けたので、属性を許して見る
+  const help = html.match(/<li[^>]*><strong>超音波帯の最大：<\/strong>([\s\S]*?)<\/li>/)[1];
+  const title = html.match(/<div class="stat"[^>]*\stitle="([^"]*)">\s*<div class="stat-label"[^>]*>超音波帯の最大/)[1];
   const readmeLine = readme.split('\n').find(l => l.includes('画面の統計「超音波帯の最大」は、デジタル無音の行に付いた帯域の値も数える'));
   assert.ok(readmeLine, 'READMEの「帯域の列」に説明が無い');
   for (const [where, text] of [['ヘルプ', help], ['統計のtitle', title], ['README', readmeLine]]) {
@@ -703,7 +707,7 @@ test('新しい画面の文言が「検出」や使わないと決めた語を�
   // 凡例・上限・統計のtitle（HTML）
   const legendAt = html.indexOf('<ul class="graph-legend"');
   texts.push(html.slice(legendAt, html.indexOf('</p>', legendAt)));
-  texts.push(html.match(/<div class="stat" title="([^"]*)">\s*<div class="stat-label">超音波帯の最大/)[1]);
+  texts.push(html.match(/<div class="stat"[^>]*\stitle="([^"]*)">\s*<div class="stat-label"[^>]*>超音波帯の最大/)[1]);
   const banned = ['検出', '効く', '効き', '効い', '走る', '走っ', '照合', '突き合わせ', '断定', '踏み込', '構図', '落とし穴', '破綻', '潰'];
   for (const t of texts) {
     for (const w of banned) assert.ok(!t.includes(w), `「${w}」が入っている: ${t}`);

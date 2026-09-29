@@ -108,7 +108,8 @@ test('script.js はヘッダーと注意書きを logic.js の関数で組み立
   assert.match(chain, /chainHeaderMeta\(\{/);
   assert.doesNotMatch(chain, /'off'/, "chainMetaOf に 'off' の決め打ちが残っている");
   const render = script.slice(script.indexOf('function renderRecordNotice'), script.indexOf('function ensureNoticeDom'));
-  assert.match(render, /recordNoticeItems\(\{\s*deviceLoss, deviceMuted, sessionMeta, clockBreaks, stats\s*\}\)/);
+  // 第2弾c3aから、画面の言語（lang）も渡す
+  assert.match(render, /recordNoticeItems\(\{\s*deviceLoss, deviceMuted, sessionMeta, clockBreaks, stats, lang\s*\}\)/);
 });
 
 test('README の processing の説明が3つの書き方と過去の版の誤りを言っている', () => {
