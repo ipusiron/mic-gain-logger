@@ -21,12 +21,13 @@ const logic = require('../logic.js');
 // （このシリーズの決まり。全ファイル・全ディレクトリーに1行の説明を付ける）。
 const ENTRY = /^([\s│]*)([├└])── (\S+)(?:\s+# ?(.*?))?\s*$/;
 
+// ⚠ 第2弾c1で、シリーズ標準の見出し「## 📁 ディレクトリー構造」へ名前を変え、後半の固定位置へ移した
 function readTreeBlock() {
-  const head = readme.indexOf('## \u{1f4c2} ディレクトリー構成');
-  assert.notEqual(head, -1, 'ディレクトリー構成の見出しが無い');
+  const head = readme.indexOf('## \u{1f4c1} ディレクトリー構造');
+  assert.notEqual(head, -1, 'ディレクトリー構造の見出しが無い');
   const open = readme.indexOf('```', head);
   const close = readme.indexOf('```', open + 3);
-  assert.ok(open !== -1 && close !== -1, 'ディレクトリー構成のコードブロックが無い');
+  assert.ok(open !== -1 && close !== -1, 'ディレクトリー構造のコードブロックが無い');
   return readme.slice(open + 3, close).split('\n');
 }
 
@@ -123,7 +124,8 @@ test('フロントマターの説明が「調査員・探偵・法執行機関�
 });
 
 test('想定ターゲット層が「調査員・探偵・法執行機関」を利用者に置いていない', () => {
-  const head = readme.indexOf('## 👥 想定ターゲット層');
+  // 第2弾c1で「## 🎯 ユースケース」の中の小見出し（###）にした
+  const head = readme.indexOf('### 👥 想定ターゲット層');
   const tail = readme.indexOf('### 🎯 想定する使い方');
   assert.ok(head !== -1 && tail > head, '想定ターゲット層の節が見つからない');
   const block = readme.slice(head, tail);
@@ -179,7 +181,9 @@ test('Excel の手順が dB の算術平均を教えていない', () => {
   // `=AVERAGE(B:B)` は第1弾が画面で捨てた計算である。
   // しかも `-Infinity` の行はセルの上では文字列なので、警告も出ずに集計から外れる
   const head = readme.indexOf('### Excel/Google Sheetsでの分析手順');
-  const tail = readme.indexOf('## 🌐 技術スタック');
+  // ⚠ 第2弾c1でExcelの節の後ろにCSVのレシピの節を足したため、次の「### 推奨分析手法」までを見る
+  //    （レシピの節にも # sessionStartAt= などが出るので、H2まで見るとExcelの節から消しても通ってしまう）
+  const tail = readme.indexOf('### 推奨分析手法');
   assert.ok(head !== -1 && tail > head, 'Excel の手順が見つからない');
   const block = readme.slice(head, tail);
 
@@ -210,7 +214,9 @@ test('Excel の手順が dB の算術平均を教えていない', () => {
 
 test('Excel の手順が、seq の列（C）を作業用に潰していない', () => {
   const head = readme.indexOf('### Excel/Google Sheetsでの分析手順');
-  const tail = readme.indexOf('## 🌐 技術スタック');
+  // ⚠ 第2弾c1でExcelの節の後ろにCSVのレシピの節を足したため、次の「### 推奨分析手法」までを見る
+  //    （レシピの節にも # sessionStartAt= などが出るので、H2まで見るとExcelの節から消しても通ってしまう）
+  const tail = readme.indexOf('### 推奨分析手法');
   const block = readme.slice(head, tail);
   // CSV v3 の列は timestamp,dbfs,seq,peak_dbfs,clip,valid_ratio,band_ultra_dbfs,band_audible_dbfs,
   // band_valid_ratio,hash ＝ A〜J である（第2弾b2。v2 は A〜G の7列だった）
@@ -231,7 +237,9 @@ test('Excel の手順が、seq の列（C）を作業用に潰していない', 
 
 test('Excel の手順が、セッションの境界とアンカーの取り直しを重みから外している', () => {
   const head = readme.indexOf('### Excel/Google Sheetsでの分析手順');
-  const tail = readme.indexOf('## 🌐 技術スタック');
+  // ⚠ 第2弾c1でExcelの節の後ろにCSVのレシピの節を足したため、次の「### 推奨分析手法」までを見る
+  //    （レシピの節にも # sessionStartAt= などが出るので、H2まで見るとExcelの節から消しても通ってしまう）
+  const tail = readme.indexOf('### 推奨分析手法');
   const block = readme.slice(head, tail);
   assert.ok(block.includes('# sessionStartAt='), '境界の行の見つけ方（# sessionStartAt=）が無い');
   assert.ok(block.includes('# clockBreakAt='), 'アンカーの取り直した行の扱いが無い');
@@ -245,8 +253,9 @@ test('Excel の手順が、セッションの境界とアンカーの取り直�
 });
 
 test('トラブルシューティングが、第1弾で直した不具合の回避策を載せていない', () => {
+  // 第2弾c1で「ブラウザー対応状況」を後半の「## 💻 動作環境」へ移したので、次のH2までを見る
   const head = readme.indexOf('### よくある問題と解決方法');
-  const tail = readme.indexOf('### ブラウザー対応状況');
+  const tail = readme.indexOf('## 💡 将来的な追加アイデア');
   assert.ok(head !== -1 && tail > head, 'トラブルシューティングの節が見つからない');
   const block = readme.slice(head, tail);
 
@@ -345,8 +354,9 @@ test('シナリオ例が「画面ロック相当で実測確認」と言い切�
   // 同じ README の対応表が「モバイルはエミュレーションのみ」と書いているので、
   // シナリオ側が「実測で確認した」と言い切ると食い違う。
   // 未確認である旨は「ブラウザー対応状況」の1か所へ集約し、他はそこを指す
-  const head = readme.indexOf('## 📋 具体的なシナリオ例');
-  const tail = readme.indexOf('## 📂 ディレクトリー構成');
+  // 第2弾c1で「## 🎯 ユースケース」の中の小見出し（###）にした。次のH2までを見る
+  const head = readme.indexOf('### 📋 具体的なシナリオ例');
+  const tail = readme.indexOf('## 📚 技術的な基礎知識');
   assert.ok(head !== -1 && tail > head, 'シナリオ例の節が見つからない');
   const scenarios = readme.slice(head, tail);
 
