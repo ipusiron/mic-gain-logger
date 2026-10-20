@@ -20,6 +20,7 @@
   const micBtn = $('micBtn'), floorBtn = $('floorBtn');
   const logEl = $('log'), canvas = $('spec'), ctx = canvas.getContext('2d');
 
+  // osc は鳴らしている音源（OscillatorNode か AudioBufferSourceNode）
   let outCtx = null, osc = null, gain = null;
   let seqTimer = null, seqIndex = -1, seqPhase = '';
   let inCtx = null, analyser = null, micStream = null, freqData = null, rafId = null;
@@ -44,6 +45,25 @@
     return Math.pow(10, Math.max(-60, Math.min(-12, Number.isFinite(value) ? value : -24)) / 20);
   }
 
+  // 試験音の作り方。既定は OscillatorNode（これまでの実機記録と同じ条件）。
+  // Chrome の OscillatorNode は正弦波でも高い周波数ほど弱く出す（48kHzで22kHz −8.5dB）ため、
+  // 減衰を除いて測るときは AudioBuffer に計算した正弦波を鳴らす。選択は保存しない。
+  const ENGINE_LABEL = { oscillator: 'OscillatorNode', buffer: 'AudioBuffer' };
+  function toneEngine() { return $('toneEngine').value === 'buffer' ? 'buffer' : 'oscillator'; }
+  function engineLabel() { return ENGINE_LABEL[toneEngine()]; }
+
+  // 1秒分の正弦波をループで鳴らす。整数Hzなら1秒にちょうど整数周期が入り、つなぎ目が連続する。
+  function createSineSource(c, hz) {
+    const n = Math.round(c.sampleRate);
+    const buffer = c.createBuffer(1, n, c.sampleRate);
+    const data = buffer.getChannelData(0);
+    const w = 2 * Math.PI * hz / c.sampleRate;
+    for (let i = 0; i < n; i++) data[i] = Math.sin(w * i);
+    const source = c.createBufferSource();
+    source.buffer = buffer; source.loop = true;
+    return source;
+  }
+
   function ensureOut() {
     if (outCtx) return outCtx;
     outCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -62,9 +82,12 @@
       addLog('再生せず: ' + hz + ' Hz（sampleRate=' + c.sampleRate + '）');
       return false;
     }
-    const o = c.createOscillator(), g = c.createGain(), envelope = c.createGain();
+    const engine = toneEngine();
+    const playHz = engine === 'buffer' ? Math.round(hz) : hz;
+    const o = engine === 'buffer' ? createSineSource(c, playHz) : c.createOscillator();
+    const g = c.createGain(), envelope = c.createGain();
     osc = o; gain = g;
-    o.type = 'sine'; o.frequency.value = hz;
+    if (engine === 'oscillator') { o.type = 'sine'; o.frequency.value = hz; }
     const end = c.currentTime + TONE_SEC;
     g.gain.value = volAmp();
     envelope.gain.setValueAtTime(0.0001, c.currentTime);
@@ -79,7 +102,7 @@
     envelope.gain.setValueAtTime(1, end - 0.05);
     envelope.gain.exponentialRampToValueAtTime(0.0001, end);
     o.stop(end);
-    $('freqNow').textContent = hz.toLocaleString();
+    $('freqNow').textContent = playHz.toLocaleString();
     return true;
   }
 
@@ -92,7 +115,7 @@
       const c = ensureOut();
       if (c.state === 'suspended') await c.resume();
       const ready = id === playbackId && !document.hidden;
-      if (ready) { $('toneSec').disabled = true; $('gapSec').disabled = true; }
+      if (ready) { $('toneSec').disabled = true; $('gapSec').disabled = true; $('toneEngine').disabled = true; }
       return ready;
     } catch (e) {
       if (id === playbackId) { seqStop(); addLog('再生を開始できません: ' + e.name); }
@@ -129,7 +152,7 @@
     seqPhase = 'tone';
     $('stepInfo').textContent = (seqIndex + 1) + ' / ' + STEPS.length
       + '　' + hz.toLocaleString() + ' Hz を ' + TONE_SEC + ' 秒';
-    addLog('▶ ' + hz + ' Hz 開始（' + TONE_SEC + ' 秒、音量 ' + $('vol').value + ' dBFS）');
+    addLog('▶ ' + hz + ' Hz 開始（' + TONE_SEC + ' 秒、音量 ' + $('vol').value + ' dBFS、' + engineLabel() + '）');
     startTone(hz);
     seqTimer = setTimeout(seqNext, TONE_SEC * 1000);
   }
@@ -139,7 +162,7 @@
     seqIndex = -1; seqPhase = '';
     seqBtn.disabled = true; stopBtn.disabled = false;
     $('seqState').textContent = '実行中'; $('seqState').className = 'state on';
-    addLog('=== シーケンス開始 ===（各 ' + TONE_SEC + ' 秒、間に静寂 ' + GAP_SEC + ' 秒）');
+    addLog('=== シーケンス開始 ===（各 ' + TONE_SEC + ' 秒、間に静寂 ' + GAP_SEC + ' 秒、試験音は ' + engineLabel() + '）');
     addLog('順序: ' + STEPS.join(' → ') + ' Hz');
     // 最初に静寂を1回入れる（暗騒音の区間をCSVに残すため）
     seqPhase = 'tone';
@@ -151,7 +174,7 @@
 
   function seqStop() {
     playbackId++;
-    $('toneSec').disabled = false; $('gapSec').disabled = false;
+    $('toneSec').disabled = false; $('gapSec').disabled = false; $('toneEngine').disabled = false;
     clearTimeout(seqTimer); seqTimer = null;
     stopTone(false);
     seqBtn.disabled = false; stopBtn.disabled = true;
@@ -171,7 +194,7 @@
       return;
     }
     $('seqState').textContent = '手動再生中';
-    addLog('▶ 手動 ' + hz + ' Hz（' + TONE_SEC + ' 秒）');
+    addLog('▶ 手動 ' + hz + ' Hz（' + TONE_SEC + ' 秒、' + engineLabel() + '）');
     seqTimer = setTimeout(seqStop, TONE_SEC * 1000);
   });
   $('vol').addEventListener('input', () => {

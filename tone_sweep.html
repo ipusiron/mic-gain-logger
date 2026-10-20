@@ -62,6 +62,15 @@
     </label>
   </div>
   <div class="row">
+    <label>試験音の作り方
+      <select id="toneEngine" autocomplete="off">
+        <option value="oscillator" selected>OscillatorNode（既定）</option>
+        <option value="buffer">AudioBuffer（減衰なし）</option>
+      </select>
+    </label>
+    <span class="note">ChromeのOscillatorNodeは高い周波数ほど弱く出ます（48kHzで22kHz −8.5dB）。減衰を除いて測るときはAudioBufferを選びます。</span>
+  </div>
+  <div class="row">
     <label>手動
       <input type="number" id="manualHz" value="19000" min="20" max="24000" step="100" />
     </label>
