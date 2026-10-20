@@ -79,6 +79,8 @@ test('frequencies at or above Nyquist and invalid input never start an oscillato
     await h.click('manualBtn');
     assert.equal(h.oscillators.length,0,`${rate}/${hz}`);
     assert.match(h.element('stepInfo').textContent,/再生できない/);
+    assert.equal(h.element('toneSec').disabled,false);
+    assert.equal(h.element('gapSec').disabled,false);
   }
 });
 

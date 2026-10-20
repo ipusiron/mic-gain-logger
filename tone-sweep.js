@@ -164,7 +164,12 @@
   manualBtn.addEventListener('click', async () => {
     const hz = Number($('manualHz').value);
     if (!await prepareOutput()) return;
-    if (!startTone(hz)) { stopBtn.disabled = true; return; }
+    if (!startTone(hz)) {
+      const reason = $('stepInfo').textContent;
+      seqStop();
+      $('stepInfo').textContent = reason;
+      return;
+    }
     $('seqState').textContent = '手動再生中';
     addLog('▶ 手動 ' + hz + ' Hz（' + TONE_SEC + ' 秒）');
     seqTimer = setTimeout(seqStop, TONE_SEC * 1000);
