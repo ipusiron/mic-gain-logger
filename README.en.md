@@ -120,7 +120,7 @@ What this tool keeps is a time series of dBFS, a value relative to each device. 
 - Work and creative projects: preparing for recording sessions, estimating how long equipment ran
 - Hobbies, electronics and nature watching: checking oscillator circuits and buzzers, the time birds start singing, insect sounds at night
 - Research and security audits: auditing and testing air gaps, finding the direction of a sound and narrowing down its source, checking the limits of the hash chain
-- Combining with other tools and articles: 『エアギャップ・ブリッジ』 (*Air Gap Bridge*) (Japanese-language book), the tone source page (Tone Sweep), spreadsheets and Python
+- Combining with other tools and articles: 『エアギャップ・ブリッジ』 (*Air Gap Bridge*) (Japanese-language book), the tone source page ([Tone Sweep](https://ipusiron.github.io/mic-gain-logger/tone_sweep.html)), spreadsheets and Python
 
 ⚠Every example of use has the following limits. Recording is possible only up to half the sample rate (24 kHz at 48 kHz), and sounds above 24 kHz cannot be recorded at their own frequency. dBFS from two devices cannot be compared, and one microphone cannot tell direction, so direction finding is done while moving the device.
 
@@ -201,6 +201,10 @@ mic-gain-logger/
 ├── script.js                      # DOM and browser APIs (microphone access, drawing, CSV export)
 ├── logic.js                       # Pure logic (dBFS conversion, intervals, statistics, graph coordinates, CSV assembly)
 ├── messages.js                    # UI text dictionaries (Japanese and English) and how the display language is chosen
+├── tone_sweep.html                # Original real-device test tone page (Japanese)
+├── tone-sweep.css                 # Tone Sweep layout and themes
+├── tone-sweep-theme.js            # Tone Sweep theme selection
+├── tone-sweep.js                  # Tone Sweep playback, spectrum and stop controls
 ├── worklet/                       # Code that runs on the audio thread
 │   └── meter-processor.js         # AudioWorkletProcessor (per-interval aggregation)
 ├── docs/                          # Detailed documents in Japanese, listed in the document table of README.md
@@ -263,6 +267,7 @@ mic-gain-logger/
 │   ├── readme-en.test.js          # Whether README.en.md and docs/en/ match the Japanese versions (headings, numbers in tables, code processing, recipe outputs, terms)
 │   ├── i18n.test.js               # Japanese/English UI (matching dictionary keys, no Japanese left in the English display, how the language is chosen)
 │   ├── dbfs-fixture.test.js       # dBFS calculation accuracy for sine waves of known amplitude
+│   ├── tone-sweep.test.js         # Tone Sweep limits, cancellation, cleanup and publication policy
 │   ├── docs.test.js               # Whether the README and docs/ match the implementation and actual files (including the tree)
 │   └── fixtures/                  # Expected values for tests
 │       ├── expected_dbfs.json     # Expected dBFS made from sine waves of known amplitude
