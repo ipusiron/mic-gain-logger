@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+<title>Tone Sweep - Day041測定用</title>
+<link rel="stylesheet" href="tone-sweep.css" />
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<script src="tone-sweep-theme.js"></script>
+</head>
+<body>
+<main>
+
+<div class="head">
+  <div>
+    <h1>Tone Sweep</h1>
+    <div class="sub">Day041 Mic Gain Loggerの実機検証用。試験音の周波数を段階的に上げ、別の端末でマイクの反応を確かめます。</div>
+  </div>
+  <button id="themeBtn" type="button" title="配色を切り替える（自動＝OSの設定に合わせる）">配色：自動</button>
+</div>
+
+<div class="warnbox">
+  <strong>音量に注意してください。</strong>高い音が聞こえる範囲は人によって異なります。
+  18kHz以上は聞こえないまま大きな音が出ていることがあります。
+  <strong>最初は音量を絞り、1kHzの基準音で耳に痛くない大きさに合わせてから上へ進んでください。</strong>
+  近くに子ども・動物がいる場所では行わないでください。
+</div>
+
+<div class="card">
+  <h2>1. 音を出す（この端末のスピーカー）</h2>
+  <details class="seqbox" open>
+    <summary>階段シーケンスとは</summary>
+    <p class="note" id="seqDesc">-</p>
+    <div class="row" data-spacing="duration">
+      <label>1トーン
+        <input type="number" id="toneSec" value="5" min="2" max="30" step="1"> 秒
+      </label>
+      <label>間の静寂
+        <input type="number" id="gapSec" value="2" min="1" max="20" step="1"> 秒
+      </label>
+    </div>
+    <p class="note">
+      1kHzの基準音から始め、15〜22kHzを順に試します。
+      <strong>音を鳴らした区間で、受け取る端末の値が変わるかを確かめます。</strong>
+      反応がない理由を、スピーカー・マイク・音の加工・距離のどれかに分けることはできません。
+      各トーンの前後に静寂を挟むので、CSVの側でも区間が分かれて見えます。
+    </p>
+  </details>
+  <div class="row">
+    <button id="seqBtn" class="primary">階段シーケンスを開始</button>
+    <button id="stopBtn" disabled>停止</button>
+    <span id="seqState" class="state off">停止中</span>
+  </div>
+  <div class="big"><span id="freqNow">-</span> <small>Hz</small></div>
+  <div class="state" id="stepInfo">-</div>
+  <div class="row" data-spacing="top-12">
+    <label>音量
+      <input type="range" id="vol" min="-60" max="-12" step="1" value="-24" />
+      <span id="volLabel">-24 dBFS（ピーク振幅）</span>
+    </label>
+  </div>
+  <div class="row">
+    <label>手動
+      <input type="number" id="manualHz" value="19000" min="20" max="24000" step="100" />
+    </label>
+    <button id="manualBtn">この周波数で鳴らす</button>
+    <span class="note">「1トーン」の秒数で自動停止します。</span>
+  </div>
+  <div class="note">
+    出力のsampleRate: <span id="srOut">-</span> Hz（表せる上限は
+    <span id="nyqOut">-</span> Hz。<strong>この上限以上の周波数は再生しません</strong>）
+    <p>音量はデジタル信号の振幅です。実際の音圧（dB SPL）を示しません。タブを隠すと再生とマイクを停止します。</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>2. 届いているかを見る（この端末のマイク）</h2>
+  <div class="row">
+    <button id="micBtn">マイクを繋いでスペクトルを見る</button>
+    <button id="micStopBtn" disabled>マイクを切断</button>
+    <span id="micState" class="state off">未接続</span>
+  </div>
+  <canvas id="spec" width="1200" height="260" role="img" aria-label="入力の周波数スペクトル。帯域別の値は次の表に表示します。"></canvas>
+  <div class="note" data-spacing="top-8">
+    入力のsampleRate: <span id="srIn">-</span> Hz ／
+    ビン幅: <span id="binHz">-</span> Hz ／
+    最大の山: <span id="peakHz">-</span>
+  </div>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="帯域ごとの反応">
+  <table>
+    <thead><tr><th>帯域</th><th>いまの強さ</th><th>暗騒音との差</th><th>判定</th></tr></thead>
+    <tbody id="bandRows"></tbody>
+  </table>
+  </div>
+  <div class="row" data-spacing="top-10">
+    <button id="floorBtn">いまを暗騒音として記録する</button>
+    <span class="note" id="floorState">未記録（静かな状態で押す）</span>
+  </div>
+  <p class="note">
+    <strong>判定は、音を止めた静かな状態で「いまを暗騒音として記録する」を押してから表示します。</strong>
+    そのあと音を鳴らし、帯域の値が暗騒音より6dB以上強ければ「届いている」と表示します。これは帯域全体の変化を示す簡易的な目安です。試験音以外の音でも反応し、音の種類や特定の周波数の到達を断定できません。
+    判定する帯域は表の5つ（1kHz付近と15〜22kHz）です。ほかの周波数の反応はスペクトル図で確認してください。
+    ⚠ このカードで聞いているのは<strong>この端末のマイク</strong>です。別の端末が拾うかは、その端末でMic Gain Loggerを使って記録してください。
+  </p>
+</div>
+
+<div class="card">
+  <h2>3. 記録（CSVと時刻を比べる）</h2>
+  <div class="row">
+    <button id="copyBtn">ログをコピー</button>
+    <button id="clearBtn">ログを消す</button>
+  </div>
+  <textarea id="log" aria-label="試験音の時刻ログ" readonly></textarea>
+  <div class="note" data-spacing="top-8">
+    各ステップの開始時刻が端末の時計で残ります。Mic Gain Logger側のCSVのtimestamp列と比べて、
+    どの周波数を鳴らした時刻かを確認します。端末間で時計がずれている場合は、その差も考慮してください。音声は録音せず、マイク入力やログを送信しません。
+  </div>
+</div>
+
+</main>
+<footer class="foot">
+  🔗 このページで検証しているツール（Mic Gain Logger）のGitHubリポジトリー：<a href="https://github.com/ipusiron/mic-gain-logger" target="_blank" rel="noopener noreferrer">ipusiron/mic-gain-logger</a>
+<p>使い方：<a href="https://github.com/ipusiron/mic-gain-logger/blob/main/docs/real-device-test.md">実機テストの資料</a> ／ 記録するツール：<a href="./">Mic Gain Logger</a></p>
+</footer>
+
+<script src="tone-sweep.js"></script>
+</body>
+</html>

@@ -161,7 +161,7 @@ URLの末尾に`?bands=off`を付けて開くと（例：`https://ipusiron.githu
 - 仕事・創作：収録の下準備、設備の運転時間の見当
 - 趣味・電子工作・自然観察：発振回路・ブザーの確かめ、鳥が鳴き始める時刻、夜の虫の声
 - 研究・セキュリティの監査：エアギャップの監査・検証、音の方向探知・発信源の絞り込み、ハッシュチェーンの限界を確かめる
-- ほかのツールや記事との組み合わせ：『エアギャップ・ブリッジ』、音源ページ（Tone Sweep）、表計算ソフト・Python
+- ほかのツールや記事との組み合わせ：『エアギャップ・ブリッジ』、音源ページ（[Tone Sweep](https://ipusiron.github.io/mic-gain-logger/tone_sweep.html)）、表計算ソフト・Python
 
 ⚠どの活用例にも、次の限界があります。記録できるのはサンプルレートの半分まで（48kHzなら24kHz）で、24kHzより上の音はその周波数として記録できません。2台の端末のdBFSは比べられず、マイク1本では方向は分からないので、方向探知は端末を動かしながら行います。
 
@@ -242,6 +242,10 @@ mic-gain-logger/
 ├── script.js                      # DOMとブラウザーAPI（マイク取得・描画・CSV書き出し）
 ├── logic.js                       # 純ロジック（dBFS換算・区間・統計・グラフ座標・CSV組み立て）
 ├── messages.js                    # 画面の文言の辞書（日本語・英語）と、表示の言語の決め方
+├── tone_sweep.html                # 実機テストの音源ページ（日本語）
+├── tone-sweep.css                 # Tone Sweepの配色と配置
+├── tone-sweep-theme.js            # Tone Sweepの配色切り替え
+├── tone-sweep.js                  # Tone Sweepの再生・スペクトル・停止処理
 ├── worklet/                       # オーディオスレッドで動くコード
 │   └── meter-processor.js         # AudioWorkletProcessor（区間ごとの集計）
 ├── docs/                          # 詳しい資料（日本語）。READMEの「📚 資料（docs/）」から案内する
@@ -304,6 +308,7 @@ mic-gain-logger/
 │   ├── readme-en.test.js          # 英語版のREADMEとdocs/en/が日本語版とそろっているか（見出し・表の数値・コードの処理・レシピの出力・用語）
 │   ├── i18n.test.js               # 画面の日英対応（辞書のキーの一致・英語の表示に日本語が残らない・言語の決め方）
 │   ├── dbfs-fixture.test.js       # 既知振幅の正弦波に対するdBFSの計算精度
+│   ├── tone-sweep.test.js         # Tone Sweepの上限・中断・資源解放・公開設定
 │   ├── docs.test.js               # README・docs/と実装・実ファイルが合っているかの検査（構成図を含む）
 │   └── fixtures/                  # テストの期待値
 │       ├── expected_dbfs.json     # 既知振幅の正弦波から作った期待dBFS

@@ -1,0 +1,105 @@
+  /* 配色：既定は明るい配色。OS がダークのときと、ボタンで暗い配色を選んだときだけ暗くする */
+  :root {
+    --bg: #f4f6f9; --card: #ffffff; --fg: #1b2430; --muted: #4d5b6e;
+    --accent: #0a58ca; --ok: #1a7f37; --warn: #8a5a00; --err: #b42318;
+    --grid: #d5dde8; --line: #0a58ca;
+    --btn-bg: #eef2f7; --btn-hover: #e2e8f0; --btn-border: #6b7a8e; --on-accent: #ffffff;
+    --input-bg: #ffffff; --th-bg: #eef2f7;
+    --canvas-bg: #fbfcfe; --canvas-grid: #dde3ec; --canvas-text: #4d5b6e; --canvas-mark: #6b86ad;
+    --warnbox-bg: #fff4e0; --warnbox-border: #e3b25a;
+    --seqbox-bg: #f5f8fc; --seqbox-border: #d5dde8;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+    --bg: #0f1621; --card: #172232; --fg: #e8eef7; --muted: #9fb0c6;
+      --accent: #6fb3ff; --ok: #6ee7a0; --warn: #ffc860; --err: #ff8a80;
+      --grid: #2a3a50; --line: #6fb3ff;
+      --btn-bg: #223146; --btn-hover: #2b3d56; --btn-border: #7d90a8; --on-accent: #0b1220;
+      --input-bg: #0f1826; --th-bg: #1d2b3e;
+      --canvas-bg: #0b1220; --canvas-grid: #223047; --canvas-text: #7d90a8; --canvas-mark: #4a6b96;
+      --warnbox-bg: #3a2a10; --warnbox-border: #6b5220;
+      --seqbox-bg: #101a28; --seqbox-border: #24344a;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1621; --card: #172232; --fg: #e8eef7; --muted: #9fb0c6;
+    --accent: #6fb3ff; --ok: #6ee7a0; --warn: #ffc860; --err: #ff8a80;
+    --grid: #2a3a50; --line: #6fb3ff;
+    --btn-bg: #223146; --btn-hover: #2b3d56; --btn-border: #7d90a8; --on-accent: #0b1220;
+    --input-bg: #0f1826; --th-bg: #1d2b3e;
+    --canvas-bg: #0b1220; --canvas-grid: #223047; --canvas-text: #7d90a8; --canvas-mark: #4a6b96;
+    --warnbox-bg: #3a2a10; --warnbox-border: #6b5220;
+    --seqbox-bg: #101a28; --seqbox-border: #24344a;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
+    font-family: "Yu Gothic UI", Meiryo, system-ui, sans-serif; line-height: 1.7;
+  }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 14px; margin-bottom: 16px; }
+  .card {
+    background: var(--card); border-radius: 12px; padding: 16px; margin-bottom: 16px;
+    border: 1px solid var(--grid);
+  }
+  h2 { font-size: 15px; margin: 0 0 12px; color: var(--accent); }
+  button {
+    font-size: 15px; padding: 10px 18px; min-height: 44px; border-radius: 8px;
+    border: 1px solid var(--btn-border); background: var(--btn-bg); color: var(--fg); cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: var(--btn-hover); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .big { font-size: 40px; font-weight: 700; letter-spacing: -.02em; }
+  .big small { font-size: 16px; color: var(--muted); font-weight: 400; }
+  .state { font-size: 14px; color: var(--muted); }
+  .state.on { color: var(--ok); }
+  .state.off { color: var(--warn); }
+  label { font-size: 14px; color: var(--muted); }
+  input[type=range] { width: 220px; vertical-align: middle; }
+  input[type=number] {
+    width: 90px; font-size: 16px; padding: 6px 8px; border-radius: 6px;
+    border: 1px solid var(--btn-border); background: var(--input-bg); color: var(--fg);
+  }
+  table { border-collapse: collapse; font-size: 14px; width: 100%; }
+  th, td { border: 1px solid var(--grid); padding: 5px 8px; text-align: left; }
+  th { background: var(--th-bg); color: var(--muted); font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  canvas { width: 100%; height: 260px; background: var(--canvas-bg); border-radius: 8px; display: block; border: 1px solid var(--grid); }
+  textarea {
+    width: 100%; height: 180px; font-family: Consolas, monospace; font-size: 16px;
+    background: var(--canvas-bg); color: var(--fg); border: 1px solid var(--grid); border-radius: 8px; padding: 10px;
+  }
+  .note { font-size: 14px; color: var(--muted); }
+  .warnbox {
+    background: var(--warnbox-bg); border: 1px solid var(--warnbox-border); border-radius: 8px;
+    padding: 12px; font-size: 14px; margin-bottom: 16px;
+  }
+  .hit { color: var(--ok); font-weight: 700; }
+  .miss { color: var(--err); }
+  .pend { color: var(--muted); }
+  .seqbox { margin: 0 0 12px; background: var(--seqbox-bg); border: 1px solid var(--seqbox-border); border-radius: 8px; padding: 8px 12px; }
+  .seqbox summary { cursor: pointer; font-size: 14px; color: var(--accent); font-weight: 600; }
+  .seqbox p { margin: 8px 0 4px; }
+  .seqbox strong { color: var(--fg); }
+  #themeBtn { font-size: 14px; padding: 6px 12px; min-height: 44px; }
+  .foot { text-align: center; color: var(--muted); font-size: 14px; margin: 24px 0 8px; }
+  .foot a { color: var(--accent); }
+
+  body { max-width: 1100px; margin-inline: auto; overflow-wrap: anywhere; }
+  .head > div, .row > * { min-width: 0; max-width: 100%; }
+  input[type=number], input[type=range], summary { min-height: 44px; }
+  input[type=range] { max-width: 100%; }
+  a { color: var(--accent); }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  .table-scroll { overflow-x: auto; margin-top: 12px; }
+  table { min-width: 510px; }
+  [data-spacing="duration"] { margin: 8px 0 4px; }
+  [data-spacing="top-8"] { margin-top: 8px; }
+  [data-spacing="top-10"] { margin-top: 10px; }
+  [data-spacing="top-12"] { margin-top: 12px; }

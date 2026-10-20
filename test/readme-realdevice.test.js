@@ -7,7 +7,7 @@
 // ⚠ 実機テストをやり直したら、記録のほうを先に直し、ここの期待値とREADMEを合わせる。READMEだけ直して
 //    ここを合わせてはいけない。
 // あわせて、「ブラウザー対応状況」に残っていた「第2弾bは実機では未確認」の古い記述が消えたこと、
-// Tone Sweep（実機テストの音源のページ）へのリンクをまだ張っていないこと（公開したら張る。本人の指示）、
+// Tone Sweep（実機テストの音源のページ）の公開URLが日英で同じこと（公開時に更新）、
 // 実機のCSVがリポジトリーに入っていないことを見る。
 // 本文の「約7.3dB」「+1.9dB」「約36〜38dB」「約34〜36dB」「約3.8dB・約3.4dB」は、表の値から計算し直して確かめる
 // （手で丸めた値が表と食い違わないように）。22kHzが帯域の端で低く出るぶん（約2dB）は、bandPlanのビンの割り当てと
@@ -326,17 +326,14 @@ test('ブラウザー対応状況に、第2弾bを実機で確かめていない
 
 // ---- Tone Sweep と実機のCSV ----
 
-test('Tone Sweep へのリンクはまだ張らず、公開したら張ることを書いている', () => {
-  // 本人の指示（2026-09-29）。単体のツールとして公開したら、ここを「リンクがある」に変える
-  assert.ok(readmeAndDocs.includes('Tone Sweep'), 'Tone Sweep に触れていない');
-  assert.ok(REAL.includes('後日、単体のツールとして公開する予定で、公開したらここにリンクを張ります'));
-  for (const m of readmeAndDocs.matchAll(/\[([^\]]*)\]\(([^)]*)\)/g)) {
-    assert.ok(!/tone|sweep/i.test(m[1]) && !/tone|sweep/i.test(m[2]), `Tone Sweep へのリンクがある: ${m[0]}`);
+test('Tone Sweep の公開URLを日英の実機テスト資料と活用例から案内する', () => {
+  const url = 'https://ipusiron.github.io/mic-gain-logger/tone_sweep.html';
+  for (const name of ['real-device-test.md', 'use-cases.md', 'en/real-device-test.md', 'en/use-cases.md']) {
+    const doc = docsText(name);
+    assert.ok(doc.includes(`[Tone Sweep](${url})`), name);
+    assert.ok(!/公開する予定|will later be published|planned to be published/.test(doc), name);
   }
-  // Markdownのリンクだけでなく、HTMLの<a>と、GitHubがリンクにするむき出しのURLも見る（第2弾c1の点検で追加）
-  assert.ok(!/href="[^"]*(tone|sweep)/i.test(readmeAndDocs), 'HTMLの<a>で Tone Sweep へのリンクがある');
-  assert.ok(!/https?:\/\/\S*(tone|sweep)/i.test(readmeAndDocs), 'Tone Sweep のURLがある');
-  assert.ok(!readmeAndDocs.includes('tone_sweep.html'), '内部のページのファイル名が残っている');
+  assert.ok(fs.existsSync(path.join(root, 'tone_sweep.html')));
 });
 
 test('実機のCSVをリポジトリーに入れていない', () => {
