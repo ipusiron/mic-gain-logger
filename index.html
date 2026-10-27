@@ -16,6 +16,8 @@
        コンソールに404が残る。SVG 1枚で済ませる（外部への取得は発生しない） -->
   <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="./style.css?v=3.10" />
+  <!-- 最初の描画の前にテーマを決める（script.js で決めると、ダークで描いてからライトへ切り替わって見える） -->
+  <script src="./theme-init.js"></script>
 </head>
 <body>
   <header class="app-header">

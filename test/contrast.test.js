@@ -38,7 +38,7 @@ function tokensOf(selector) {
 }
 
 const dark = tokensOf(':root');
-const light = tokensOf('body.light');
+const light = tokensOf('.light body');
 
 // 前景トークン, 背景トークン, 必要な比, 何に使うか
 const PAIRS = [

@@ -117,8 +117,8 @@ a:hover{text-decoration:underline}
 }
 .theme-toggle .icon-sun{display:block;}
 .theme-toggle .icon-moon{display:none;}
-body.light .theme-toggle .icon-sun{display:none;}
-body.light .theme-toggle .icon-moon{display:block;}
+.light body .theme-toggle .icon-sun{display:none;}
+.light body .theme-toggle .icon-moon{display:block;}
 
 .container{
   padding:0 clamp(16px, 4vw, 40px) 40px;
@@ -885,8 +885,10 @@ label[title]:hover {
 /* ライトモード。
    ⚠ 初回訪問はこちらになる（savedTheme が無いときは light）。
    いちばん最初に見る画面なので、ここのコントラストがいちばん効く。
-   各値は WCAG 2.2 の相対輝度で計算して選んである（文字は 4.5:1 以上）。 */
-body.light{
+   各値は WCAG 2.2 の相対輝度で計算して選んである（文字は 4.5:1 以上）。
+   light クラスは theme-init.js が <head> で <html> に付ける（<body> はまだ無い）ので、
+   セレクターは「.light body」にしてある。 */
+.light body{
   --bg:#f4f7fb;
   --fg:#0b0d10;
   --muted:#576170;

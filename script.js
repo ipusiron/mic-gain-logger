@@ -1444,30 +1444,21 @@
   }
 
   // テーマ切り替え
-  // ⚠ localStorage が使えない環境（保存の拒否など）では、読み書きが例外を投げる。ここで止まると
-  //    初期化の残り（ボタンの状態など）まで動かなくなるので、読めなければ既定（ライト）で続ける（第2弾c3a）
+  // 最初のテーマは theme-init.js が <head> で決め、<html> に light を付ける（保存値が dark のときだけ付けない）。
+  // ここでは付いた状態を読んでグラフを描き直すだけにする。
+  // ⚠ localStorage が使えない環境（保存の拒否など）では、書き込みが例外を投げる。ここで止まると
+  //    初期化の残り（ボタンの状態など）まで動かなくなるので、try/catch で囲む（第2弾c3a）
   let isDarkMode = false;
-  
+
   function toggleTheme() {
     isDarkMode = !isDarkMode;
-    if (isDarkMode) {
-      document.body.classList.remove('light');
-    } else {
-      document.body.classList.add('light');
-    }
+    document.documentElement.classList.toggle('light', !isDarkMode);
     try { localStorage.setItem('theme', isDarkMode ? 'dark' : 'light'); } catch { /* 保存できなくても切り替えはできる */ }
     drawSeries();
   }
-  
+
   function applyTheme() {
-    let savedTheme = null;
-    try { savedTheme = localStorage.getItem('theme'); } catch { savedTheme = null; }
-    isDarkMode = savedTheme === 'dark';
-    if (isDarkMode) {
-      document.body.classList.remove('light');
-    } else {
-      document.body.classList.add('light');
-    }
+    isDarkMode = !document.documentElement.classList.contains('light');
     drawSeries();
   }
 

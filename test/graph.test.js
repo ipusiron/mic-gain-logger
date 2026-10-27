@@ -264,9 +264,9 @@ test('script.js: キャンバスの色をベタ書きしない（テーマ変数
 test('style.css: --grid と --plot が両テーマで定義されている', () => {
   const css = fs.readFileSync(path.join(__dirname, '..', 'style.css'), 'utf8');
   const root = css.slice(css.indexOf(':root{'), css.indexOf('}', css.indexOf(':root{')));
-  const light = css.slice(css.indexOf('body.light{'));
+  const light = css.slice(css.indexOf('.light body{'));
   for (const token of ['--grid', '--plot']) {
     assert.ok(root.includes(token), `:root に ${token} がない`);
-    assert.ok(light.includes(token), `body.light に ${token} がない`);
+    assert.ok(light.includes(token), `.light body に ${token} がない`);
   }
 });
