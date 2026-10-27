@@ -242,6 +242,7 @@ mic-gain-logger/
 ├── script.js                      # DOMとブラウザーAPI（マイク取得・描画・CSV書き出し）
 ├── logic.js                       # 純ロジック（dBFS換算・区間・統計・グラフ座標・CSV組み立て）
 ├── messages.js                    # 画面の文言の辞書（日本語・英語）と、表示の言語の決め方
+├── theme-init.js                  # 最初の描画の前にテーマを決める（<head>で読み込む）
 ├── tone_sweep.html                # 実機テストの音源ページ（日本語）
 ├── tone-sweep.css                 # Tone Sweepの配色と配置
 ├── tone-sweep-theme.js            # Tone Sweepの配色切り替え
@@ -309,6 +310,7 @@ mic-gain-logger/
 │   ├── i18n.test.js               # 画面の日英対応（辞書のキーの一致・英語の表示に日本語が残らない・言語の決め方）
 │   ├── dbfs-fixture.test.js       # 既知振幅の正弦波に対するdBFSの計算精度
 │   ├── tone-sweep.test.js         # Tone Sweepの上限・中断・資源解放・公開設定
+│   ├── theme-init.test.js         # テーマの初期判定と、<head>での読み込み位置
 │   ├── docs.test.js               # README・docs/と実装・実ファイルが合っているかの検査（構成図を含む）
 │   └── fixtures/                  # テストの期待値
 │       ├── expected_dbfs.json     # 既知振幅の正弦波から作った期待dBFS

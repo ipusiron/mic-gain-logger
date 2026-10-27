@@ -646,7 +646,7 @@ test('凡例・上限の表示を、起動時・記録開始時（測定条件�
 
 test('超音波帯の色は両テーマのトークンで、凡例の規則は幅の@mediaより前にある', () => {
   const rootBlock = css.slice(css.indexOf(':root{'), css.indexOf('}', css.indexOf(':root{')));
-  const light = css.slice(css.indexOf('body.light{'));
+  const light = css.slice(css.indexOf('.light body{'));
   assert.match(rootBlock, /--plot-ultra:#[0-9a-fA-F]{6};/);
   assert.match(light, /--plot-ultra:#[0-9a-fA-F]{6};/);
   const stripped = css.replace(/\/\*[\s\S]*?\*\//g, '');

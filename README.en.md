@@ -201,6 +201,7 @@ mic-gain-logger/
 ├── script.js                      # DOM and browser APIs (microphone access, drawing, CSV export)
 ├── logic.js                       # Pure logic (dBFS conversion, intervals, statistics, graph coordinates, CSV assembly)
 ├── messages.js                    # UI text dictionaries (Japanese and English) and how the display language is chosen
+├── theme-init.js                  # Theme decision before the first paint (loaded in <head>)
 ├── tone_sweep.html                # Original real-device test tone page (Japanese)
 ├── tone-sweep.css                 # Tone Sweep layout and themes
 ├── tone-sweep-theme.js            # Tone Sweep theme selection
@@ -268,6 +269,7 @@ mic-gain-logger/
 │   ├── i18n.test.js               # Japanese/English UI (matching dictionary keys, no Japanese left in the English display, how the language is chosen)
 │   ├── dbfs-fixture.test.js       # dBFS calculation accuracy for sine waves of known amplitude
 │   ├── tone-sweep.test.js         # Tone Sweep limits, cancellation, cleanup and publication policy
+│   ├── theme-init.test.js         # Initial theme decision, and its load position in <head>
 │   ├── docs.test.js               # Whether the README and docs/ match the implementation and actual files (including the tree)
 │   └── fixtures/                  # Expected values for tests
 │       ├── expected_dbfs.json     # Expected dBFS made from sine waves of known amplitude

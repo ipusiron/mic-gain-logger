@@ -15,7 +15,8 @@ The tool records **relative** levels. dBFS is not dB SPL, and its output must no
 Client-side only web application (vanilla JavaScript, no build step):
 
 ```
-index.html ──> messages.js                   画面の文言の辞書（日本語・英語）と言語の決め方（DOMに触らない・Nodeから読める）
+index.html ──> theme-init.js                 <head>で同期読み込み。最初の描画の前に<html>へlightを付ける
+           ──> messages.js                   画面の文言の辞書（日本語・英語）と言語の決め方（DOMに触らない・Nodeから読める）
            ──> logic.js                      純ロジック（DOMに触らない・Nodeから読める）
            ──> script.js                     DOMとブラウザーAPI（IIFE・logic.jsを読む）
            ──> style.css                     テーマとレイアウト
@@ -202,7 +203,7 @@ CIは`.github/workflows/test.yml`（pushとpull requestで`npm test`）。
 - **Microphone acquisition**: 20秒のタイムアウトと取り消しを入れてある（許可プロンプト放置でUIが固まっていた）
 - **Microphone reconnection**: 停止と再開の間に300ms空ける（ブラウザーの状態の問題を避けるため。`lastStopTime`）
 - **High-DPI Canvas**: `devicePixelRatio`を使う。CSSのピクセル値を直に書き込まない
-- **Theme persistence**: localStorageの`theme`キー。既定はライト。読み書きは`try/catch`で囲む（使えない環境でも初期化を止めない。第2弾c3a）
+- **Theme persistence**: localStorageの`theme`キー。既定はライト。読み書きは`try/catch`で囲む（使えない環境でも初期化を止めない。第2弾c3a）。初期の判定は`theme-init.js`が`<head>`で行い、`light`クラスを`<html>`に付ける（CSSは`.light body`）。`script.js`はその状態を読むだけ
 - **Language persistence**: localStorageの`mic-gain-logger-lang`キー（ボタンで選んだときだけ書く）。初期言語は`?lang=` → 保存 → ブラウザーの言語。詳しくは上の「画面の日英対応」
 - **Mobile responsiveness**: 幅480px以下では、記録開始／停止・「その他」・ヘルプ・テーマの切り替えを`.actions`の1行に並べ、CSV書き出しと統計リセットを「その他」に畳む（第2弾c0）。並びはstyle.cssだけで決める。言語の切り替え（`#langToggle`）は`.actions`に入れず、ヘッダーの右上に置く（第2弾c3a。幅320pxの英語で行の残りが約20pxのため）。⚠かつては`handleMobileButtonLayout()`が480pxでヘルプとテーマの親要素を付け替えていたが、resizeが届かない経路で不整合が固定される壊れやすい仕組みだったので、第2弾c0で廃止した。親要素を付け替える仕組みを戻さない。ボタンを足すときは本人の決定を経て、`test/stats-notice.test.js`のボタンの一覧を直す
 - **画面の高さ**: `vh`を使う箇所は、後ろに同じ値の`dvh`を書く（dvhを読めないブラウザーは前のvhのまま。`test/mobile-view.test.js`）。iOS Safariのvhはツールバーを畳んだときの高さなので、モーダルの下が画面の外へ出る。`viewport-fit=cover`は入れていない（セーフエリアの扱いは実機で`innerWidth × innerHeight`を測ってから決める）
