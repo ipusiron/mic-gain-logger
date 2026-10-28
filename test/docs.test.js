@@ -161,8 +161,8 @@ test('将来案が、入れないと決めた案を「いずれ入る」もの�
   assert.ok(!block.includes('聞こえない帯域を、穴の無い記録として残す'), '旧い名乗りが残っている');
   assert.ok(block.includes('Ultrasonic Leak Detector'), '近い既存品を挙げていない');
   assert.ok(block.includes('ほかに無いことの証明ではありません'), '調べた範囲の限界を書いていない');
-  // スペクトログラムは記録ではないので第3弾（本人の判断）
-  assert.ok(block.includes('スペクトログラム（何を拾っているかを目で見る表示）は、記録ではないので第3弾へ回しました'));
+  // スペクトログラムは記録ではないので次の案（本人の判断）
+  assert.ok(block.includes('スペクトログラム（何を拾っているかを目で見る表示）は、記録ではないので次の案に置いています'));
   assert.ok(block.includes('18〜22kHz'), '第2弾で扱う帯域が書かれていない');
   // ⚠ 検出・診断は第3弾である。第1弾のハッシュチェーンと同じ作法で、
   //    示せることだけを書く
@@ -175,7 +175,7 @@ test('将来案が、入れないと決めた案を「いずれ入る」もの�
   for (const s of ['第2弾の予定', '第2弾の帯域の値で測り直します', 'その診断は第3弾で扱います']) {
     assert.ok(!block.includes(s), `将来案の節に古い書き方「${s}」が残っている`);
   }
-  assert.ok(block.includes('## 第2弾で入れたもの') && block.includes('## 第3弾の案'));
+  assert.ok(block.includes('## 可聴域の上端の帯域の記録') && block.includes('## 次の案'));
   assert.ok(!readmeAndDocs.includes('同じ版を`?bands=off`で開いたときと比べて確かめる予定です'), '実機の関門を「予定」のまま書いている');
 });
 
