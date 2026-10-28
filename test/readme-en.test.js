@@ -900,7 +900,7 @@ test('英語版に、過去の版を説明する言い回しと開発の段階�
     'This was fixed in the next release.', 'Up to Phase 2a, the hash column was column G.', 'Added in Phase 2c3a.']) {
     assert.ok(pastHitsEn(s).length > 0, `過去の版の説明を見つけられない: ${s}`);
   }
-  for (const s of ['What Phase 2 added', 'ideas for Phase 3', 'older versions of Excel need it to be confirmed',
+  for (const s of ['Recording the band at the upper edge of the audible range', 'Next ideas', 'older versions of Excel need it to be confirmed',
     'the log interval with which each interval was actually measured', 'the check no longer passes']) {
     assert.deepEqual(pastHitsEn(s), [], `残してよい言い回しを拾っている: ${s}`);
   }

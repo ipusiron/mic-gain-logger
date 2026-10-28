@@ -313,18 +313,18 @@ test('READMEとdocs/に、過去の版を説明する言い回しがない', () 
     assert.ok(pastHits(s).length > 0, `過去の版の説明を見つけられない: ${s}`);
   }
   // 実機テストの条件は見つけない（残してよいもの）
-  for (const s of ['第1弾の版`c7b6bad`のv2が1本', '公開版`c7b6bad`（第1弾）と`090648f`（第2弾b）', '## 第2弾で入れたもの',
+  for (const s of ['第1弾の版`c7b6bad`のv2が1本', '公開版`c7b6bad`（第1弾）と`090648f`（第2弾b）', '## 可聴域の上端の帯域の記録',
     '記録した版（`090648f`）の表示下限の既定（-90dBFS）']) {
     assert.deepEqual(pastHits(s), [], `残してよい条件を過去の版の説明として拾っている: ${s}`);
   }
 });
 
-test('実機テストの条件の公開版（c7b6bad・090648f）と、第2弾で入れたものの一覧は残っている', () => {
+test('実機テストの条件の公開版（c7b6bad・090648f）と、可聴域の上端の帯域の記録の節は残っている', () => {
   // どの版で確かめたかは条件なので残す。過去の版の説明を消すときに、条件まで消していないことを見る
   const real = FILES['docs/real-device-test.md'];
   assert.ok(real.includes('`090648f`') && real.includes('`c7b6bad`'), '実機テストの資料に、確かめた版がない');
   assert.ok(readme.includes('公開版の`c7b6bad`と`090648f`の2つ'), 'ブラウザー対応状況に、確かめた版がない');
-  assert.ok(FILES['docs/roadmap.md'].includes('## 第2弾で入れたもの'), '将来案の資料に「第2弾で入れたもの」がない');
+  assert.ok(FILES['docs/roadmap.md'].includes('## 可聴域の上端の帯域の記録'), '将来案の資料に「可聴域の上端の帯域の記録」がない');
 });
 
 // ---- 使わないと決めた語 ----

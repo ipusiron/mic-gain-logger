@@ -33,7 +33,6 @@ const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
 // 第2弾c1bでREADMEを入口にし、詳しい説明をdocs/へ分けた。READMEとdocs/を合わせたものが、分ける前のREADMEにあたる
 const docsText = name => fs.readFileSync(path.join(root, 'docs', name), 'utf8');
 const readmeAndDocs = [readme, ...fs.readdirSync(path.join(root, 'docs')).filter(n => n.endsWith('.md')).map(docsText)].join('\n');
-const roadmapText = docsText('roadmap.md');
 const realDoc = docsText('real-device-test.md');
 
 // 見出しから、同じか上の階層の次の見出しまで（コードブロックの中の `#` 行は見出しに数えない）
@@ -304,11 +303,13 @@ test('READMEとdocs/に、説明の無い開発の段階名（第2弾c0・第2�
   const m = readmeAndDocs.match(/第\d弾[a-z]\d[a-z]?/);
   assert.equal(m, null, `開発の段階名がある: ${m && m[0]}`);
   // 「第1弾」「第2弾b」も、読む人には説明が無い。確かめた公開版はコミットの番号で示す。
-  // 段階ごとに何を入れたかを書く将来案の資料（docs/roadmap.md）だけは、段階の名前を使う
-  // README の中で roadmap.md の中身（見出し）を説明する行も、将来案の資料の話なので外す
-  const outside = readmeAndDocs.replace(roadmapText, '').split('\n').filter(l => !l.includes('roadmap.md')).join('\n');
-  const s = outside.match(/第\d弾[a-z]?/);
-  assert.equal(s, null, `将来案の資料の外に段階名がある: ${s && s[0]}`);
+  // 将来案の資料（docs/roadmap.md）も、いまの版の機能と次の案だけを書き、段階の名前を使わない（2026-10-28）
+  const s = readmeAndDocs.match(/第\d弾[a-z]?/);
+  assert.equal(s, null, `READMEとdocs/に段階名がある: ${s && s[0]}`);
+  const enText = ['README.en.md', ...fs.readdirSync(path.join(root, 'docs', 'en')).filter(n => n.endsWith('.md'))
+    .map(n => path.join('docs', 'en', n))].map(f => fs.readFileSync(path.join(root, f), 'utf8')).join('\n');
+  const p = enText.match(/Phase \d/);
+  assert.equal(p, null, `README.en.mdとdocs/en/に段階名がある: ${p && p[0]}`);
 });
 
 test('ブラウザー対応状況に、第2弾bを実機で確かめていないという古い記述が残っていない', () => {

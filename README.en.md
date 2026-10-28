@@ -175,7 +175,7 @@ This README is the entry point and gives only the key points; the detailed expla
 | [docs/en/measurement.md](docs/en/measurement.md) | How measurement works and measured values, dBFS basics, the difference between the big number on screen and the CSV `dbfs`, security background, tech stack and how to read the implementation |
 | [docs/en/use-cases.md](docs/en/use-cases.md) | Target users, intended uses, why the values cannot be compared with regulatory limits or standard values, the full examples of use, example scenarios |
 | [docs/en/troubleshooting.md](docs/en/troubleshooting.md) | Common problems and solutions |
-| [docs/en/roadmap.md](docs/en/roadmap.md) | What was added, next ideas, further ideas, what will not be added |
+| [docs/en/roadmap.md](docs/en/roadmap.md) | Upper-edge band recording, next ideas, further ideas, what will not be added |
 
 ---
 
@@ -216,14 +216,14 @@ mic-gain-logger/
 │   │   ├── measurement.md         # How measurement works, measured values, dBFS basics, security background, tech stack
 │   │   ├── use-cases.md           # Target users, intended uses, why regulatory limits cannot be compared, examples of use, scenarios
 │   │   ├── troubleshooting.md     # Common problems and solutions
-│   │   └── roadmap.md             # What was added, next ideas, further ideas, what will not be added
+│   │   └── roadmap.md             # Upper-edge band recording, next ideas, further ideas, what will not be added
 │   ├── features.md                # Detailed descriptions of the features (Japanese)
 │   ├── csv.md                     # CSV format, hash chain, verifier, Excel steps, Python recipes (Japanese)
 │   ├── real-device-test.md        # Conditions, results and procedure of the iPhone 18 Pro Max real-device test (Japanese)
 │   ├── measurement.md             # How measurement works, measured values, dBFS basics, security background, tech stack (Japanese)
 │   ├── use-cases.md               # Target users, intended uses, why regulatory limits cannot be compared, examples of use, scenarios (Japanese)
 │   ├── troubleshooting.md         # Common problems and solutions (Japanese)
-│   └── roadmap.md                 # What was added, next ideas, further ideas, what will not be added (Japanese)
+│   └── roadmap.md                 # Upper-edge band recording, next ideas, further ideas, what will not be added (Japanese)
 ├── test/                          # Tests (node:test, no dependencies)
 │   ├── logic.test.js              # Pure functions (clamp, dBFS conversion, time formatting, and others)
 │   ├── interval.test.js           # Building "one row = one interval"

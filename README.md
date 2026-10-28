@@ -216,7 +216,7 @@ READMEには入口として要点だけを書き、詳しい説明は`docs/`に�
 | [docs/measurement.md](docs/measurement.md) | 計測の作りと実測値、dBFSの基礎知識、画面の大きな数字とCSVの`dbfs`の違い、セキュリティ的背景、技術スタックと実装の読み方 |
 | [docs/use-cases.md](docs/use-cases.md) | 想定ターゲット層、想定する使い方、規制値・基準値とは比較できない理由、活用例の全文、具体的なシナリオ例 |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | よくある問題と解決方法 |
-| [docs/roadmap.md](docs/roadmap.md) | 入れたもの、次の案、その先の案、将来案に入れないもの |
+| [docs/roadmap.md](docs/roadmap.md) | 可聴域の上端の帯域の記録、次の案、その先の案、将来案に入れないもの |
 
 ---
 
@@ -257,14 +257,14 @@ mic-gain-logger/
 │   │   ├── measurement.md         # 計測の作りと実測値・dBFSの基礎知識・セキュリティ的背景・技術スタック（英語）
 │   │   ├── use-cases.md           # 想定ターゲット層・想定する使い方・規制値と比べられない理由・活用例・シナリオ（英語）
 │   │   ├── troubleshooting.md     # よくある問題と解決方法（英語）
-│   │   └── roadmap.md             # 入れたもの・次の案・その先の案・将来案に入れないもの（英語）
+│   │   └── roadmap.md             # 可聴域の上端の帯域の記録・次の案・その先の案・将来案に入れないもの（英語）
 │   ├── features.md                # 主な機能の詳しい説明
 │   ├── csv.md                     # CSVの形式・ハッシュチェーン・検証器・Excelの手順・Pythonのレシピ
 │   ├── real-device-test.md        # iPhone 18 Pro Maxの実機テストの条件・結果・やり方
 │   ├── measurement.md             # 計測の作りと実測値・dBFSの基礎知識・セキュリティ的背景・技術スタック
 │   ├── use-cases.md               # 想定ターゲット層・想定する使い方・規制値と比べられない理由・活用例・シナリオ
 │   ├── troubleshooting.md         # よくある問題と解決方法
-│   └── roadmap.md                 # 入れたもの・次の案・その先の案・将来案に入れないもの
+│   └── roadmap.md                 # 可聴域の上端の帯域の記録・次の案・その先の案・将来案に入れないもの
 ├── test/                          # テスト（node:test・依存パッケージなし）
 │   ├── logic.test.js              # 純関数（clamp・dBFS換算・時刻整形ほか）
 │   ├── interval.test.js           # 「1行＝1区間」の組み立て

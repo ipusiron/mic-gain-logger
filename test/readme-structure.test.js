@@ -324,8 +324,8 @@ const NEW_SECTIONS = [
   ['docs/real-device-test.md', '# 📱 実機テスト（iPhone 18 Pro Max）'],
   ['docs/use-cases.md', '## 🧭 活用例（暮らし・教育・仕事・趣味・研究）'],
   ['docs/measurement.md', '### 画面の大きな数字とCSVの`dbfs`の違い'],
-  ['docs/roadmap.md', '## 第2弾で入れたもの'],
-  ['docs/roadmap.md', '## 第3弾の案'],
+  ['docs/roadmap.md', '## 可聴域の上端の帯域の記録'],
+  ['docs/roadmap.md', '## 次の案'],
   ['docs/csv.md', '## 加工する前に確かめること'],
   ['docs/csv.md', '## 時刻を日本時間へ直す'],
   ['docs/csv.md', '## コマンドラインで表だけにする'],
@@ -347,8 +347,8 @@ test('この段階で足した節が、使わないと決めた語を含まな�
   for (const [h, l] of prose()) {
     for (const w of BANNED) assert.ok(!l.includes(w), `${h} に「${w}」がある: ${l}`);
     assert.ok(!/てみ[るたてよま]/.test(l), `${h} に「〜てみる」がある: ${l}`);
-    // 第2弾で入れたものの競合の表は、第1弾からの文をそのまま残している
-    if (h !== '## 第2弾で入れたもの') assert.ok(!l.includes('無い'), `${h} に「無い」がある（「ない」と書く）: ${l}`);
+    // 可聴域の上端の帯域の記録の節（競合の表）は、最初に書いた文をそのまま残している
+    if (h !== '## 可聴域の上端の帯域の記録') assert.ok(!l.includes('無い'), `${h} に「無い」がある（「ない」と書く）: ${l}`);
   }
 });
 
@@ -356,7 +356,7 @@ test('この段階で足した節で、英字と日本語のあいだに半角�
   const JA = '[ぁ-ゖァ-ヺー一-龯々〆（）「」、。・]';
   const bad = new RegExp(`${JA} [A-Za-z0-9\`?#]|[A-Za-z0-9\`] ${JA}`);
   for (const [h, l] of prose()) {
-    if (h === '## 第2弾で入れたもの' && l.startsWith('|')) continue;   // 競合の表は第1弾からの文
+    if (h === '## 可聴域の上端の帯域の記録' && l.startsWith('|')) continue;   // 競合の表は最初に書いた文
     assert.ok(!bad.test(l), `${h} に英字と日本語のあいだの半角空白がある: ${l}`);
   }
 });
