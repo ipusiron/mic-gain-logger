@@ -18,7 +18,7 @@ category_en:
   - Physical Security
   - Acoustic Surveillance
 
-difficulty: 3
+difficulty: 2
 
 tags:
   - web-audio-api
